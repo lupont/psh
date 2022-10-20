@@ -1,3 +1,14 @@
+mod error;
+mod repl;
+
+pub(crate) use crate::error::Result;
+pub(crate) use crate::repl::Repl;
+
 fn main() {
-    println!("Hello, world!");
+    let repl = Repl::init();
+
+    if let Err(e) = repl.run() {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
