@@ -1,8 +1,9 @@
 use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::process;
+use std::path::PathBuf;
 
-use crate::Result;
+use crate::{Error, Result};
 
 pub(crate) struct Repl {
     available_cmds: Vec<String>,
@@ -28,7 +29,7 @@ impl Repl {
             print!("\x1b[93m$\x1b[0m ");
             io::stdout().flush()?;
 
-            let (command, args) = read_input()?;
+            let (command, args) = read_input_and_save_history()?;
             match command.as_str() {
                 "" => {}
 
@@ -73,10 +74,31 @@ fn get_cmds_from_path() -> Vec<String> {
     cmds
 }
 
-fn read_input() -> Result<(String, Vec<String>)> {
+/// Reads input from the user and saves it to the history file.
+fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
     let mut buffer = String::new();
     io::stdin().read_line(&mut buffer)?;
     let buffer = buffer.trim().to_string();
+
+    let home = match std::env::var("HOME") {
+        Ok(home) => home,
+        Err(_) => return Err(Error::NoHome),
+    };
+
+    if !buffer.is_empty() {
+        let history_file = match std::env::var("RUSH_HISTFILE") {
+            Ok(path) => PathBuf::from(path),
+            Err(_) => PathBuf::from(&home).join(".rush_history"),
+        };
+
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open(history_file)?;
+        file.write_all(buffer.as_bytes())?;
+        file.write_all(b"\n")?;
+    }
 
     match buffer.find(' ') {
         Some(_) => {
@@ -84,6 +106,7 @@ fn read_input() -> Result<(String, Vec<String>)> {
             let args = args
                 .split_ascii_whitespace()
                 .map(ToString::to_string)
+                .map(|s| s.replace("~", &home))
                 .collect::<Vec<_>>();
             Ok((cmd.to_string(), args))
         }
