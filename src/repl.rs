@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::{Error, Result};
 
+#[derive(Debug)]
 pub(crate) struct Repl {
     available_cmds: Vec<String>,
 }
@@ -14,6 +15,12 @@ impl Repl {
         Self {
             available_cmds: get_cmds_from_path(),
         }
+    }
+
+    fn has_cmd(&self, cmd: impl AsRef<str>) -> bool {
+        self.available_cmds
+            .iter()
+            .any(|s| s.ends_with(&("/".to_string() + cmd.as_ref())))
     }
 
     pub(crate) fn run(&self) -> Result<()> {
@@ -35,7 +42,12 @@ impl Repl {
 
                 "exit" => process::exit(0),
 
-                cmd if self.available_cmds.iter().any(|s| s.ends_with(cmd)) => {
+                "debug" => {
+                    println!("{:#?}", self);
+                    prev_rc = Some(0);
+                }
+
+                cmd if self.has_cmd(cmd) => {
                     prev_rc = Some(run_cmd(cmd, &args)?);
                 }
 
