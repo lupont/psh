@@ -36,7 +36,7 @@ impl Repl {
     }
 
     fn exit_builtin(&self) -> ! {
-        process::exit(0);
+        process::exit(0)
     }
 
     fn debug_builtin(&self) -> i32 {
@@ -44,26 +44,26 @@ impl Repl {
         0
     }
 
-    fn cd_builtin(&mut self, dir: Option<impl AsRef<str>>) -> i32 {
-        let path = if let Some(path) = &dir {
-            if path.as_ref() == "-" {
-                if let Some(prev) = self.prev_dir.take() {
-                    prev
-                } else {
-                    println!("cd: No previous directory to go to.");
-                    return 1;
-                }
-            } else {
-                let path = PathBuf::from(path.as_ref());
-                if path.exists() {
-                    path
-                } else {
-                    println!("cd: The path '{}' does not exist", dir.unwrap().as_ref());
-                    return 1;
-                }
+    fn cd_builtin(&mut self, dir: Option<&str>) -> i32 {
+        let path = match dir {
+            Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
+
+            Some("-") => {
+                println!("cd: No previous directory.");
+                return 1;
             }
-        } else {
-            PathBuf::from(home_dir().unwrap())
+
+            Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir),
+
+            Some(dir) => {
+                println!("cd: Path '{}' does not exist.", dir);
+                return 2;
+            }
+
+            None => {
+                let home = home_dir().expect("could not read $HOME");
+                PathBuf::from(home)
+            }
         };
 
         self.prev_dir = Some(env::current_dir().unwrap());
@@ -77,7 +77,7 @@ impl Repl {
             "debug" => self.debug_builtin(),
             "cd" => {
                 let dir = args.get(0);
-                self.cd_builtin(dir)
+                self.cd_builtin(dir.map(|d| d.as_ref()))
             }
 
             cmd => {
@@ -87,30 +87,35 @@ impl Repl {
         }
     }
 
+    fn prompt(&self, prev_rc: Option<i32>) -> Result<()> {
+        print!(
+            "{} ",
+            env::current_dir()
+                .unwrap()
+                .display()
+                .to_string()
+                .replace(&home_dir()?, "~")
+        );
+
+        match prev_rc {
+            Some(code) if code != 0 => {
+                print!("\x1b[91m[{}]\x1b[0m ", code);
+            }
+
+            _ => {}
+        }
+
+        print!("\x1b[93m$\x1b[0m ");
+        Ok(io::stdout().flush()?)
+    }
+
     pub(crate) fn run(&mut self) -> Result<()> {
         let mut prev_rc: Option<i32> = None;
 
         loop {
-            print!(
-                "{} ",
-                env::current_dir()
-                    .unwrap()
-                    .display()
-                    .to_string()
-                    .replace(&home_dir()?, "~")
-            );
-            match prev_rc {
-                Some(code) if code != 0 => {
-                    print!("\x1b[91m[{}]\x1b[0m ", code);
-                }
-
-                _ => {}
-            }
-
-            print!("\x1b[93m$\x1b[0m ");
-            io::stdout().flush()?;
-
+            self.prompt(prev_rc)?;
             let (command, args) = read_input_and_save_history()?;
+
             match command.as_str() {
                 "" => {}
 
