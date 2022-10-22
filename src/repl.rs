@@ -56,7 +56,7 @@ impl Repl {
             Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir),
 
             Some(dir) => {
-                println!("cd: Path '{}' does not exist.", dir);
+                println!("cd: '{}' does not exist.", dir);
                 return 2;
             }
 
