@@ -1,3 +1,4 @@
+use std::env;
 use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -34,37 +35,49 @@ impl Repl {
         self.builtins.iter().any(|s| s == cmd.as_ref())
     }
 
+    fn exit_builtin(&self) -> ! {
+        process::exit(0);
+    }
+
+    fn debug_builtin(&self) -> i32 {
+        println!("{:#?}", self);
+        0
+    }
+
+    fn cd_builtin(&mut self, dir: Option<impl AsRef<str>>) -> i32 {
+        let path = if let Some(path) = &dir {
+            if path.as_ref() == "-" {
+                if let Some(prev) = self.prev_dir.take() {
+                    prev
+                } else {
+                    println!("cd: No previous directory to go to.");
+                    return 1;
+                }
+            } else {
+                let path = PathBuf::from(path.as_ref());
+                if path.exists() {
+                    path
+                } else {
+                    println!("cd: The path '{}' does not exist", dir.unwrap().as_ref());
+                    return 1;
+                }
+            }
+        } else {
+            PathBuf::from(home_dir().unwrap())
+        };
+
+        self.prev_dir = Some(env::current_dir().unwrap());
+        env::set_current_dir(path).unwrap();
+        0
+    }
+
     fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> i32 {
         match cmd.as_ref() {
-            "exit" => process::exit(0),
-
-            "debug" => {
-                println!("{:#?}", self);
-                0
-            }
-
+            "exit" => self.exit_builtin(),
+            "debug" => self.debug_builtin(),
             "cd" => {
-                let path = if args.is_empty() {
-                    PathBuf::from(home_dir().unwrap())
-                } else {
-                    let path = PathBuf::from(args[0].as_ref());
-                    if path.exists() {
-                        path
-                    } else if args[0].as_ref() == "-" {
-                        if let Some(path) = self.prev_dir.take() {
-                            path
-                        } else {
-                            println!("cd: No previous directory to go to.");
-                            return 1;
-                        }
-                    } else {
-                        println!("cd: The path '{}' does not exist", args[0].as_ref());
-                        return 1;
-                    }
-                };
-                self.prev_dir = Some(std::env::current_dir().unwrap());
-                std::env::set_current_dir(path).unwrap();
-                0
+                let dir = args.get(0);
+                self.cd_builtin(dir)
             }
 
             cmd => {
@@ -78,7 +91,14 @@ impl Repl {
         let mut prev_rc: Option<i32> = None;
 
         loop {
-            print!("{} ", std::env::current_dir().unwrap().display().to_string().replace(&home_dir()?, "~"));
+            print!(
+                "{} ",
+                env::current_dir()
+                    .unwrap()
+                    .display()
+                    .to_string()
+                    .replace(&home_dir()?, "~")
+            );
             match prev_rc {
                 Some(code) if code != 0 => {
                     print!("\x1b[91m[{}]\x1b[0m ", code);
@@ -125,7 +145,7 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 }
 
 fn get_cmds_from_path() -> Vec<String> {
-    let raw_path = std::env::var("PATH").unwrap();
+    let raw_path = env::var("PATH").unwrap();
     let raw_path = raw_path.split(':');
 
     let mut cmds = Vec::new();
@@ -140,7 +160,7 @@ fn get_cmds_from_path() -> Vec<String> {
 }
 
 fn home_dir() -> Result<String> {
-    std::env::var("HOME").map_err(|_| Error::NoHome)
+    env::var("HOME").map_err(|_| Error::NoHome)
 }
 
 /// Reads input from the user and saves it to the history file.
@@ -152,7 +172,7 @@ fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
     let home = home_dir()?;
 
     if !buffer.is_empty() {
-        let history_file = match std::env::var("RUSH_HISTFILE") {
+        let history_file = match env::var("RUSH_HISTFILE") {
             Ok(path) => PathBuf::from(path),
             Err(_) => PathBuf::from(&home).join(".rush_history"),
         };
