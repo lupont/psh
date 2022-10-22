@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::io::{self, Write};
-use std::process;
 use std::path::PathBuf;
+use std::process;
 
 use crate::{Error, Result};
 
@@ -47,10 +47,12 @@ impl Repl {
         let mut prev_rc: Option<i32> = None;
 
         loop {
-            if let Some(exit_code) = prev_rc {
-                if exit_code != 0 {
-                    print!("\x1b[91m[{}]\x1b[0m ", exit_code);
+            match prev_rc {
+                Some(code) if code != 0 => {
+                    print!("\x1b[91m[{}]\x1b[0m ", code);
                 }
+
+                _ => {}
             }
 
             print!("\x1b[93m$\x1b[0m ");
