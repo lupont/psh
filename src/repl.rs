@@ -8,12 +8,14 @@ use crate::{Error, Result};
 #[derive(Debug)]
 pub(crate) struct Repl {
     available_cmds: Vec<String>,
+    builtins: Vec<String>,
 }
 
 impl Repl {
     pub(crate) fn init() -> Self {
         Self {
             available_cmds: get_cmds_from_path(),
+            builtins: vec!["debug".to_string()],
         }
     }
 
@@ -21,6 +23,24 @@ impl Repl {
         self.available_cmds
             .iter()
             .any(|s| s.ends_with(&("/".to_string() + cmd.as_ref())))
+    }
+
+    fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
+        self.builtins.iter().any(|s| s == cmd.as_ref())
+    }
+
+    fn execute_builtin(&self, cmd: impl AsRef<str>) -> i32 {
+        match cmd.as_ref() {
+            "debug" => {
+                println!("{:#?}", self);
+                0
+            }
+
+            cmd => {
+                println!("{cmd} is not recognized as a builtin.");
+                1
+            }
+        }
     }
 
     pub(crate) fn run(&self) -> Result<()> {
@@ -42,9 +62,8 @@ impl Repl {
 
                 "exit" => process::exit(0),
 
-                "debug" => {
-                    println!("{:#?}", self);
-                    prev_rc = Some(0);
+                cmd if self.has_builtin(cmd) => {
+                    prev_rc = Some(self.execute_builtin(cmd));
                 }
 
                 cmd if self.has_cmd(cmd) => {
