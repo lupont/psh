@@ -53,7 +53,12 @@ impl Repl {
                 return 1;
             }
 
-            Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir),
+            Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
+
+            Some(dir) if PathBuf::from(dir).exists() => {
+                println!("cd: '{}' is not a directory.", dir);
+                return 3;
+            }
 
             Some(dir) => {
                 println!("cd: '{}' does not exist.", dir);
