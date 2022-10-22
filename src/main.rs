@@ -5,7 +5,7 @@ pub(crate) use crate::error::{Error, Result};
 pub(crate) use crate::repl::Repl;
 
 fn main() {
-    let repl = Repl::init();
+    let mut repl = Repl::init();
 
     if let Err(e) = repl.run() {
         eprintln!("{e}");

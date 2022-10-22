@@ -9,6 +9,7 @@ use crate::{Error, Result};
 pub(crate) struct Repl {
     available_cmds: Vec<String>,
     builtins: Vec<String>,
+    prev_dir: Option<PathBuf>,
 }
 
 impl Repl {
@@ -19,6 +20,7 @@ impl Repl {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+            prev_dir: None,
         }
     }
 
@@ -32,7 +34,7 @@ impl Repl {
         self.builtins.iter().any(|s| s == cmd.as_ref())
     }
 
-    fn execute_builtin(&self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> i32 {
+    fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> i32 {
         match cmd.as_ref() {
             "exit" => process::exit(0),
 
@@ -48,11 +50,19 @@ impl Repl {
                     let path = PathBuf::from(args[0].as_ref());
                     if path.exists() {
                         path
+                    } else if args[0].as_ref() == "-" {
+                        if let Some(path) = self.prev_dir.take() {
+                            path
+                        } else {
+                            println!("cd: No previous directory to go to.");
+                            return 1;
+                        }
                     } else {
                         println!("cd: The path '{}' does not exist", args[0].as_ref());
                         return 1;
                     }
                 };
+                self.prev_dir = Some(std::env::current_dir().unwrap());
                 std::env::set_current_dir(path).unwrap();
                 0
             }
@@ -64,7 +74,7 @@ impl Repl {
         }
     }
 
-    pub(crate) fn run(&self) -> Result<()> {
+    pub(crate) fn run(&mut self) -> Result<()> {
         let mut prev_rc: Option<i32> = None;
 
         loop {
