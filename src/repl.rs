@@ -81,8 +81,8 @@ impl Repl {
             "exit" => self.exit_builtin(),
             "debug" => self.debug_builtin(),
             "cd" => {
-                let dir = args.get(0);
-                self.cd_builtin(dir.map(|d| d.as_ref()))
+                let dir = args.get(0).map(|d| d.as_ref());
+                self.cd_builtin(dir)
             }
 
             cmd => {
@@ -92,7 +92,7 @@ impl Repl {
         }
     }
 
-    fn prompt(&self, prev_rc: Option<i32>) -> Result<()> {
+    fn prompt(&self, prev_rc: impl Into<Option<i32>>) -> Result<()> {
         print!(
             "{} ",
             env::current_dir()
@@ -102,7 +102,7 @@ impl Repl {
                 .replace(&home_dir()?, "~")
         );
 
-        match prev_rc {
+        match prev_rc.into() {
             Some(code) if code != 0 => {
                 print!("\x1b[91m[{}]\x1b[0m ", code);
             }
@@ -173,6 +173,20 @@ fn home_dir() -> Result<String> {
     env::var("HOME").map_err(|_| Error::NoHome)
 }
 
+fn hist_file() -> Result<PathBuf> {
+    match env::var("RUSH_HISTFILE") {
+        Ok(path) => {
+            let path = PathBuf::from(path);
+            if path.exists() && !path.is_dir() {
+                Ok(path)
+            } else {
+                Err(Error::InvalidHistfile(path))
+            }
+        }
+        Err(_) => Ok(PathBuf::from(home_dir()?).join(".rush_history")),
+    }
+}
+
 /// Reads input from the user and saves it to the history file.
 fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
     let mut buffer = String::new();
@@ -182,16 +196,11 @@ fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
     let home = home_dir()?;
 
     if !buffer.is_empty() {
-        let history_file = match env::var("RUSH_HISTFILE") {
-            Ok(path) => PathBuf::from(path),
-            Err(_) => PathBuf::from(&home).join(".rush_history"),
-        };
-
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
-            .open(history_file)?;
+            .open(hist_file()?)?;
         file.write_all(buffer.as_bytes())?;
         file.write_all(b"\n")?;
     }
@@ -201,11 +210,16 @@ fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
             let (cmd, args) = buffer.split_once(' ').unwrap();
             let args = args
                 .split_ascii_whitespace()
-                .map(ToString::to_string)
                 .map(|s| s.replace('~', &home))
                 .collect::<Vec<_>>();
             Ok((cmd.to_string(), args))
         }
         _ => Ok((buffer, Default::default())),
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    use super::*;
 }
