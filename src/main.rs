@@ -1,4 +1,5 @@
 mod error;
+mod path;
 mod repl;
 
 pub(crate) use crate::error::{Error, Result};

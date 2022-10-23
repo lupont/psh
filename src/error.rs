@@ -16,7 +16,7 @@ impl fmt::Display for Error {
         write!(f, "{}", match self {
             Self::Io(e) => e.to_string(),
             Self::NoHome => "Could not read $HOME".to_string(),
-            Self::InvalidHistfile(path) => format!("RUSH_HISTFILE contains invalid path: {}", path.display()),
+            Self::InvalidHistfile(path) => format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
         })
     }
 }

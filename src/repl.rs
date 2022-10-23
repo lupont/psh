@@ -4,7 +4,8 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
-use crate::{Error, Result};
+use crate::path::{get_cmds_from_path, hist_file, home_dir};
+use crate::Result;
 
 #[derive(Debug)]
 pub(crate) struct Repl {
@@ -25,14 +26,44 @@ impl Repl {
         }
     }
 
+    pub(crate) fn run(&mut self) -> Result<()> {
+        let mut prev_rc: Option<i32> = None;
+
+        loop {
+            self.prompt(prev_rc)?;
+            let (command, args) = read_input_and_save_history()?;
+
+            match command.as_str() {
+                "" => {}
+
+                cmd if self.has_builtin(cmd) => {
+                    prev_rc = Some(self.execute_builtin(cmd, &args)?);
+                }
+
+                cmd if self.has_cmd(cmd) => {
+                    prev_rc = Some(run_cmd(cmd, &args)?);
+                }
+
+                cmd => {
+                    println!("Unknown command: {cmd}");
+                    prev_rc = Some(1);
+                }
+            }
+
+            io::stdout().flush()?;
+        }
+    }
+
     fn has_cmd(&self, cmd: impl AsRef<str>) -> bool {
+        let needle = "/".to_string() + cmd.as_ref();
         self.available_cmds
             .iter()
-            .any(|s| s.ends_with(&("/".to_string() + cmd.as_ref())))
+            .any(|s| s.ends_with(&needle))
     }
 
     fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
-        self.builtins.iter().any(|s| s == cmd.as_ref())
+        let cmd = cmd.as_ref();
+        self.builtins.iter().any(|s| s == cmd)
     }
 
     fn exit_builtin(&self) -> ! {
@@ -44,25 +75,25 @@ impl Repl {
         0
     }
 
-    fn cd_builtin(&mut self, dir: Option<&str>) -> i32 {
+    fn cd_builtin(&mut self, dir: Option<&str>) -> Result<i32> {
         let path = match dir {
             Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
 
             Some("-") => {
                 println!("cd: No previous directory.");
-                return 1;
+                return Ok(1);
             }
 
             Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
 
             Some(dir) if PathBuf::from(dir).exists() => {
                 println!("cd: '{}' is not a directory.", dir);
-                return 3;
+                return Ok(3);
             }
 
             Some(dir) => {
                 println!("cd: '{}' does not exist.", dir);
-                return 2;
+                return Ok(2);
             }
 
             None => {
@@ -71,15 +102,14 @@ impl Repl {
             }
         };
 
-        self.prev_dir = Some(env::current_dir().unwrap());
-        env::set_current_dir(path).unwrap();
-        0
+        self.prev_dir = Some(env::current_dir()?);
+        Ok(env::set_current_dir(path).map(|_| 0)?)
     }
 
-    fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> i32 {
+    fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> Result<i32> {
         match cmd.as_ref() {
             "exit" => self.exit_builtin(),
-            "debug" => self.debug_builtin(),
+            "debug" => Ok(self.debug_builtin()),
             "cd" => {
                 let dir = args.get(0).map(|d| d.as_ref());
                 self.cd_builtin(dir)
@@ -87,7 +117,7 @@ impl Repl {
 
             cmd => {
                 println!("{cmd} is not recognized as a builtin.");
-                1
+                Ok(1)
             }
         }
     }
@@ -113,34 +143,6 @@ impl Repl {
         print!("\x1b[93m$\x1b[0m ");
         Ok(io::stdout().flush()?)
     }
-
-    pub(crate) fn run(&mut self) -> Result<()> {
-        let mut prev_rc: Option<i32> = None;
-
-        loop {
-            self.prompt(prev_rc)?;
-            let (command, args) = read_input_and_save_history()?;
-
-            match command.as_str() {
-                "" => {}
-
-                cmd if self.has_builtin(cmd) => {
-                    prev_rc = Some(self.execute_builtin(cmd, &args));
-                }
-
-                cmd if self.has_cmd(cmd) => {
-                    prev_rc = Some(run_cmd(cmd, &args)?);
-                }
-
-                cmd => {
-                    println!("Unknown command: {cmd}");
-                    prev_rc = Some(1);
-                }
-            }
-
-            io::stdout().flush()?;
-        }
-    }
 }
 
 fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
@@ -152,39 +154,6 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 
     // FIXME: `.code()` returns `None` if killed by signal
     Ok(result.status.code().unwrap())
-}
-
-fn get_cmds_from_path() -> Vec<String> {
-    let raw_path = env::var("PATH").unwrap();
-    let raw_path = raw_path.split(':');
-
-    let mut cmds = Vec::new();
-
-    for path in raw_path {
-        if let Ok(dirs) = std::fs::read_dir(path) {
-            cmds.extend(dirs.map(|d| format!("{}", d.unwrap().path().display())));
-        }
-    }
-
-    cmds
-}
-
-fn home_dir() -> Result<String> {
-    env::var("HOME").map_err(|_| Error::NoHome)
-}
-
-fn hist_file() -> Result<PathBuf> {
-    match env::var("RUSH_HISTFILE") {
-        Ok(path) => {
-            let path = PathBuf::from(path);
-            if path.exists() && !path.is_dir() {
-                Ok(path)
-            } else {
-                Err(Error::InvalidHistfile(path))
-            }
-        }
-        Err(_) => Ok(PathBuf::from(home_dir()?).join(".rush_history")),
-    }
 }
 
 /// Reads input from the user and saves it to the history file.
@@ -216,10 +185,4 @@ fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
         }
         _ => Ok((buffer, Default::default())),
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-    use super::*;
 }
