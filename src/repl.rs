@@ -56,9 +56,7 @@ impl Repl {
 
     fn has_cmd(&self, cmd: impl AsRef<str>) -> bool {
         let needle = "/".to_string() + cmd.as_ref();
-        self.available_cmds
-            .iter()
-            .any(|s| s.ends_with(&needle))
+        self.available_cmds.iter().any(|s| s.ends_with(&needle))
     }
 
     fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
@@ -158,9 +156,9 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 
 /// Reads input from the user and saves it to the history file.
 fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
-    let mut buffer = String::new();
-    io::stdin().read_line(&mut buffer)?;
-    let buffer = buffer.trim().to_string();
+    let buffer = crate::input::read_line(&mut io::stdout())?
+        .trim()
+        .to_string();
 
     let home = home_dir()?;
 
