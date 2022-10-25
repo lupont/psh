@@ -42,9 +42,30 @@ mod sys {
                     break;
                 }
 
+                KeyCode::Char('l') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    execute!(
+                        stdout,
+                        terminal::Clear(terminal::ClearType::All),
+                        cursor::MoveTo(0, 0)
+                    )?;
+                    break;
+                }
+
+                KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) && index > 0 => {
+                    index -= 1;
+                    execute!(stdout, cursor::MoveLeft(1))?;
+                }
+
                 KeyCode::Left if index > 0 => {
                     index -= 1;
                     execute!(stdout, cursor::MoveLeft(1))?;
+                }
+
+                KeyCode::Char('f')
+                    if modifiers.contains(KeyModifiers::CONTROL) && index < line.len() =>
+                {
+                    index += 1;
+                    execute!(stdout, cursor::MoveRight(1))?;
                 }
 
                 KeyCode::Right if index < line.len() => {
