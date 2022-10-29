@@ -134,7 +134,10 @@ impl Repl {
             }
 
             "clear" => {
-                std::fs::OpenOptions::new().write(true).open(history)?.set_len(0)?;
+                std::fs::OpenOptions::new()
+                    .write(true)
+                    .open(history)?
+                    .set_len(0)?;
                 Ok(0)
             }
 

@@ -13,11 +13,16 @@ pub(crate) enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Self::Io(e) => e.to_string(),
-            Self::NoHome => "Could not read $HOME".to_string(),
-            Self::InvalidHistfile(path) => format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Io(e) => e.to_string(),
+                Self::NoHome => "Could not read $HOME".to_string(),
+                Self::InvalidHistfile(path) =>
+                    format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
+            }
+        )
     }
 }
 
