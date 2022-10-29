@@ -19,7 +19,7 @@ impl Repl {
     pub(crate) fn init() -> Self {
         Self {
             available_cmds: get_cmds_from_path(),
-            builtins: vec!["debug", "cd", "exit"]
+            builtins: vec!["debug", "cd", "exit", "history"]
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
@@ -108,6 +108,48 @@ impl Repl {
         Ok(env::set_current_dir(path).map(|_| 0)?)
     }
 
+    fn history_builtin(&self, args: &[impl AsRef<str>]) -> Result<i32> {
+        let history = match hist_file() {
+            Ok(file) => file,
+            Err(e) => {
+                println!("Could not read history file.");
+                dbg!(e);
+                return Ok(1);
+            }
+        };
+
+        if args.len() > 1 {
+            println!("USAGE: history [show|clear|path]");
+            return Ok(1);
+        }
+
+        let action = args.get(0).map(AsRef::as_ref).unwrap_or_else(|| "show");
+
+        match action {
+            "show" => {
+                for line in std::fs::read_to_string(history)?.trim().split('\n') {
+                    println!("{line}");
+                }
+                Ok(0)
+            }
+
+            "clear" => {
+                std::fs::OpenOptions::new().write(true).open(history)?.set_len(0)?;
+                Ok(0)
+            }
+
+            "path" => {
+                println!("{}", history.display());
+                Ok(0)
+            }
+
+            action => {
+                println!("Unknown action: {action}");
+                Ok(1)
+            }
+        }
+    }
+
     fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> Result<i32> {
         match cmd.as_ref() {
             "exit" => self.exit_builtin(),
@@ -116,6 +158,7 @@ impl Repl {
                 let dir = args.get(0).map(|d| d.as_ref());
                 self.cd_builtin(dir)
             }
+            "history" => self.history_builtin(args),
 
             cmd => {
                 println!("{cmd} is not recognized as a builtin.");
