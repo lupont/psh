@@ -5,10 +5,14 @@ use crossterm::style;
 use crossterm::terminal;
 use std::io::Write;
 
-use crate::Result;
 use crate::config::Colors;
+use crate::Result;
 
-pub(crate) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[String]) -> Result<String> {
+pub(crate) fn read_line<W: Write>(
+    stdout: &mut W,
+    cmds: &[String],
+    builtins: &[String],
+) -> Result<String> {
     terminal::enable_raw_mode()?;
     let line = sys::read_line(stdout, cmds, builtins);
     terminal::disable_raw_mode()?;
@@ -18,7 +22,11 @@ pub(crate) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[S
 mod sys {
     use super::*;
 
-    pub(super) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[String]) -> Result<String> {
+    pub(super) fn read_line<W: Write>(
+        stdout: &mut W,
+        cmds: &[String],
+        builtins: &[String],
+    ) -> Result<String> {
         let mut line = String::new();
         let mut index = 0;
 
@@ -43,6 +51,32 @@ mod sys {
                     let (_, y) = cursor::position()?;
                     execute!(stdout, cursor::MoveTo(0, y + 1))?;
                     break;
+                }
+
+                KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    line.clear();
+                    index = 0;
+                    execute!(stdout, cursor::MoveTo(start_x, start_y))?;
+                }
+
+                KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    if index == 0 {
+                        continue;
+                    }
+
+                    let mut space_index = None;
+                    for i in (0..index).rev() {
+                        if let Some(' ') = line.chars().nth(i) {
+                            space_index = Some(i);
+                            break;
+                        }
+                    }
+
+                    let space_index = space_index.map(|i| i + 1).unwrap_or(0);
+                    line.replace_range(space_index..index, "");
+                    let offset = (index - space_index) as u16;
+                    index = space_index;
+                    execute!(stdout, cursor::MoveLeft(offset))?;
                 }
 
                 KeyCode::Char('l') if modifiers.contains(KeyModifiers::CONTROL) => {
