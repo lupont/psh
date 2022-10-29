@@ -42,14 +42,12 @@ mod sys {
                 {
                     line.clear();
                     write!(stdout, "\r")?;
-                    let (_, y) = cursor::position()?;
-                    execute!(stdout, cursor::MoveTo(0, y + 1))?;
+                    execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
                     break;
                 }
                 KeyCode::Enter => {
                     write!(stdout, "\r")?;
-                    let (_, y) = cursor::position()?;
-                    execute!(stdout, cursor::MoveTo(0, y + 1))?;
+                    execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
                     break;
                 }
 

@@ -143,7 +143,6 @@ impl Repl {
             stdout,
             style::SetForegroundColor(Colors::CWD),
             style::Print(cwd),
-            style::SetForegroundColor(style::Color::Reset)
         )?;
 
         match prev_rc.into() {
@@ -153,7 +152,6 @@ impl Repl {
                     stdout,
                     style::SetForegroundColor(Colors::NON_ZERO_RC),
                     style::Print(exit_code),
-                    style::SetForegroundColor(style::Color::Reset),
                 )?;
             }
 
