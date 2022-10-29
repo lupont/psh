@@ -4,6 +4,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
+use crate::config::Colors;
 use crate::path::{get_cmds_from_path, hist_file, home_dir};
 use crate::Result;
 
@@ -31,7 +32,10 @@ impl Repl {
 
         loop {
             self.prompt(prev_rc)?;
-            let (command, args) = read_input_and_save_history(self.available_cmds.as_slice(), self.builtins.as_slice())?;
+            let (command, args) = read_input_and_save_history(
+                self.available_cmds.as_slice(),
+                self.builtins.as_slice(),
+            )?;
 
             match command.as_str() {
                 "" => {}
@@ -121,7 +125,13 @@ impl Repl {
     }
 
     fn prompt(&self, prev_rc: impl Into<Option<i32>>) -> Result<()> {
-        print!(
+        use crossterm::queue;
+        use crossterm::style;
+
+        let mut stdout = io::stdout();
+        crossterm::terminal::enable_raw_mode()?;
+
+        let cwd = format!(
             "{} ",
             env::current_dir()
                 .unwrap()
@@ -129,17 +139,36 @@ impl Repl {
                 .to_string()
                 .replace(&home_dir()?, "~")
         );
+        queue!(
+            stdout,
+            style::SetForegroundColor(Colors::CWD),
+            style::Print(cwd),
+            style::SetForegroundColor(style::Color::Reset)
+        )?;
 
         match prev_rc.into() {
             Some(code) if code != 0 => {
-                print!("\x1b[91m[{}]\x1b[0m ", code);
+                let exit_code = format!("[{code}] ");
+                queue!(
+                    stdout,
+                    style::SetForegroundColor(Colors::NON_ZERO_RC),
+                    style::Print(exit_code),
+                    style::SetForegroundColor(style::Color::Reset),
+                )?;
             }
 
             _ => {}
         }
 
-        print!("\x1b[93m$\x1b[0m ");
-        Ok(io::stdout().flush()?)
+        queue!(
+            stdout,
+            style::SetForegroundColor(Colors::PROMPT),
+            style::Print("$ "),
+            style::SetForegroundColor(style::Color::Reset)
+        )?;
+
+        crossterm::terminal::disable_raw_mode()?;
+        Ok(stdout.flush()?)
     }
 }
 
@@ -155,7 +184,10 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 }
 
 /// Reads input from the user and saves it to the history file.
-fn read_input_and_save_history(cmds: &[String], builtins: &[String]) -> Result<(String, Vec<String>)> {
+fn read_input_and_save_history(
+    cmds: &[String],
+    builtins: &[String],
+) -> Result<(String, Vec<String>)> {
     let buffer = crate::input::read_line(&mut io::stdout(), cmds, builtins)?
         .trim()
         .to_string();

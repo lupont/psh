@@ -6,6 +6,7 @@ use crossterm::terminal;
 use std::io::Write;
 
 use crate::Result;
+use crate::config::Colors;
 
 pub(crate) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[String]) -> Result<String> {
     terminal::enable_raw_mode()?;
@@ -114,11 +115,11 @@ mod sys {
             let (x, y) = cursor::position()?;
 
             let highlight_color = if builtin_exists {
-                style::Color::DarkYellow
+                Colors::VALID_BUILTIN
             } else if cmd_exists {
-                style::Color::Yellow
+                Colors::VALID_CMD
             } else {
-                style::Color::Red
+                Colors::INVALID_CMD
             };
 
             execute!(

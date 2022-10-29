@@ -1,7 +1,8 @@
+mod config;
 mod error;
+mod input;
 mod path;
 mod repl;
-mod input;
 
 pub(crate) use crate::error::{Error, Result};
 pub(crate) use crate::repl::Repl;
