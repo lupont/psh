@@ -32,6 +32,14 @@ mod sys {
 
         let (start_x, start_y) = cursor::position()?;
 
+        let hist_file = crate::path::hist_file()?;
+        let history = std::fs::read_to_string(hist_file)?;
+        let history: Vec<_> = history.trim().split('\n').collect();
+        let mut hist_index = match history.len() {
+            0 => 0,
+            n => n - 1,
+        };
+
         while let Event::Key(KeyEvent {
             code, modifiers, ..
         }) = event::read()?
@@ -49,6 +57,36 @@ mod sys {
                     write!(stdout, "\r")?;
                     execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
                     break;
+                }
+
+                KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    if hist_index > 0 {
+                        hist_index -= 1;
+                    }
+                    let hist_content = history[hist_index];
+                    line = hist_content.to_string();
+                    index = hist_content.len();
+                    execute!(
+                        stdout,
+                        cursor::MoveTo(start_x, start_y),
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                        cursor::MoveTo(start_x + index as u16, start_y)
+                    )?;
+                }
+
+                KeyCode::Char('n') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    if hist_index < history.len() - 1 {
+                        hist_index += 1;
+                    }
+                    let hist_content = history[hist_index];
+                    line = hist_content.to_string();
+                    index = hist_content.len();
+                    execute!(
+                        stdout,
+                        cursor::MoveTo(start_x, start_y),
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                        cursor::MoveTo(start_x + index as u16, start_y)
+                    )?;
                 }
 
                 KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
