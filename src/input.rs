@@ -7,9 +7,9 @@ use std::io::Write;
 
 use crate::Result;
 
-pub(crate) fn read_line<W: Write>(stdout: &mut W) -> Result<String> {
+pub(crate) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[String]) -> Result<String> {
     terminal::enable_raw_mode()?;
-    let line = sys::read_line(stdout);
+    let line = sys::read_line(stdout, cmds, builtins);
     terminal::disable_raw_mode()?;
     line
 }
@@ -17,9 +17,11 @@ pub(crate) fn read_line<W: Write>(stdout: &mut W) -> Result<String> {
 mod sys {
     use super::*;
 
-    pub(super) fn read_line<W: Write>(stdout: &mut W) -> Result<String> {
+    pub(super) fn read_line<W: Write>(stdout: &mut W, cmds: &[String], builtins: &[String]) -> Result<String> {
         let mut line = String::new();
         let mut index = 0;
+
+        let (start_x, start_y) = cursor::position()?;
 
         while let Event::Key(KeyEvent {
             code, modifiers, ..
@@ -29,10 +31,10 @@ mod sys {
                 KeyCode::Char('c')
                     if modifiers.contains(KeyModifiers::CONTROL) && !line.is_empty() =>
                 {
+                    line.clear();
                     write!(stdout, "\r")?;
                     let (_, y) = cursor::position()?;
                     execute!(stdout, cursor::MoveTo(0, y + 1))?;
-                    line.clear();
                     break;
                 }
                 KeyCode::Enter => {
@@ -104,6 +106,31 @@ mod sys {
 
                 _ => {}
             }
+
+            let highlight_until_index = line.find(' ').unwrap_or(line.len());
+            let cmd = &line[..highlight_until_index];
+            let cmd_exists = cmds.iter().any(|s| s.ends_with(&format!("/{}", cmd)));
+            let builtin_exists = builtins.iter().any(|s| s == cmd.trim());
+            let (x, y) = cursor::position()?;
+
+            let highlight_color = if builtin_exists {
+                style::Color::DarkYellow
+            } else if cmd_exists {
+                style::Color::Yellow
+            } else {
+                style::Color::Red
+            };
+
+            execute!(
+                stdout,
+                cursor::MoveTo(start_x, start_y),
+                terminal::Clear(terminal::ClearType::UntilNewLine),
+                style::SetForegroundColor(highlight_color),
+                style::Print(&line[..highlight_until_index]),
+                style::SetForegroundColor(style::Color::Reset),
+                style::Print(&line[highlight_until_index..]),
+                cursor::MoveTo(x, y)
+            )?;
         }
         Ok(line)
     }

@@ -31,7 +31,7 @@ impl Repl {
 
         loop {
             self.prompt(prev_rc)?;
-            let (command, args) = read_input_and_save_history()?;
+            let (command, args) = read_input_and_save_history(self.available_cmds.as_slice(), self.builtins.as_slice())?;
 
             match command.as_str() {
                 "" => {}
@@ -155,8 +155,8 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 }
 
 /// Reads input from the user and saves it to the history file.
-fn read_input_and_save_history() -> Result<(String, Vec<String>)> {
-    let buffer = crate::input::read_line(&mut io::stdout())?
+fn read_input_and_save_history(cmds: &[String], builtins: &[String]) -> Result<(String, Vec<String>)> {
+    let buffer = crate::input::read_line(&mut io::stdout(), cmds, builtins)?
         .trim()
         .to_string();
 
