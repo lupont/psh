@@ -31,6 +31,7 @@ mod sys {
         let mut index = 0;
 
         let (start_x, start_y) = cursor::position()?;
+        let (_width, height) = terminal::size()?;
 
         let hist_file = crate::path::hist_file()?;
         let history = std::fs::read_to_string(hist_file)?;
@@ -51,11 +52,17 @@ mod sys {
                     line.clear();
                     write!(stdout, "\r")?;
                     execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
+                    if start_y + 1 >= height {
+                        execute!(stdout, terminal::ScrollUp(1))?;
+                    }
                     break;
                 }
                 KeyCode::Enter => {
                     write!(stdout, "\r")?;
                     execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
+                    if start_y + 1 >= height {
+                        execute!(stdout, terminal::ScrollUp(1))?;
+                    }
                     break;
                 }
 
