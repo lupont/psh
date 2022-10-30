@@ -47,8 +47,19 @@ mod sys {
         {
             match code {
                 KeyCode::Char('c')
-                    if modifiers.contains(KeyModifiers::CONTROL) && !line.is_empty() =>
+                    if modifiers.contains(KeyModifiers::CONTROL) =>
                 {
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    line += "^C";
+                    execute!(
+                        stdout,
+                        cursor::MoveTo(start_x, start_y),
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                        style::Print(&line)
+                    )?;
                     line.clear();
                     write!(stdout, "\r")?;
                     execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
