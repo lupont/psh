@@ -77,6 +77,17 @@ mod sys {
                     break;
                 }
 
+                KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+                    if !line.is_empty() {
+                        continue;
+                    }
+
+                    execute!(stdout, style::Print("\n\r"))?;
+
+                    // FIXME: better control flow than this
+                    std::process::exit(0);
+                }
+
                 KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
                     if hist_index > 0 {
                         hist_index -= 1;
