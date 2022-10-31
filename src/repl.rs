@@ -1,10 +1,10 @@
 use std::env;
-use std::ffi::OsStr;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
 use crate::config::Colors;
+use crate::input::Input;
 use crate::path::{get_cmds_from_path, hist_file, home_dir};
 use crate::Result;
 
@@ -29,23 +29,25 @@ impl Repl {
 
     pub(crate) fn run(&mut self) -> Result<()> {
         let mut prev_rc: Option<i32> = None;
+        let mut stdout = io::stdout();
 
         loop {
             self.prompt(prev_rc)?;
-            let (command, args) = read_input_and_save_history(
+            let input = Input::read(
+                &mut stdout,
                 self.available_cmds.as_slice(),
                 self.builtins.as_slice(),
             )?;
 
-            match command.as_str() {
+            match input.cmd.as_str() {
                 "" => {}
 
                 cmd if self.has_builtin(cmd) => {
-                    prev_rc = Some(self.execute_builtin(cmd, &args)?);
+                    prev_rc = Some(self.execute_builtin(&input)?);
                 }
 
                 cmd if self.has_cmd(cmd) => {
-                    prev_rc = Some(run_cmd(cmd, &args)?);
+                    prev_rc = Some(run_cmd(&input)?);
                 }
 
                 cmd => {
@@ -153,15 +155,15 @@ impl Repl {
         }
     }
 
-    fn execute_builtin(&mut self, cmd: impl AsRef<str>, args: &[impl AsRef<str>]) -> Result<i32> {
-        match cmd.as_ref() {
+    fn execute_builtin(&mut self, input: &Input) -> Result<i32> {
+        match input.cmd.as_str() {
             "exit" => self.exit_builtin(),
             "debug" => Ok(self.debug_builtin()),
             "cd" => {
-                let dir = args.get(0).map(|d| d.as_ref());
+                let dir = input.raw_args.get(0).map(|d| d.as_ref());
                 self.cd_builtin(dir)
             }
-            "history" => self.history_builtin(args),
+            "history" => self.history_builtin(&input.raw_args),
 
             cmd => {
                 println!("{cmd} is not recognized as a builtin.");
@@ -216,8 +218,11 @@ impl Repl {
     }
 }
 
-fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
-    let child = process::Command::new(cmd).args(args).spawn().unwrap();
+fn run_cmd(input: &Input) -> Result<i32> {
+    let child = process::Command::new(&input.cmd)
+        .args(&input.raw_args)
+        .spawn()
+        .unwrap();
     let result = child.wait_with_output()?;
 
     // FIXME: append new line if child did not print one?
@@ -225,38 +230,4 @@ fn run_cmd(cmd: impl AsRef<OsStr>, args: &[impl AsRef<OsStr>]) -> Result<i32> {
 
     // FIXME: `.code()` returns `None` if killed by signal
     Ok(result.status.code().unwrap())
-}
-
-/// Reads input from the user and saves it to the history file.
-fn read_input_and_save_history(
-    cmds: &[String],
-    builtins: &[String],
-) -> Result<(String, Vec<String>)> {
-    let buffer = crate::input::read_line(&mut io::stdout(), cmds, builtins)?
-        .trim()
-        .to_string();
-
-    let home = home_dir()?;
-
-    if !buffer.is_empty() {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .create(true)
-            .open(hist_file()?)?;
-        file.write_all(buffer.as_bytes())?;
-        file.write_all(b"\n")?;
-    }
-
-    match buffer.find(' ') {
-        Some(_) => {
-            let (cmd, args) = buffer.split_once(' ').unwrap();
-            let args = args
-                .split_ascii_whitespace()
-                .map(|s| s.replace('~', &home))
-                .collect::<Vec<_>>();
-            Ok((cmd.to_string(), args))
-        }
-        _ => Ok((buffer, Default::default())),
-    }
 }

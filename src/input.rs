@@ -6,7 +6,54 @@ use crossterm::terminal;
 use std::io::Write;
 
 use crate::config::Colors;
+use crate::path;
 use crate::Result;
+
+pub(crate) struct Input {
+    pub(crate) cmd: String,
+    pub(crate) raw_args: Vec<String>,
+    // options, etc. in the future
+}
+
+impl Input {
+    pub(crate) fn read<W: Write>(
+        writer: &mut W,
+        cmds: &[String],
+        builtins: &[String],
+    ) -> Result<Self> {
+        let buffer = read_line(writer, cmds, builtins)?.trim().to_string();
+
+        let home = path::home_dir()?;
+
+        if !buffer.is_empty() {
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .append(true)
+                .create(true)
+                .open(path::hist_file()?)?;
+            file.write_all(buffer.as_bytes())?;
+            file.write_all(b"\n")?;
+        }
+
+        match buffer.find(' ') {
+            Some(_) => {
+                let (cmd, args) = buffer.split_once(' ').unwrap();
+                let args = args
+                    .split_ascii_whitespace()
+                    .map(|s| s.replace('~', &home))
+                    .collect::<Vec<_>>();
+                Ok(Self {
+                    cmd: cmd.to_string(),
+                    raw_args: args,
+                })
+            }
+            _ => Ok(Self {
+                cmd: buffer,
+                raw_args: Default::default(),
+            }),
+        }
+    }
+}
 
 pub(crate) fn read_line<W: Write>(
     stdout: &mut W,
@@ -33,7 +80,7 @@ mod sys {
         let (start_x, start_y) = cursor::position()?;
         let (_width, height) = terminal::size()?;
 
-        let hist_file = crate::path::hist_file()?;
+        let hist_file = path::hist_file()?;
         let history = std::fs::read_to_string(hist_file)?;
         let history: Vec<_> = history.trim().split('\n').collect();
         let mut hist_index = match history.len() {
@@ -46,9 +93,7 @@ mod sys {
         }) = event::read()?
         {
             match code {
-                KeyCode::Char('c')
-                    if modifiers.contains(KeyModifiers::CONTROL) =>
-                {
+                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
                     if line.is_empty() {
                         continue;
                     }
