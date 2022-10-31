@@ -1,4 +1,4 @@
-use crate::input;
+use crate::input::{input, prompt};
 use crate::Engine;
 use crate::Result;
 
@@ -7,9 +7,10 @@ pub fn run() -> Result<()> {
     let mut last_status = None;
 
     loop {
-        input::prompt(engine.writer(), last_status)?;
+        prompt(engine.writer(), &last_status)?;
 
-        let command = crate::input::rread_line(&mut engine)?;
-        last_status = Some(engine.execute(command)?);
+        if let Some(command) = input(&mut engine)? {
+            last_status = Some(engine.execute(command)?);
+        }
     }
 }

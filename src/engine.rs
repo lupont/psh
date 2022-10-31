@@ -6,6 +6,13 @@ use crate::builtin::Builtins;
 use crate::input::Input;
 use crate::{path, Result};
 
+pub struct Engine<W: Write> {
+    pub writer: W,
+    pub prev_dir: Option<PathBuf>,
+    pub commands: Vec<String>,
+    pub builtins: Vec<&'static str>,
+}
+
 pub enum Command {
     Builtin(Input),
     Valid(Input),
@@ -16,22 +23,9 @@ pub struct ExitStatus {
     pub code: i32,
 }
 
-impl ExitStatus {
-    pub fn from(code: i32) -> Self {
-        Self { code }
-    }
-}
-
-pub struct Engine<W: Write> {
-    pub prev_dir: Option<PathBuf>,
-    pub writer: W,
-    pub commands: Vec<String>,
-    pub builtins: Vec<String>,
-}
-
 impl<W: Write> Engine<W> {
     pub fn has_builtin(&self, builtin: impl AsRef<str>) -> bool {
-        self.builtins.iter().any(|b| b == builtin.as_ref())
+        self.builtins.iter().any(|&b| b == builtin.as_ref())
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
@@ -70,6 +64,12 @@ impl Engine<Stdout> {
 impl Default for Engine<Stdout> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ExitStatus {
+    pub fn from(code: i32) -> Self {
+        Self { code }
     }
 }
 

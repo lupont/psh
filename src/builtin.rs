@@ -10,9 +10,23 @@ use crate::{path, Result};
 
 pub trait Builtins: CdBuiltin + ExitBuiltin + HistoryBuiltin {
     fn execute_builtin(&mut self, input: &Input) -> Result<ExitStatus>;
-    fn builtin_names() -> Vec<String> {
-        vec!["cd".to_string(), "exit".to_string(), "history".to_string()]
+    fn builtin_names() -> Vec<&'static str> {
+        vec!["cd", "exit", "history"]
     }
+}
+
+pub trait CdBuiltin {
+    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus>;
+}
+
+pub trait ExitBuiltin {
+    fn exit(&self, code: i32) -> !;
+}
+
+pub trait HistoryBuiltin {
+    fn history_show(&self) -> Result<ExitStatus>;
+    fn history_path(&self) -> Result<ExitStatus>;
+    fn history_clear(&self) -> Result<ExitStatus>;
 }
 
 impl Builtins for Engine<Stdout> {
@@ -43,20 +57,6 @@ impl Builtins for Engine<Stdout> {
             _ => todo!(),
         }
     }
-}
-
-pub trait CdBuiltin {
-    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus>;
-}
-
-pub trait ExitBuiltin {
-    fn exit(&self, code: i32) -> !;
-}
-
-pub trait HistoryBuiltin {
-    fn history_show(&self) -> Result<ExitStatus>;
-    fn history_path(&self) -> Result<ExitStatus>;
-    fn history_clear(&self) -> Result<ExitStatus>;
 }
 
 impl ExitBuiltin for Engine<Stdout> {

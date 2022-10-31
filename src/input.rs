@@ -15,21 +15,60 @@ use crate::path;
 use crate::Engine;
 use crate::Result;
 
+pub fn input<W: Write>(engine: &mut Engine<W>) -> Result<Option<Command>> {
+    match Input::read(engine)? {
+        None => Ok(None),
+        Some(input) if engine.has_builtin(&input.cmd) => Ok(Some(Command::Builtin(input))),
+        Some(input) if engine.has_command(&input.cmd) => Ok(Some(Command::Valid(input))),
+        Some(input) => Ok(Some(Command::Invalid(input))),
+    }
+}
+
+pub fn prompt<W: Write>(writer: &mut W, last_status: &Option<ExitStatus>) -> Result<()> {
+    crossterm::terminal::enable_raw_mode()?;
+
+    let cwd = format!(
+        "{} ",
+        env::current_dir()
+            .unwrap()
+            .display()
+            .to_string()
+            .replace(&path::home_dir()?, "~")
+    );
+    queue!(
+        writer,
+        style::SetForegroundColor(Colors::CWD),
+        style::Print(cwd),
+    )?;
+
+    match last_status {
+        Some(ExitStatus { code }) if *code != 0 => {
+            let exit_code = format!("[{code}] ");
+            queue!(
+                writer,
+                style::SetForegroundColor(Colors::NON_ZERO_RC),
+                style::Print(exit_code),
+            )?;
+        }
+
+        _ => {}
+    }
+
+    queue!(
+        writer,
+        style::SetForegroundColor(Colors::PROMPT),
+        style::Print("$ "),
+        style::SetForegroundColor(style::Color::Reset)
+    )?;
+
+    crossterm::terminal::disable_raw_mode()?;
+    Ok(writer.flush()?)
+}
+
 pub struct Input {
     pub cmd: String,
     pub raw_args: Vec<String>,
     // options, etc. in the future
-}
-
-pub fn rread_line<W: Write>(engine: &mut Engine<W>) -> Result<Command> {
-    let input = Input::read(engine)?;
-    Ok(if engine.has_builtin(&input.cmd) {
-        Command::Builtin(input)
-    } else if engine.has_command(&input.cmd) {
-        Command::Valid(input)
-    } else {
-        Command::Invalid(input)
-    })
 }
 
 impl Input {
@@ -37,20 +76,22 @@ impl Input {
         &self.raw_args
     }
 
-    pub fn read<W: Write>(engine: &mut Engine<W>) -> Result<Self> {
+    pub fn read<W: Write>(engine: &mut Engine<W>) -> Result<Option<Self>> {
         let buffer = read_line(engine)?.trim().to_string();
+
+        if buffer.is_empty() {
+            return Ok(None);
+        }
 
         let home = path::home_dir()?;
 
-        if !buffer.is_empty() {
-            let mut file = fs::OpenOptions::new()
-                .write(true)
-                .append(true)
-                .create(true)
-                .open(path::hist_file()?)?;
-            file.write_all(buffer.as_bytes())?;
-            file.write_all(b"\n")?;
-        }
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .create(true)
+            .open(path::hist_file()?)?;
+        file.write_all(buffer.as_bytes())?;
+        file.write_all(b"\n")?;
 
         match buffer.find(' ') {
             Some(_) => {
@@ -59,15 +100,16 @@ impl Input {
                     .split_ascii_whitespace()
                     .map(|s| s.replace('~', &home))
                     .collect::<Vec<_>>();
-                Ok(Self {
+                Ok(Some(Self {
                     cmd: cmd.to_string(),
                     raw_args: args,
-                })
+                }))
             }
-            _ => Ok(Self {
+
+            _ => Ok(Some(Self {
                 cmd: buffer,
                 raw_args: Default::default(),
-            }),
+            })),
         }
     }
 }
@@ -272,7 +314,7 @@ mod sys {
                 .commands
                 .iter()
                 .any(|s| s.ends_with(&format!("/{}", cmd)));
-            let builtin_exists = engine.builtins.iter().any(|s| s == cmd.trim());
+            let builtin_exists = engine.builtins.iter().any(|&s| s == cmd.trim());
             let (x, y) = cursor::position()?;
 
             let highlight_color = if builtin_exists {
@@ -296,45 +338,4 @@ mod sys {
         }
         Ok(line)
     }
-}
-
-pub fn prompt<W: Write>(writer: &mut W, last_status: impl Into<Option<ExitStatus>>) -> Result<()> {
-    crossterm::terminal::enable_raw_mode()?;
-
-    let cwd = format!(
-        "{} ",
-        env::current_dir()
-            .unwrap()
-            .display()
-            .to_string()
-            .replace(&path::home_dir()?, "~")
-    );
-    queue!(
-        writer,
-        style::SetForegroundColor(Colors::CWD),
-        style::Print(cwd),
-    )?;
-
-    match last_status.into() {
-        Some(ExitStatus { code }) if code != 0 => {
-            let exit_code = format!("[{code}] ");
-            queue!(
-                writer,
-                style::SetForegroundColor(Colors::NON_ZERO_RC),
-                style::Print(exit_code),
-            )?;
-        }
-
-        _ => {}
-    }
-
-    queue!(
-        writer,
-        style::SetForegroundColor(Colors::PROMPT),
-        style::Print("$ "),
-        style::SetForegroundColor(style::Color::Reset)
-    )?;
-
-    crossterm::terminal::disable_raw_mode()?;
-    Ok(writer.flush()?)
 }
