@@ -137,9 +137,14 @@ mod sys {
                         }
                     }
 
-                    let space_index = space_index.map(|i| i + 1).unwrap_or(0);
-                    line.replace_range(space_index..index, "");
+                    if let Some(' ') = line.chars().nth(index - 1) {
+                        // FIXME: this should find the previous space
+                        space_index = Some(0);
+                    }
+
+                    let space_index = space_index.unwrap_or(0);
                     let offset = (index - space_index) as u16;
+                    line.replace_range(space_index..index, "");
                     index = space_index;
                     execute!(stdout, cursor::MoveLeft(offset))?;
                 }
