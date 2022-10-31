@@ -2,7 +2,7 @@ use crate::input;
 use crate::Engine;
 use crate::Result;
 
-pub(crate) fn run() -> Result<()> {
+pub fn run() -> Result<()> {
     let mut engine = Engine::new();
     let mut last_status = None;
 

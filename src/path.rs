@@ -4,11 +4,11 @@ use std::path::PathBuf;
 
 use crate::{Error, Result};
 
-pub(crate) fn home_dir() -> Result<String> {
+pub fn home_dir() -> Result<String> {
     env::var("HOME").map_err(|_| Error::NoHome)
 }
 
-pub(crate) fn hist_file() -> Result<PathBuf> {
+pub fn hist_file() -> Result<PathBuf> {
     match env::var("RUSH_HISTFILE") {
         Ok(path) => {
             let path = PathBuf::from(path);
@@ -22,7 +22,7 @@ pub(crate) fn hist_file() -> Result<PathBuf> {
     }
 }
 
-pub(crate) fn get_cmds_from_path() -> Vec<String> {
+pub fn get_cmds_from_path() -> Vec<String> {
     let raw_path = env::var("PATH").unwrap();
     let raw_path = raw_path.split(':');
 

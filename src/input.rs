@@ -15,13 +15,13 @@ use crate::path;
 use crate::Engine;
 use crate::Result;
 
-pub(crate) struct Input {
-    pub(crate) cmd: String,
-    pub(crate) raw_args: Vec<String>,
+pub struct Input {
+    pub cmd: String,
+    pub raw_args: Vec<String>,
     // options, etc. in the future
 }
 
-pub(crate) fn rread_line<W: Write>(engine: &mut Engine<W>) -> Result<Command> {
+pub fn rread_line<W: Write>(engine: &mut Engine<W>) -> Result<Command> {
     let input = Input::read(engine)?;
     Ok(if engine.has_builtin(&input.cmd) {
         Command::Builtin(input)
@@ -33,11 +33,11 @@ pub(crate) fn rread_line<W: Write>(engine: &mut Engine<W>) -> Result<Command> {
 }
 
 impl Input {
-    pub(crate) fn raw_args(&self) -> &[String] {
+    pub fn raw_args(&self) -> &[String] {
         &self.raw_args
     }
 
-    pub(crate) fn read<W: Write>(engine: &mut Engine<W>) -> Result<Self> {
+    pub fn read<W: Write>(engine: &mut Engine<W>) -> Result<Self> {
         let buffer = read_line(engine)?.trim().to_string();
 
         let home = path::home_dir()?;
@@ -72,7 +72,7 @@ impl Input {
     }
 }
 
-pub(crate) fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
+pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     terminal::enable_raw_mode()?;
     let line = sys::read_line(engine);
     terminal::disable_raw_mode()?;
@@ -82,7 +82,7 @@ pub(crate) fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 mod sys {
     use super::*;
 
-    pub(crate) fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
+    pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
         let mut line = String::new();
         let mut index = 0;
 
@@ -298,10 +298,7 @@ mod sys {
     }
 }
 
-pub(crate) fn prompt<W: Write>(
-    writer: &mut W,
-    last_status: impl Into<Option<ExitStatus>>,
-) -> Result<()> {
+pub fn prompt<W: Write>(writer: &mut W, last_status: impl Into<Option<ExitStatus>>) -> Result<()> {
     crossterm::terminal::enable_raw_mode()?;
 
     let cwd = format!(

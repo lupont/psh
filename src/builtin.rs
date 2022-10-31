@@ -8,7 +8,7 @@ use crate::engine::{Engine, ExitStatus};
 use crate::input::Input;
 use crate::{path, Result};
 
-pub(crate) trait Builtins: CdBuiltin + ExitBuiltin + HistoryBuiltin {
+pub trait Builtins: CdBuiltin + ExitBuiltin + HistoryBuiltin {
     fn execute_builtin(&mut self, input: &Input) -> Result<ExitStatus>;
     fn builtin_names() -> Vec<String> {
         vec!["cd".to_string(), "exit".to_string(), "history".to_string()]
@@ -45,15 +45,15 @@ impl Builtins for Engine<Stdout> {
     }
 }
 
-pub(crate) trait CdBuiltin {
+pub trait CdBuiltin {
     fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus>;
 }
 
-pub(crate) trait ExitBuiltin {
+pub trait ExitBuiltin {
     fn exit(&self, code: i32) -> !;
 }
 
-pub(crate) trait HistoryBuiltin {
+pub trait HistoryBuiltin {
     fn history_show(&self) -> Result<ExitStatus>;
     fn history_path(&self) -> Result<ExitStatus>;
     fn history_clear(&self) -> Result<ExitStatus>;
