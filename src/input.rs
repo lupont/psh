@@ -1,12 +1,18 @@
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
+use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
+
+use std::env;
+use std::fs;
 use std::io::Write;
 
 use crate::config::Colors;
+use crate::engine::{Command, ExitStatus};
 use crate::path;
+use crate::Engine;
 use crate::Result;
 
 pub(crate) struct Input {
@@ -15,18 +21,29 @@ pub(crate) struct Input {
     // options, etc. in the future
 }
 
+pub(crate) fn rread_line<W: Write>(engine: &mut Engine<W>) -> Result<Command> {
+    let input = Input::read(engine)?;
+    Ok(if engine.has_builtin(&input.cmd) {
+        Command::Builtin(input)
+    } else if engine.has_command(&input.cmd) {
+        Command::Valid(input)
+    } else {
+        Command::Invalid(input)
+    })
+}
+
 impl Input {
-    pub(crate) fn read<W: Write>(
-        writer: &mut W,
-        cmds: &[String],
-        builtins: &[String],
-    ) -> Result<Self> {
-        let buffer = read_line(writer, cmds, builtins)?.trim().to_string();
+    pub(crate) fn raw_args(&self) -> &[String] {
+        &self.raw_args
+    }
+
+    pub(crate) fn read<W: Write>(engine: &mut Engine<W>) -> Result<Self> {
+        let buffer = read_line(engine)?.trim().to_string();
 
         let home = path::home_dir()?;
 
         if !buffer.is_empty() {
-            let mut file = std::fs::OpenOptions::new()
+            let mut file = fs::OpenOptions::new()
                 .write(true)
                 .append(true)
                 .create(true)
@@ -55,13 +72,9 @@ impl Input {
     }
 }
 
-pub(crate) fn read_line<W: Write>(
-    stdout: &mut W,
-    cmds: &[String],
-    builtins: &[String],
-) -> Result<String> {
+pub(crate) fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     terminal::enable_raw_mode()?;
-    let line = sys::read_line(stdout, cmds, builtins);
+    let line = sys::read_line(engine);
     terminal::disable_raw_mode()?;
     line
 }
@@ -69,11 +82,7 @@ pub(crate) fn read_line<W: Write>(
 mod sys {
     use super::*;
 
-    pub(super) fn read_line<W: Write>(
-        stdout: &mut W,
-        cmds: &[String],
-        builtins: &[String],
-    ) -> Result<String> {
+    pub(crate) fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
         let mut line = String::new();
         let mut index = 0;
 
@@ -81,7 +90,7 @@ mod sys {
         let (_width, height) = terminal::size()?;
 
         let hist_file = path::hist_file()?;
-        let history = std::fs::read_to_string(hist_file)?;
+        let history = fs::read_to_string(hist_file)?;
         let history: Vec<_> = history.trim().split('\n').collect();
         let mut hist_index = match history.len() {
             0 => 0,
@@ -100,24 +109,24 @@ mod sys {
 
                     line += "^C";
                     execute!(
-                        stdout,
+                        engine.writer,
                         cursor::MoveTo(start_x, start_y),
                         terminal::Clear(terminal::ClearType::UntilNewLine),
                         style::Print(&line)
                     )?;
                     line.clear();
-                    write!(stdout, "\r")?;
-                    execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
+                    write!(engine.writer, "\r")?;
+                    execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
                     if start_y + 1 >= height {
-                        execute!(stdout, terminal::ScrollUp(1))?;
+                        execute!(engine.writer, terminal::ScrollUp(1))?;
                     }
                     break;
                 }
                 KeyCode::Enter => {
-                    write!(stdout, "\r")?;
-                    execute!(stdout, cursor::MoveTo(0, start_y + 1))?;
+                    write!(engine.writer, "\r")?;
+                    execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
                     if start_y + 1 >= height {
-                        execute!(stdout, terminal::ScrollUp(1))?;
+                        execute!(engine.writer, terminal::ScrollUp(1))?;
                     }
                     break;
                 }
@@ -127,7 +136,7 @@ mod sys {
                         continue;
                     }
 
-                    execute!(stdout, style::Print("\n\r"))?;
+                    execute!(engine.writer, style::Print("\n\r"))?;
 
                     // FIXME: better control flow than this
                     std::process::exit(0);
@@ -141,7 +150,7 @@ mod sys {
                     line = hist_content.to_string();
                     index = hist_content.len();
                     execute!(
-                        stdout,
+                        engine.writer,
                         cursor::MoveTo(start_x, start_y),
                         terminal::Clear(terminal::ClearType::UntilNewLine),
                         cursor::MoveTo(start_x + index as u16, start_y)
@@ -156,7 +165,7 @@ mod sys {
                     line = hist_content.to_string();
                     index = hist_content.len();
                     execute!(
-                        stdout,
+                        engine.writer,
                         cursor::MoveTo(start_x, start_y),
                         terminal::Clear(terminal::ClearType::UntilNewLine),
                         cursor::MoveTo(start_x + index as u16, start_y)
@@ -166,7 +175,7 @@ mod sys {
                 KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
                     line.clear();
                     index = 0;
-                    execute!(stdout, cursor::MoveTo(start_x, start_y))?;
+                    execute!(engine.writer, cursor::MoveTo(start_x, start_y))?;
                 }
 
                 KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
@@ -191,12 +200,12 @@ mod sys {
                     let offset = (index - space_index) as u16;
                     line.replace_range(space_index..index, "");
                     index = space_index;
-                    execute!(stdout, cursor::MoveLeft(offset))?;
+                    execute!(engine.writer, cursor::MoveLeft(offset))?;
                 }
 
                 KeyCode::Char('l') if modifiers.contains(KeyModifiers::CONTROL) => {
                     execute!(
-                        stdout,
+                        engine.writer,
                         terminal::Clear(terminal::ClearType::All),
                         cursor::MoveTo(0, 0)
                     )?;
@@ -205,24 +214,24 @@ mod sys {
 
                 KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) && index > 0 => {
                     index -= 1;
-                    execute!(stdout, cursor::MoveLeft(1))?;
+                    execute!(engine.writer, cursor::MoveLeft(1))?;
                 }
 
                 KeyCode::Left if index > 0 => {
                     index -= 1;
-                    execute!(stdout, cursor::MoveLeft(1))?;
+                    execute!(engine.writer, cursor::MoveLeft(1))?;
                 }
 
                 KeyCode::Char('f')
                     if modifiers.contains(KeyModifiers::CONTROL) && index < line.len() =>
                 {
                     index += 1;
-                    execute!(stdout, cursor::MoveRight(1))?;
+                    execute!(engine.writer, cursor::MoveRight(1))?;
                 }
 
                 KeyCode::Right if index < line.len() => {
                     index += 1;
-                    execute!(stdout, cursor::MoveRight(1))?;
+                    execute!(engine.writer, cursor::MoveRight(1))?;
                 }
 
                 KeyCode::Char(c) => {
@@ -232,7 +241,7 @@ mod sys {
                     index += 1;
 
                     execute!(
-                        stdout,
+                        engine.writer,
                         terminal::Clear(terminal::ClearType::UntilNewLine),
                         style::Print(&line[index - 1..]),
                         cursor::MoveTo(x + 1, y),
@@ -246,7 +255,7 @@ mod sys {
                     line.remove(index);
 
                     execute!(
-                        stdout,
+                        engine.writer,
                         cursor::MoveTo(x - 1, y),
                         terminal::Clear(terminal::ClearType::UntilNewLine),
                         style::Print(&line[index..]),
@@ -259,8 +268,11 @@ mod sys {
 
             let highlight_until_index = line.find(' ').unwrap_or(line.len());
             let cmd = &line[..highlight_until_index];
-            let cmd_exists = cmds.iter().any(|s| s.ends_with(&format!("/{}", cmd)));
-            let builtin_exists = builtins.iter().any(|s| s == cmd.trim());
+            let cmd_exists = engine
+                .commands
+                .iter()
+                .any(|s| s.ends_with(&format!("/{}", cmd)));
+            let builtin_exists = engine.builtins.iter().any(|s| s == cmd.trim());
             let (x, y) = cursor::position()?;
 
             let highlight_color = if builtin_exists {
@@ -272,7 +284,7 @@ mod sys {
             };
 
             execute!(
-                stdout,
+                engine.writer,
                 cursor::MoveTo(start_x, start_y),
                 terminal::Clear(terminal::ClearType::UntilNewLine),
                 style::SetForegroundColor(highlight_color),
@@ -284,4 +296,48 @@ mod sys {
         }
         Ok(line)
     }
+}
+
+pub(crate) fn prompt<W: Write>(
+    writer: &mut W,
+    last_status: impl Into<Option<ExitStatus>>,
+) -> Result<()> {
+    crossterm::terminal::enable_raw_mode()?;
+
+    let cwd = format!(
+        "{} ",
+        env::current_dir()
+            .unwrap()
+            .display()
+            .to_string()
+            .replace(&path::home_dir()?, "~")
+    );
+    queue!(
+        writer,
+        style::SetForegroundColor(Colors::CWD),
+        style::Print(cwd),
+    )?;
+
+    match last_status.into() {
+        Some(ExitStatus { code }) if code != 0 => {
+            let exit_code = format!("[{code}] ");
+            queue!(
+                writer,
+                style::SetForegroundColor(Colors::NON_ZERO_RC),
+                style::Print(exit_code),
+            )?;
+        }
+
+        _ => {}
+    }
+
+    queue!(
+        writer,
+        style::SetForegroundColor(Colors::PROMPT),
+        style::Print("$ "),
+        style::SetForegroundColor(style::Color::Reset)
+    )?;
+
+    crossterm::terminal::disable_raw_mode()?;
+    Ok(writer.flush()?)
 }

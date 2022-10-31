@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::path::PathBuf;
 
 use crate::{Error, Result};
@@ -28,7 +29,7 @@ pub(crate) fn get_cmds_from_path() -> Vec<String> {
     let mut cmds = Vec::new();
 
     for path in raw_path {
-        if let Ok(dirs) = std::fs::read_dir(path) {
+        if let Ok(dirs) = fs::read_dir(path) {
             cmds.extend(dirs.map(|d| format!("{}", d.unwrap().path().display())));
         }
     }
