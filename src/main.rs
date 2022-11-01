@@ -10,7 +10,9 @@ pub use crate::engine::Engine;
 pub use crate::error::{Error, Result};
 
 fn main() {
-    if let Err(e) = repl::run() {
+    let mut repl = repl::Repl::new();
+
+    if let Err(e) = repl.run() {
         eprintln!("{e}");
         std::process::exit(1);
     }

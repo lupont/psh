@@ -1,16 +1,34 @@
+use std::io::Stdout;
+
 use crate::input::{input, prompt};
 use crate::Engine;
 use crate::Result;
 
-pub fn run() -> Result<()> {
-    let mut engine = Engine::new();
-    let mut last_status = None;
+pub struct Repl {
+    engine: Engine<Stdout>,
+}
 
-    loop {
-        prompt(engine.writer(), &last_status)?;
+impl Repl {
+    pub fn new() -> Self {
+        Self {
+            engine: Engine::new(),
+        }
+    }
 
-        if let Some(command) = input(&mut engine)? {
-            last_status = Some(engine.execute(command)?);
+    pub fn run(&mut self) -> Result<()> {
+        let mut last_status = None;
+
+        loop {
+            self.engine
+                .execute(crate::engine::Command::Valid(crate::input::Input {
+                    cmd: "ls".into(),
+                    raw_args: vec!["-lah".into()],
+                }))?;
+            prompt(self.engine.writer(), &last_status)?;
+
+            if let Some(command) = input(&mut self.engine)? {
+                last_status = Some(self.engine.execute(command)?);
+            }
         }
     }
 }
