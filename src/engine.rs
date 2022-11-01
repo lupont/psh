@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process;
 
 use crate::builtin::Builtins;
+use crate::history::History;
 use crate::input::Input;
 use crate::{path, Result};
 
@@ -11,6 +12,7 @@ pub struct Engine<W: Write> {
     pub prev_dir: Option<PathBuf>,
     pub commands: Vec<String>,
     pub builtins: Vec<&'static str>,
+    pub history: History,
 }
 
 pub enum Command {
@@ -37,11 +39,13 @@ impl<W: Write> Engine<W> {
 
 impl Engine<Stdout> {
     pub fn new() -> Self {
+        let history = History::init().expect("could not initialize history");
         Self {
             prev_dir: None,
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             builtins: Self::builtin_names(),
+            history,
         }
     }
 

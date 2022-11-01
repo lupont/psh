@@ -19,11 +19,6 @@ impl Repl {
         let mut last_status = None;
 
         loop {
-            self.engine
-                .execute(crate::engine::Command::Valid(crate::input::Input {
-                    cmd: "ls".into(),
-                    raw_args: vec!["-lah".into()],
-                }))?;
             prompt(self.engine.writer(), &last_status)?;
 
             if let Some(command) = input(&mut self.engine)? {

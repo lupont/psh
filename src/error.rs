@@ -9,6 +9,7 @@ pub enum Error {
     Io(io::Error),
     NoHome,
     InvalidHistfile(PathBuf),
+    HistoryOutOfBounds,
 }
 
 impl fmt::Display for Error {
@@ -21,6 +22,7 @@ impl fmt::Display for Error {
                 Self::NoHome => "Could not read $HOME".to_string(),
                 Self::InvalidHistfile(path) =>
                     format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
+                Self::HistoryOutOfBounds => "Tried to read beyond the history bounds.".to_string(),
             }
         )
     }

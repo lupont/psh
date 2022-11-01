@@ -6,7 +6,6 @@ use crossterm::style;
 use crossterm::terminal;
 
 use std::env;
-use std::fs;
 use std::io::Write;
 
 use crate::config::Colors;
@@ -16,12 +15,12 @@ use crate::Engine;
 use crate::Result;
 
 pub fn input<W: Write>(engine: &mut Engine<W>) -> Result<Option<Command>> {
-    match Input::read(engine)? {
-        None => Ok(None),
-        Some(input) if engine.has_builtin(&input.cmd) => Ok(Some(Command::Builtin(input))),
-        Some(input) if engine.has_command(&input.cmd) => Ok(Some(Command::Valid(input))),
-        Some(input) => Ok(Some(Command::Invalid(input))),
-    }
+    Ok(match Input::read(engine)? {
+        None => None,
+        Some(input) if engine.has_builtin(&input.cmd) => Some(Command::Builtin(input)),
+        Some(input) if engine.has_command(&input.cmd) => Some(Command::Valid(input)),
+        Some(input) => Some(Command::Invalid(input)),
+    })
 }
 
 pub fn prompt<W: Write>(writer: &mut W, last_status: &Option<ExitStatus>) -> Result<()> {
@@ -85,13 +84,7 @@ impl Input {
 
         let home = path::home_dir()?;
 
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .append(true)
-            .create(true)
-            .open(path::hist_file()?)?;
-        file.write_all(buffer.as_bytes())?;
-        file.write_all(b"\n")?;
+        engine.history.append(&buffer)?;
 
         match buffer.find(' ') {
             Some(_) => {
@@ -131,20 +124,12 @@ mod sys {
         let (start_x, start_y) = cursor::position()?;
         let (_width, height) = terminal::size()?;
 
-        let hist_file = path::hist_file()?;
-        let history = fs::read_to_string(hist_file)?;
-        let history: Vec<_> = history.trim().split('\n').collect();
-        let mut hist_index = match history.len() {
-            0 => 0,
-            n => n - 1,
-        };
-
         while let Event::Key(KeyEvent {
             code, modifiers, ..
         }) = event::read()?
         {
-            match code {
-                KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
+            match (code, modifiers) {
+                (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                     if line.is_empty() {
                         continue;
                     }
@@ -164,7 +149,8 @@ mod sys {
                     }
                     break;
                 }
-                KeyCode::Enter => {
+
+                (KeyCode::Enter, _) => {
                     write!(engine.writer, "\r")?;
                     execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
                     if start_y + 1 >= height {
@@ -173,7 +159,7 @@ mod sys {
                     break;
                 }
 
-                KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+                (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                     if !line.is_empty() {
                         continue;
                     }
@@ -184,43 +170,41 @@ mod sys {
                     std::process::exit(0);
                 }
 
-                KeyCode::Char('p') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    if hist_index > 0 {
-                        hist_index -= 1;
-                    }
-                    let hist_content = history[hist_index];
-                    line = hist_content.to_string();
-                    index = hist_content.len();
+                (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                    line = engine
+                        .history
+                        .prev()?
+                        .cloned()
+                        .unwrap_or_else(|| "".to_string());
+                    index = line.len();
+
                     execute!(
                         engine.writer,
-                        cursor::MoveTo(start_x, start_y),
-                        terminal::Clear(terminal::ClearType::UntilNewLine),
                         cursor::MoveTo(start_x + index as u16, start_y)
                     )?;
                 }
 
-                KeyCode::Char('n') if modifiers.contains(KeyModifiers::CONTROL) => {
-                    if hist_index < history.len() - 1 {
-                        hist_index += 1;
-                    }
-                    let hist_content = history[hist_index];
-                    line = hist_content.to_string();
-                    index = hist_content.len();
+                (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+                    line = engine
+                        .history
+                        .next()?
+                        .cloned()
+                        .unwrap_or_else(|| "".to_string());
+                    index = line.len();
+
                     execute!(
                         engine.writer,
-                        cursor::MoveTo(start_x, start_y),
-                        terminal::Clear(terminal::ClearType::UntilNewLine),
                         cursor::MoveTo(start_x + index as u16, start_y)
                     )?;
                 }
 
-                KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
+                (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                     line.clear();
                     index = 0;
                     execute!(engine.writer, cursor::MoveTo(start_x, start_y))?;
                 }
 
-                KeyCode::Char('w') if modifiers.contains(KeyModifiers::CONTROL) => {
+                (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
                     if index == 0 {
                         continue;
                     }
@@ -245,7 +229,7 @@ mod sys {
                     execute!(engine.writer, cursor::MoveLeft(offset))?;
                 }
 
-                KeyCode::Char('l') if modifiers.contains(KeyModifiers::CONTROL) => {
+                (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                     execute!(
                         engine.writer,
                         terminal::Clear(terminal::ClearType::All),
@@ -254,29 +238,19 @@ mod sys {
                     break;
                 }
 
-                KeyCode::Char('b') if modifiers.contains(KeyModifiers::CONTROL) && index > 0 => {
+                (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if index > 0 => {
                     index -= 1;
                     execute!(engine.writer, cursor::MoveLeft(1))?;
                 }
 
-                KeyCode::Left if index > 0 => {
-                    index -= 1;
-                    execute!(engine.writer, cursor::MoveLeft(1))?;
-                }
-
-                KeyCode::Char('f')
-                    if modifiers.contains(KeyModifiers::CONTROL) && index < line.len() =>
+                (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
+                    if index < line.len() =>
                 {
                     index += 1;
                     execute!(engine.writer, cursor::MoveRight(1))?;
                 }
 
-                KeyCode::Right if index < line.len() => {
-                    index += 1;
-                    execute!(engine.writer, cursor::MoveRight(1))?;
-                }
-
-                KeyCode::Char(c) => {
+                (KeyCode::Char(c), KeyModifiers::NONE) => {
                     let (x, y) = cursor::position()?;
 
                     line.insert(index, c);
@@ -290,7 +264,7 @@ mod sys {
                     )?;
                 }
 
-                KeyCode::Backspace if index > 0 => {
+                (KeyCode::Backspace, _) if index > 0 => {
                     let (x, y) = cursor::position()?;
 
                     index -= 1;
@@ -331,7 +305,7 @@ mod sys {
                 terminal::Clear(terminal::ClearType::UntilNewLine),
                 style::SetForegroundColor(highlight_color),
                 style::Print(&line[..highlight_until_index]),
-                style::SetForegroundColor(style::Color::Reset),
+                style::ResetColor,
                 style::Print(&line[highlight_until_index..]),
                 cursor::MoveTo(x, y)
             )?;

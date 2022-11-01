@@ -2,6 +2,7 @@ mod builtin;
 mod config;
 mod engine;
 mod error;
+mod history;
 mod input;
 mod path;
 mod repl;
