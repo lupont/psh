@@ -1,25 +1,10 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 
 use crate::{Error, Result};
 
 pub fn home_dir() -> Result<String> {
     env::var("HOME").map_err(|_| Error::NoHome)
-}
-
-pub fn hist_file() -> Result<PathBuf> {
-    match env::var("RUSH_HISTFILE") {
-        Ok(path) => {
-            let path = PathBuf::from(path);
-            if path.exists() && !path.is_dir() {
-                Ok(path)
-            } else {
-                Err(Error::InvalidHistfile(path))
-            }
-        }
-        Err(_) => Ok(PathBuf::from(home_dir()?).join(".rush_history")),
-    }
 }
 
 pub fn get_cmds_from_path() -> Vec<String> {

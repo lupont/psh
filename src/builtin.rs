@@ -1,6 +1,5 @@
 use std::env;
-use std::fs;
-use std::io::{Stdout, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process;
 
@@ -24,12 +23,12 @@ pub trait ExitBuiltin {
 }
 
 pub trait HistoryBuiltin {
-    fn history_show(&self) -> Result<ExitStatus>;
-    fn history_path(&self) -> Result<ExitStatus>;
-    fn history_clear(&self) -> Result<ExitStatus>;
+    fn history_show(&mut self) -> Result<ExitStatus>;
+    fn history_path(&mut self) -> Result<ExitStatus>;
+    fn history_clear(&mut self) -> Result<ExitStatus>;
 }
 
-impl Builtins for Engine<Stdout> {
+impl<W: Write> Builtins for Engine<W> {
     fn execute_builtin(&mut self, input: &Input) -> Result<ExitStatus> {
         match (input.cmd.as_str(), &input.raw_args()) {
             ("exit", _) => self.exit(0),
@@ -59,31 +58,31 @@ impl Builtins for Engine<Stdout> {
     }
 }
 
-impl ExitBuiltin for Engine<Stdout> {
+impl<W: Write> ExitBuiltin for Engine<W> {
     fn exit(&self, code: i32) -> ! {
         process::exit(code)
     }
 }
 
-impl CdBuiltin for Engine<Stdout> {
+impl<W: Write> CdBuiltin for Engine<W> {
     fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
         let path = match dir {
             Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
 
             Some("-") => {
-                println!("cd: No previous directory.");
+                writeln!(self.writer, "cd: No previous directory.")?;
                 return Ok(ExitStatus::from(1));
             }
 
             Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
 
             Some(dir) if PathBuf::from(dir).exists() => {
-                println!("cd: '{}' is not a directory.", dir);
+                writeln!(self.writer, "cd: '{}' is not a directory.", dir)?;
                 return Ok(ExitStatus::from(3));
             }
 
             Some(dir) => {
-                println!("cd: '{}' does not exist.", dir);
+                writeln!(self.writer, "cd: '{}' does not exist.", dir)?;
                 return Ok(ExitStatus::from(2));
             }
 
@@ -98,27 +97,24 @@ impl CdBuiltin for Engine<Stdout> {
     }
 }
 
-impl HistoryBuiltin for Engine<Stdout> {
-    fn history_show(&self) -> Result<ExitStatus> {
-        let history = path::hist_file()?;
-        for line in fs::read_to_string(history)?.trim().split('\n') {
-            println!("{line}");
+impl<W: Write> HistoryBuiltin for Engine<W> {
+    fn history_show(&mut self) -> Result<ExitStatus> {
+        let lines = self.history.read_lines()?;
+        for line in lines {
+            writeln!(self.writer, "{line}")?;
         }
         Ok(ExitStatus::from(0))
     }
 
-    fn history_path(&self) -> Result<ExitStatus> {
-        let history = path::hist_file()?;
-        println!("{}", history.display());
+    fn history_path(&mut self) -> Result<ExitStatus> {
+        writeln!(self.writer, "{}", self.history.path.display())?;
         Ok(ExitStatus::from(0))
     }
 
-    fn history_clear(&self) -> Result<ExitStatus> {
-        let history = path::hist_file()?;
-        fs::OpenOptions::new()
-            .write(true)
-            .open(history)?
-            .set_len(0)?;
-        Ok(ExitStatus::from(0))
+    fn history_clear(&mut self) -> Result<ExitStatus> {
+        Ok(ExitStatus::from(match self.history.clear() {
+            Ok(()) => 0,
+            Err(_) => 1,
+        }))
     }
 }

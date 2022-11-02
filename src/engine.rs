@@ -35,6 +35,10 @@ impl<W: Write> Engine<W> {
             .iter()
             .any(|c| c.ends_with(&format!("/{}", cmd.as_ref())))
     }
+
+    pub fn writer(&mut self) -> &mut W {
+        &mut self.writer
+    }
 }
 
 impl Engine<Stdout> {
@@ -47,10 +51,6 @@ impl Engine<Stdout> {
             builtins: Self::builtin_names(),
             history,
         }
-    }
-
-    pub fn writer(&mut self) -> &mut Stdout {
-        &mut self.writer
     }
 
     pub fn execute(&mut self, cmd: Command) -> Result<ExitStatus> {

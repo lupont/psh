@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::{Error, Result};
 
 pub struct History {
-    path: PathBuf,
+    pub path: PathBuf,
     lines: Vec<String>,
     cursor: usize,
 }
@@ -51,6 +51,14 @@ impl History {
         })
     }
 
+    pub fn clear(&mut self) -> Result<()> {
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&self.path)?
+            .set_len(0)?;
+        self.reload()
+    }
+
     pub fn reload(&mut self) -> Result<()> {
         if !self.path.exists() {
             self.lines = Default::default();
@@ -81,6 +89,25 @@ impl History {
         Ok(())
     }
 
+    pub fn read_lines(&mut self) -> Result<Vec<String>> {
+        self.reload()?;
+        let prev_cursor = self.cursor;
+        self.cursor = 0;
+        let mut vec = Vec::with_capacity(self.lines.len());
+
+        if let Ok(Some(line)) = self.read() {
+            vec.push(line.clone());
+        }
+
+        while let Ok(Some(line)) = self.next() {
+            vec.push(line.clone());
+        }
+
+        self.cursor = prev_cursor;
+
+        Ok(vec)
+    }
+
     pub fn read(&mut self) -> Result<Option<&String>> {
         self.reload()?;
 
@@ -106,5 +133,37 @@ impl History {
             self.cursor += 1;
         }
         self.read()
+    }
+}
+
+pub struct HistoryIntoIterator {
+    history: History,
+    index: usize,
+}
+
+impl Iterator for HistoryIntoIterator {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.history.lines.len() - 1 {
+            return None;
+        }
+
+        let entry = self.history.lines.swap_remove(self.index);
+        self.index += 1;
+        Some(entry)
+    }
+}
+
+impl IntoIterator for History {
+    type Item = String;
+
+    type IntoIter = HistoryIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Self::IntoIter {
+            history: self,
+            index: 0,
+        }
     }
 }
