@@ -8,7 +8,7 @@ use crossterm::terminal;
 use std::env;
 use std::io::Write;
 
-use crate::config::Colors;
+use crate::config::{Colors, ABBREVIATIONS};
 use crate::engine::{Command, ExitStatus};
 use crate::path;
 use crate::Engine;
@@ -124,10 +124,17 @@ mod sys {
         let (start_x, start_y) = cursor::position()?;
         let (_width, height) = terminal::size()?;
 
-        while let Event::Key(KeyEvent {
-            code, modifiers, ..
-        }) = event::read()?
-        {
+        let mut about_to_exit = false;
+        let mut cancelled = false;
+
+        while !about_to_exit {
+            let (code, modifiers) = match event::read()? {
+                Event::Key(KeyEvent {
+                    code, modifiers, ..
+                }) => (code, modifiers),
+                _ => break,
+            };
+
             match (code, modifiers) {
                 (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                     if line.is_empty() {
@@ -135,28 +142,19 @@ mod sys {
                     }
 
                     line += "^C";
-                    execute!(
-                        engine.writer,
-                        cursor::MoveTo(start_x, start_y),
-                        terminal::Clear(terminal::ClearType::UntilNewLine),
-                        style::Print(&line)
-                    )?;
-                    line.clear();
-                    write!(engine.writer, "\r")?;
-                    execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
-                    if start_y + 1 >= height {
-                        execute!(engine.writer, terminal::ScrollUp(1))?;
-                    }
-                    break;
+                    about_to_exit = true;
+                    cancelled = true;
                 }
 
                 (KeyCode::Enter, _) => {
-                    write!(engine.writer, "\r")?;
-                    execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
-                    if start_y + 1 >= height {
-                        execute!(engine.writer, terminal::ScrollUp(1))?;
+                    for (a, b) in ABBREVIATIONS {
+                        if line.starts_with(a) {
+                            line = line.replacen(a, b, 1);
+                            break;
+                        }
                     }
-                    break;
+
+                    about_to_exit = true;
                 }
 
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
@@ -250,6 +248,44 @@ mod sys {
                     execute!(engine.writer, cursor::MoveRight(1))?;
                 }
 
+                (KeyCode::Char(' '), KeyModifiers::NONE) => {
+                    let (mut x, y) = cursor::position()?;
+
+                    for (a, b) in ABBREVIATIONS {
+                        if line.starts_with(a) {
+                            let diff = b.len() - a.len();
+                            line = line.replacen(a, b, 1);
+                            x += diff as u16;
+                            index += diff;
+                            break;
+                        }
+                    }
+
+                    line.insert(index, ' ');
+                    index += 1;
+
+                    execute!(
+                        engine.writer,
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                        style::Print(&line[index - 1..]),
+                        cursor::MoveTo(x + 1, y),
+                    )?;
+                }
+
+                (KeyCode::Char(' '), KeyModifiers::CONTROL) => {
+                    let (x, y) = cursor::position()?;
+
+                    line.insert(index, ' ');
+                    index += 1;
+
+                    execute!(
+                        engine.writer,
+                        terminal::Clear(terminal::ClearType::UntilNewLine),
+                        style::Print(&line[index - 1..]),
+                        cursor::MoveTo(x + 1, y),
+                    )?;
+                }
+
                 (KeyCode::Char(c), KeyModifiers::NONE) => {
                     let (x, y) = cursor::position()?;
 
@@ -282,17 +318,24 @@ mod sys {
                 _ => {}
             }
 
-            let highlight_until_index = line.find(' ').unwrap_or(line.len());
-            let cmd = &line[..highlight_until_index];
+            let mut highlight_until_index = line.find(' ').unwrap_or(line.len());
+            let mut cmd = &line[..highlight_until_index];
+            if cmd.ends_with("^C") {
+                highlight_until_index -= 2;
+                cmd = &cmd[..cmd.len() - 2];
+            }
             let cmd_exists = engine
                 .commands
                 .iter()
                 .any(|s| s.ends_with(&format!("/{}", cmd)));
             let builtin_exists = engine.builtins.iter().any(|&s| s == cmd.trim());
             let (x, y) = cursor::position()?;
+            let abbr_exists = ABBREVIATIONS.iter().any(|(a, _)| a == &cmd);
 
             let highlight_color = if builtin_exists {
                 Colors::VALID_BUILTIN
+            } else if abbr_exists {
+                Colors::VALID_ABBR
             } else if cmd_exists {
                 Colors::VALID_CMD
             } else {
@@ -309,7 +352,21 @@ mod sys {
                 style::Print(&line[highlight_until_index..]),
                 cursor::MoveTo(x, y)
             )?;
+
+            if about_to_exit {
+                write!(engine.writer, "\r")?;
+                if start_y + 1 >= height {
+                    execute!(engine.writer, terminal::ScrollUp(1))?;
+                }
+                execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+            }
         }
-        Ok(line)
+
+        // FIXME: should probably return Result<Option<String>> with Ok(None) here?
+        if cancelled {
+            Ok("".to_string())
+        } else {
+            Ok(line)
+        }
     }
 }
