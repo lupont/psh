@@ -33,6 +33,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
     let mut about_to_exit = false;
     let mut cancelled = false;
+    let mut cleared = false;
 
     while !about_to_exit {
         let (code, modifiers) = match event::read()? {
@@ -140,6 +141,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     terminal::Clear(terminal::ClearType::All),
                     cursor::MoveTo(0, 0)
                 )?;
+                cleared = true;
                 break;
             }
 
@@ -269,7 +271,12 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     if start_y + 1 >= height {
         execute!(engine.writer, terminal::ScrollUp(1))?;
     }
-    execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+
+    if !cleared {
+        execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+    } else {
+        execute!(engine.writer, cursor::MoveTo(0, 0))?;
+    }
 
     // FIXME: should probably return Result<Option<String>> with Ok(None) here?
     if cancelled {
