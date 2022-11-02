@@ -1,11 +1,16 @@
+pub mod builtin;
+pub mod history;
+pub mod parser;
+
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process;
 
-use crate::builtin::Builtins;
-use crate::history::History;
-use crate::input::Input;
 use crate::{path, Result};
+
+pub use self::builtin::Builtins;
+pub use self::history::History;
+pub use self::parser::Line;
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -13,16 +18,6 @@ pub struct Engine<W: Write> {
     pub commands: Vec<String>,
     pub builtins: Vec<&'static str>,
     pub history: History,
-}
-
-pub enum Command {
-    Builtin(Input),
-    Valid(Input),
-    Invalid(Input),
-}
-
-pub struct ExitStatus {
-    pub code: i32,
 }
 
 impl<W: Write> Engine<W> {
@@ -39,6 +34,17 @@ impl<W: Write> Engine<W> {
     pub fn writer(&mut self) -> &mut W {
         &mut self.writer
     }
+
+    pub fn execute(&mut self, cmd: Command) -> Result<ExitStatus> {
+        match cmd {
+            Command::Builtin(input) => self.execute_builtin(&input),
+            Command::Valid(input) => execute_command(input),
+            Command::Invalid(input) => {
+                writeln!(self.writer, "Unknown command: {}", input.cmd)?;
+                Ok(ExitStatus { code: 1 })
+            }
+        }
+    }
 }
 
 impl Engine<Stdout> {
@@ -52,17 +58,6 @@ impl Engine<Stdout> {
             history,
         }
     }
-
-    pub fn execute(&mut self, cmd: Command) -> Result<ExitStatus> {
-        match cmd {
-            Command::Builtin(input) => self.execute_builtin(&input),
-            Command::Valid(input) => execute_command(input),
-            Command::Invalid(input) => {
-                println!("Unknown command: {}", input.cmd);
-                Ok(ExitStatus { code: 1 })
-            }
-        }
-    }
 }
 
 impl Default for Engine<Stdout> {
@@ -71,13 +66,23 @@ impl Default for Engine<Stdout> {
     }
 }
 
+pub enum Command {
+    Builtin(Line),
+    Valid(Line),
+    Invalid(Line),
+}
+
+pub struct ExitStatus {
+    pub code: i32,
+}
+
 impl ExitStatus {
     pub fn from(code: i32) -> Self {
         Self { code }
     }
 }
 
-fn execute_command(input: Input) -> Result<ExitStatus> {
+fn execute_command(input: Line) -> Result<ExitStatus> {
     let child = process::Command::new(&input.cmd)
         .args(&input.raw_args)
         .spawn()?;

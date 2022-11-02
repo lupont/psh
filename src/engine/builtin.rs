@@ -3,12 +3,12 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process;
 
-use crate::engine::{Engine, ExitStatus};
-use crate::input::Input;
-use crate::{path, Result};
+use crate::engine::Line;
+use crate::path;
+use crate::{Engine, ExitStatus, Result};
 
 pub trait Builtins: CdBuiltin + ExitBuiltin + HistoryBuiltin {
-    fn execute_builtin(&mut self, input: &Input) -> Result<ExitStatus>;
+    fn execute_builtin(&mut self, input: &Line) -> Result<ExitStatus>;
     fn builtin_names() -> Vec<&'static str> {
         vec!["cd", "exit", "history"]
     }
@@ -29,7 +29,7 @@ pub trait HistoryBuiltin {
 }
 
 impl<W: Write> Builtins for Engine<W> {
-    fn execute_builtin(&mut self, input: &Input) -> Result<ExitStatus> {
+    fn execute_builtin(&mut self, input: &Line) -> Result<ExitStatus> {
         match (input.cmd.as_str(), &input.raw_args()) {
             ("exit", _) => self.exit(0),
 

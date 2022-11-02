@@ -14,4 +14,8 @@ impl Colors {
 }
 
 // FIXME: the second entry in the tuple cannot currently be shortes than the first
-pub const ABBREVIATIONS: [(&str, &str); 2] = [("gs", "git status"), ("pacs", "sudo pacman -S")];
+pub const ABBREVIATIONS: [(&str, &str); 3] = [
+    ("gs", "git status"),
+    ("pacs", "sudo pacman -S"),
+    ("e", "nvim"),
+];

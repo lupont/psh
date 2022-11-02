@@ -1,13 +1,10 @@
-mod builtin;
 mod config;
 mod engine;
 mod error;
-mod history;
-mod input;
 mod path;
 mod repl;
 
-pub use crate::engine::Engine;
+pub use crate::engine::{Engine, ExitStatus};
 pub use crate::error::{Error, Result};
 
 fn main() {
