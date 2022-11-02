@@ -286,7 +286,7 @@ mod sys {
                     )?;
                 }
 
-                (KeyCode::Char(c), KeyModifiers::NONE) => {
+                (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                     let (x, y) = cursor::position()?;
 
                     line.insert(index, c);
