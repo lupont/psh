@@ -55,13 +55,9 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Enter, _) => {
-                for (a, b) in ABBREVIATIONS {
-                    if line == a || line.starts_with(&format!("{a} ")) {
-                        line = line.replacen(a, b, 1);
-                        break;
-                    }
+                if let Some((expanded_line, _)) = expand_abbreviation(&line) {
+                    line = expanded_line;
                 }
-
                 about_to_exit = true;
             }
 
@@ -160,14 +156,10 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             (KeyCode::Char(' '), KeyModifiers::NONE) => {
                 let (mut x, y) = cursor::position()?;
 
-                for (a, b) in ABBREVIATIONS {
-                    if line.starts_with(a) {
-                        let diff = b.len() - a.len();
-                        line = line.replacen(a, b, 1);
-                        x += diff as u16;
-                        index += diff;
-                        break;
-                    }
+                if let Some((expanded_line, diff)) = expand_abbreviation(&line) {
+                    line = expanded_line;
+                    x += diff as u16;
+                    index += diff;
                 }
 
                 line.insert(index, ' ');
@@ -284,4 +276,15 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     } else {
         Ok(line)
     }
+}
+
+fn expand_abbreviation<S: AsRef<str>>(line: S) -> Option<(String, usize)> {
+    let line = line.as_ref();
+    for (a, b) in ABBREVIATIONS {
+        if line == a || line.starts_with(&format!("{a} ")) {
+            let diff = b.len() - a.len();
+            return Some((line.replacen(a, b, 1), diff));
+        }
+    }
+    None
 }
