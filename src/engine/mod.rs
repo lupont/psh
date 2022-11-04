@@ -38,7 +38,9 @@ impl<W: Write> Engine<W> {
     pub fn execute(&mut self, cmd: Command) -> Result<ExitStatus> {
         match cmd {
             Command::Builtin(input) => self.execute_builtin(&input),
+
             Command::Valid(input) => execute_command(input),
+
             Command::Invalid(input) => {
                 writeln!(self.writer, "Unknown command: {}", input.cmd)?;
                 Ok(ExitStatus { code: 1 })
@@ -91,7 +93,8 @@ fn execute_command(input: Line) -> Result<ExitStatus> {
     // FIXME: append new line if child did not print one?
     // println!("stdout: '{}'", String::from_utf8_lossy(&result.stdout));
 
-    // FIXME: `.code()` returns `None` if killed by signal
-    let code = result.status.code().unwrap();
-    Ok(ExitStatus { code })
+    // FIXME: `ExitStatus.code()` returns None if killed by signal,
+    //        handle this in a more thoughtful way?
+    let code = result.status.code().unwrap_or_default();
+    Ok(ExitStatus::from(code))
 }

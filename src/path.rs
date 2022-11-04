@@ -21,3 +21,14 @@ pub fn get_cmds_from_path() -> Vec<String> {
 
     cmds
 }
+
+pub trait Expand: Sized {
+    fn expand(self) -> Result<Self>;
+}
+
+impl Expand for String {
+    fn expand(self) -> Result<Self> {
+        let home = home_dir()?;
+        Ok(self.replacen(&home, "~", 1))
+    }
+}

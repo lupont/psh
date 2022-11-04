@@ -91,8 +91,10 @@ impl History {
 
     pub fn read_lines(&mut self) -> Result<Vec<String>> {
         self.reload()?;
+
         let prev_cursor = self.cursor;
         self.cursor = 0;
+
         let mut vec = Vec::with_capacity(self.lines.len());
 
         if let Ok(Some(line)) = self.read() {

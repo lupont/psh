@@ -2,11 +2,13 @@ pub mod input;
 
 use std::env;
 use std::io::Stdout;
+use std::process;
 
-use crossterm::{queue, style, terminal};
+use crossterm::{execute, style, terminal};
 
-use crate::config::Colors;
-use crate::path;
+use crate::config::{self, Colors};
+use crate::path::Expand;
+
 use crate::{Engine, ExitStatus, Result};
 
 pub struct Repl {
@@ -35,42 +37,33 @@ impl Repl {
     pub fn prompt(&mut self) -> Result<()> {
         let _raw = RawMode::init()?;
 
-        let cwd = format!(
-            "{} ",
-            env::current_dir()?
-                .display()
-                .to_string()
-                .replacen(&path::home_dir()?, "~", 1)
-        );
+        let cwd = format!("{} ", env::current_dir()?.display().to_string().expand()?);
 
-        queue!(
+        let exit_code = match self.last_status {
+            Some(ExitStatus { code }) if code != 0 => {
+                format!("[{code}] ")
+            }
+
+            _ => "".to_string(),
+        };
+
+        let prompt = format!("{} ", if is_root() { "#" } else { config::PROMPT });
+
+        Ok(execute!(
             self.engine.writer,
             style::SetForegroundColor(Colors::CWD),
             style::Print(cwd),
-        )?;
-
-        match self.last_status {
-            Some(ExitStatus { code }) if code != 0 => {
-                let exit_code = format!("[{code}] ");
-                queue!(
-                    self.engine.writer,
-                    style::SetForegroundColor(Colors::NON_ZERO_RC),
-                    style::Print(exit_code),
-                )?;
-            }
-
-            _ => {}
-        }
-
-        queue!(
-            self.engine.writer,
+            style::SetForegroundColor(Colors::NON_ZERO_RC),
+            style::Print(exit_code),
             style::SetForegroundColor(Colors::PROMPT),
-            style::Print("$ "),
-            style::SetForegroundColor(style::Color::Reset)
-        )?;
-
-        Ok(())
+            style::Print(prompt),
+            style::ResetColor,
+        )?)
     }
+}
+
+fn is_root() -> bool {
+    matches!(process::Command::new("whoami").output(), Ok(output) if output.stdout == b"root\n")
 }
 
 pub struct RawMode;
