@@ -73,11 +73,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                line = engine
-                    .history
-                    .prev()?
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
+                line = engine.history.prev()?.cloned().unwrap_or_default();
                 index = line.len();
 
                 execute!(
@@ -87,11 +83,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                line = engine
-                    .history
-                    .next()?
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
+                line = engine.history.next()?.cloned().unwrap_or_default();
                 index = line.len();
 
                 execute!(
