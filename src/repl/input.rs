@@ -145,7 +145,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 execute!(engine.writer, cursor::MoveRight(1))?;
             }
 
-            (KeyCode::Char(' '), KeyModifiers::NONE) => {
+            (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 let (mut x, y) = cursor::position()?;
 
                 if let Some((expanded_line, diff)) = expand_abbreviation(&line) {

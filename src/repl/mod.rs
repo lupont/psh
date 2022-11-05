@@ -1,7 +1,7 @@
 pub mod input;
 
 use std::env;
-use std::io::Stdout;
+use std::io::{Stdout, Write};
 use std::process;
 
 use crossterm::{execute, style, terminal};
@@ -26,11 +26,36 @@ impl Repl {
 
     pub fn run(&mut self) -> Result<()> {
         loop {
-            self.prompt()?;
-
-            if let Some(command) = input::input(&mut self.engine)? {
-                self.last_status = Some(self.engine.execute(command)?);
+            if let Err(e) = self.prompt() {
+                writeln!(
+                    self.engine.writer,
+                    "rush: Error occurred when computing the prompt: {e}"
+                )?;
             }
+
+            match input::input(&mut self.engine) {
+                Ok(Some(command)) => match self.engine.execute(command) {
+                    Ok(status) => {
+                        self.last_status = Some(status);
+                    }
+
+                    Err(e) => {
+                        writeln!(
+                            self.engine.writer,
+                            "rush: Error occurred when executing command: {e}"
+                        )?;
+                    }
+                },
+
+                Ok(None) => {}
+
+                Err(e) => {
+                    writeln!(
+                        self.engine.writer,
+                        "rush: Error occurred when reading input: {e}"
+                    )?;
+                }
+            };
         }
     }
 

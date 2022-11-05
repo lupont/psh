@@ -8,11 +8,9 @@ pub use crate::engine::{Engine, ExitStatus};
 pub use crate::error::{Error, Result};
 
 fn main() {
-    loop {
-        let mut repl = repl::Repl::new();
+    let mut repl = repl::Repl::new();
 
-        if let Err(e) = repl.run() {
-            eprintln!("rush: Encountered an error: {e}");
-        }
+    if let Err(e) = repl.run() {
+        eprintln!("rush: Unrecoverable error occurred: {e}");
     }
 }
