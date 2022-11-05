@@ -150,8 +150,16 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
                 if let Some((expanded_line, diff)) = expand_abbreviation(&line) {
                     line = expanded_line;
-                    x += diff as u16;
-                    index += diff;
+
+                    // FIXME: replace with something like `wrapping_add_signed` once
+                    //        https://github.com/rust-lang/rust/issues/87840 is in stable
+                    if diff >= 0 {
+                        x = u16::checked_add(x, diff as u16).unwrap_or(0);
+                        index = usize::checked_add(index, diff as usize).unwrap_or(0);
+                    } else {
+                        x = u16::checked_sub(x, diff.unsigned_abs() as u16).unwrap_or(0);
+                        index = usize::checked_sub(index, diff.unsigned_abs()).unwrap_or(0);
+                    }
                 }
 
                 line.insert(index, ' ');
@@ -270,11 +278,11 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     }
 }
 
-fn expand_abbreviation<S: AsRef<str>>(line: S) -> Option<(String, usize)> {
+fn expand_abbreviation<S: AsRef<str>>(line: S) -> Option<(String, isize)> {
     let line = line.as_ref();
     for (a, b) in ABBREVIATIONS {
         if line == a || line.starts_with(&format!("{a} ")) {
-            let diff = b.len() - a.len();
+            let diff = b.len() as isize - a.len() as isize;
             return Some((line.replacen(a, b, 1), diff));
         }
     }
