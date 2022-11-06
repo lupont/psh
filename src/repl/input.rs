@@ -55,7 +55,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Enter, _) => {
-                if let Some((expanded_line, _)) = expand_abbreviation(&line) {
+                if let Some((expanded_line, _)) = expand_abbreviation(&line, true) {
                     line = expanded_line;
                 }
                 about_to_exit = true;
@@ -148,7 +148,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 let (mut x, y) = cursor::position()?;
 
-                if let Some((expanded_line, diff)) = expand_abbreviation(&line) {
+                if let Some((expanded_line, diff)) = expand_abbreviation(&line, false) {
                     line = expanded_line;
 
                     // FIXME: replace with something like `wrapping_add_signed` once
@@ -278,10 +278,10 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     }
 }
 
-fn expand_abbreviation<S: AsRef<str>>(line: S) -> Option<(String, isize)> {
+fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(String, isize)> {
     let line = line.as_ref();
     for (a, b) in ABBREVIATIONS {
-        if line == a || line.starts_with(&format!("{a} ")) {
+        if line == a || (!only_if_equal && line.starts_with(&format!("{a} "))) {
             let diff = b.len() as isize - a.len() as isize;
             return Some((line.replacen(a, b, 1), diff));
         }
