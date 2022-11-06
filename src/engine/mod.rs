@@ -6,6 +6,7 @@ use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process;
 
+use crate::config::ABBREVIATIONS;
 use crate::{path, Result};
 
 pub use self::builtin::Builtins;
@@ -29,6 +30,11 @@ impl<W: Write> Engine<W> {
         self.commands
             .iter()
             .any(|c| c.ends_with(&format!("/{}", cmd.as_ref())))
+    }
+
+    pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
+        let cmd = cmd.as_ref();
+        ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
     }
 
     pub fn writer(&mut self) -> &mut W {

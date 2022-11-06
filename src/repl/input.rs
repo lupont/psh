@@ -225,19 +225,13 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             highlight_until_index -= 2;
             cmd = &cmd[..cmd.len() - 2];
         }
-        let cmd_exists = engine
-            .commands
-            .iter()
-            .any(|s| s.ends_with(&format!("/{}", cmd)));
-        let builtin_exists = engine.builtins.iter().any(|&s| s == cmd.trim());
         let (x, y) = cursor::position()?;
-        let abbr_exists = ABBREVIATIONS.iter().any(|(a, _)| a == &cmd);
 
-        let highlight_color = if builtin_exists {
+        let highlight_color = if engine.has_builtin(cmd) {
             Colors::VALID_BUILTIN
-        } else if abbr_exists {
+        } else if engine.has_abbreviation(cmd) {
             Colors::VALID_ABBR
-        } else if cmd_exists {
+        } else if engine.has_command(cmd) {
             Colors::VALID_CMD
         } else {
             Colors::INVALID_CMD
