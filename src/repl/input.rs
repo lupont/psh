@@ -35,6 +35,8 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     let mut cancelled = false;
     let mut cleared = false;
 
+    let mut highlight_abbreviations = true;
+
     while !about_to_exit {
         let (code, modifiers) = match event::read()? {
             Event::Key(KeyEvent {
@@ -120,6 +122,11 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 let offset = (index - space_index) as u16;
                 line.replace_range(space_index..index, "");
                 index = space_index;
+
+                if engine.has_abbreviation(&line) {
+                    highlight_abbreviations = true;
+                }
+
                 execute!(engine.writer, cursor::MoveLeft(offset))?;
             }
 
@@ -148,22 +155,28 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 let (mut x, y) = cursor::position()?;
 
-                if let Some((expanded_line, diff)) = expand_abbreviation(&line, false) {
-                    line = expanded_line;
+                if line.find(' ').is_none() {
+                    if let Some((expanded_line, diff)) = expand_abbreviation(&line, false) {
+                        line = expanded_line;
 
-                    // FIXME: replace with something like `wrapping_add_signed` once
-                    //        https://github.com/rust-lang/rust/issues/87840 is in stable
-                    if diff >= 0 {
-                        x = u16::checked_add(x, diff as u16).unwrap_or(0);
-                        index = usize::checked_add(index, diff as usize).unwrap_or(0);
-                    } else {
-                        x = u16::checked_sub(x, diff.unsigned_abs() as u16).unwrap_or(0);
-                        index = usize::checked_sub(index, diff.unsigned_abs()).unwrap_or(0);
+                        // FIXME: replace with something like `wrapping_add_signed` once
+                        //        https://github.com/rust-lang/rust/issues/87840 is in stable
+                        if diff >= 0 {
+                            x = u16::checked_add(x, diff as u16).unwrap_or(0);
+                            index = usize::checked_add(index, diff as usize).unwrap_or(0);
+                        } else {
+                            x = u16::checked_sub(x, diff.unsigned_abs() as u16).unwrap_or(0);
+                            index = usize::checked_sub(index, diff.unsigned_abs()).unwrap_or(0);
+                        }
                     }
                 }
 
                 line.insert(index, ' ');
                 index += 1;
+
+                if engine.has_abbreviation(&line) {
+                    highlight_abbreviations = true;
+                }
 
                 execute!(
                     engine.writer,
@@ -178,6 +191,8 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
                 line.insert(index, ' ');
                 index += 1;
+
+                highlight_abbreviations = false;
 
                 execute!(
                     engine.writer,
@@ -207,6 +222,10 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 index -= 1;
                 line.remove(index);
 
+                if engine.has_abbreviation(&line) {
+                    highlight_abbreviations = true;
+                }
+
                 execute!(
                     engine.writer,
                     cursor::MoveTo(x - 1, y),
@@ -229,7 +248,7 @@ fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
         let highlight_color = if engine.has_builtin(cmd) {
             Colors::VALID_BUILTIN
-        } else if engine.has_abbreviation(cmd) {
+        } else if highlight_abbreviations && engine.has_abbreviation(cmd) {
             Colors::VALID_ABBR
         } else if engine.has_command(cmd) {
             Colors::VALID_CMD
