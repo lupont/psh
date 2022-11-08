@@ -1,0 +1,69 @@
+AST {
+    commands: [
+        Single(
+            Command {
+                name: Word {
+                    name: "ls",
+                    expansions: [],
+                },
+                prefix: [],
+                suffix: [
+                    Word(
+                        Word {
+                            name: "$(echo",
+                            expansions: [
+                                Command {
+                                    ast: AST {
+                                        commands: [
+                                            Single(
+                                                Command {
+                                                    name: Word {
+                                                        name: "echo",
+                                                        expansions: [],
+                                                    },
+                                                    prefix: [],
+                                                    suffix: [],
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                    range: 0..=5,
+                                },
+                            ],
+                        },
+                    ),
+                    Word(
+                        Word {
+                            name: "$(cat",
+                            expansions: [
+                                Command {
+                                    ast: AST {
+                                        commands: [
+                                            Single(
+                                                Command {
+                                                    name: Word {
+                                                        name: "cat",
+                                                        expansions: [],
+                                                    },
+                                                    prefix: [],
+                                                    suffix: [],
+                                                },
+                                            ),
+                                        ],
+                                    },
+                                    range: 0..=4,
+                                },
+                            ],
+                        },
+                    ),
+                    Word(
+                        Word {
+                            name: "foo))",
+                            expansions: [],
+                        },
+                    ),
+                ],
+            },
+        ),
+    ],
+}

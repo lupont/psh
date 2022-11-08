@@ -7,22 +7,11 @@ use crossterm::style;
 use crossterm::terminal;
 
 use crate::config::{Colors, ABBREVIATIONS};
-use crate::engine::{Command, Line};
 use crate::{Engine, Result};
 
 use super::RawMode;
 
-pub fn input<W: Write>(engine: &mut Engine<W>) -> Result<Option<Command>> {
-    let line = read_line(engine)?;
-    Ok(match Line::parse(engine, line)? {
-        None => None,
-        Some(input) if engine.has_builtin(&input.cmd) => Some(Command::Builtin(input)),
-        Some(input) if engine.has_command(&input.cmd) => Some(Command::Valid(input)),
-        Some(input) => Some(Command::Invalid(input)),
-    })
-}
-
-fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
+pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     let _raw = RawMode::init()?;
 
     let mut line = String::new();

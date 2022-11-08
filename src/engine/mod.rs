@@ -1,29 +1,52 @@
-pub mod builtin;
 pub mod history;
 pub mod parser;
 
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
-use std::process;
+use std::process::{self, ChildStdout, Stdio};
 
 use crate::config::ABBREVIATIONS;
+use crate::repl::input::read_line;
 use crate::{path, Result};
 
-pub use self::builtin::Builtins;
 pub use self::history::History;
-pub use self::parser::Line;
+use self::parser::ast::{parse, CommandType, SyntaxTree};
+
+pub fn read_and_execute<W: Write>(engine: &mut Engine<W>) -> Result<Vec<ExitStatus>> {
+    let line = read_line(engine)?;
+    let ast = parse(line);
+    walk_ast(engine, ast)
+}
+
+fn walk_ast<W: Write>(engine: &mut Engine<W>, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
+    ast.commands()
+        .iter()
+        .fold(Ok(vec![]), |_, c| engine.execute(c))
+}
 
 pub struct Engine<W: Write> {
     pub writer: W,
     pub prev_dir: Option<PathBuf>,
     pub commands: Vec<String>,
-    pub builtins: Vec<&'static str>,
     pub history: History,
 }
 
+impl Engine<Vec<u8>> {
+    pub fn in_memory() -> Self {
+        let history = History::init().expect("could not initialize history");
+        Self {
+            writer: Vec::new(),
+            prev_dir: None,
+            commands: path::get_cmds_from_path(),
+            history,
+        }
+    }
+}
+
 impl<W: Write> Engine<W> {
-    pub fn has_builtin(&self, builtin: impl AsRef<str>) -> bool {
-        self.builtins.iter().any(|&b| b == builtin.as_ref())
+    pub fn has_builtin(&self, _builtin: impl AsRef<str>) -> bool {
+        // builtins will return...
+        false
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
@@ -41,15 +64,54 @@ impl<W: Write> Engine<W> {
         &mut self.writer
     }
 
-    pub fn execute(&mut self, cmd: Command) -> Result<ExitStatus> {
+    fn _expand_all(&self, _cmd: &CommandType) -> Result<Vec<String>> {
+        // This is the place in which we will expand subcommands,
+        // variables, globs, and tildes
+        todo!()
+    }
+
+    pub fn execute(&mut self, cmd: &CommandType) -> Result<Vec<ExitStatus>> {
         match cmd {
-            Command::Builtin(input) => self.execute_builtin(&input),
+            CommandType::Single(cmd) => {
+                let child = process::Command::new(cmd.cmd_name())
+                    .args(cmd.args())
+                    .spawn()?;
+                let result = child.wait_with_output()?;
+                let code = result.status.code().unwrap_or_default();
 
-            Command::Valid(input) => execute_command(input),
+                Ok(vec![ExitStatus::from(code)])
+            }
 
-            Command::Invalid(input) => {
-                writeln!(self.writer, "Unknown command: {}", input.cmd)?;
-                Ok(ExitStatus { code: 1 })
+            CommandType::Pipeline(cmds) if cmds.is_empty() => todo!(),
+
+            CommandType::Pipeline(cmds) => {
+                let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
+                let mut statuses = Vec::with_capacity(cmds.len());
+
+                for (i, cmd) in cmds.iter().enumerate() {
+                    let stdin = match prev_result {
+                        Some((Some(stdout), _)) => Stdio::from(stdout),
+                        _ => Stdio::inherit(),
+                    };
+
+                    let stdout = if i == cmds.len() - 1 {
+                        Stdio::inherit()
+                    } else {
+                        Stdio::piped()
+                    };
+
+                    let mut child = process::Command::new(cmd.cmd_name())
+                        .args(cmd.args())
+                        .stdin(stdin)
+                        .stdout(stdout)
+                        .spawn()?;
+
+                    prev_result = Some((child.stdout.take(), 0));
+
+                    let result = child.wait_with_output()?;
+                    statuses.push(ExitStatus::from(result.status.code().unwrap_or_default()));
+                }
+                Ok(statuses)
             }
         }
     }
@@ -62,7 +124,6 @@ impl Engine<Stdout> {
             prev_dir: None,
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
-            builtins: Self::builtin_names(),
             history,
         }
     }
@@ -74,12 +135,6 @@ impl Default for Engine<Stdout> {
     }
 }
 
-pub enum Command {
-    Builtin(Line),
-    Valid(Line),
-    Invalid(Line),
-}
-
 pub struct ExitStatus {
     pub code: i32,
 }
@@ -88,19 +143,4 @@ impl ExitStatus {
     pub fn from(code: i32) -> Self {
         Self { code }
     }
-}
-
-fn execute_command(input: Line) -> Result<ExitStatus> {
-    let child = process::Command::new(&input.cmd)
-        .args(&input.raw_args)
-        .spawn()?;
-    let result = child.wait_with_output()?;
-
-    // FIXME: append new line if child did not print one?
-    // println!("stdout: '{}'", String::from_utf8_lossy(&result.stdout));
-
-    // FIXME: `ExitStatus.code()` returns None if killed by signal,
-    //        handle this in a more thoughtful way?
-    let code = result.status.code().unwrap_or_default();
-    Ok(ExitStatus::from(code))
 }
