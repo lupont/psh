@@ -20,9 +20,7 @@ fn main() {
             println!("{:?}", token);
         }
         return;
-    }
-
-    if args.ast {
+    } else if args.ast {
         let ast = parse(args.command.unwrap());
         println!("{:#?}", ast);
         return;
@@ -30,9 +28,10 @@ fn main() {
 
     if let Some(cmd) = args.command {
         match Engine::default().execute_line(cmd) {
-            Ok(codes) => {
-                std::process::exit(codes.last().map(|e| e.code).unwrap());
-            }
+            Ok(codes) if codes.is_empty() => return,
+
+            Ok(codes) => std::process::exit(codes.last().map(|e| e.code).unwrap()),
+
             Err(e) => {
                 eprintln!("rush: Could not execute command: {e}");
                 std::process::exit(1);
@@ -46,3 +45,4 @@ fn main() {
         eprintln!("rush: Unrecoverable error occurred: {e}");
     }
 }
+

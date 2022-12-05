@@ -229,7 +229,7 @@ impl SyntaxTree {
     }
 }
 
-pub fn parse(line: String) -> SyntaxTree {
+pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
     let tokens = super::lex(line);
     parse_tokens(tokens)
 }

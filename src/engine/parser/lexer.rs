@@ -24,10 +24,10 @@ pub enum Token {
     Ampersand,
 }
 
-pub fn lex(input: String) -> Vec<Token> {
+pub fn lex(input: impl AsRef<str>) -> Vec<Token> {
     let mut tokens = Vec::new();
 
-    let mut chars = input.chars().peekable();
+    let mut chars = input.as_ref().chars().peekable();
 
     while let Some(ch) = chars.next() {
         match ch {

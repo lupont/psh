@@ -11,7 +11,7 @@ use crate::{path, Result};
 
 use self::history::DummyHistory;
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{parse, CommandType, SyntaxTree};
+use self::parser::ast::{parse, Command, CommandType, SyntaxTree};
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -21,9 +21,69 @@ pub struct Engine<W: Write> {
 }
 
 impl<W: Write> Engine<W> {
-    pub fn has_builtin(&self, _builtin: impl AsRef<str>) -> bool {
-        // builtins will return...
-        false
+    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
+        let path = match dir {
+            Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
+
+            Some("-") => {
+                writeln!(self.writer, "cd: No previous directory.")?;
+                return Ok(ExitStatus::from(1));
+            }
+
+            Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
+
+            Some(dir) if PathBuf::from(dir).exists() => {
+                writeln!(self.writer, "cd: '{}' is not a directory.", dir)?;
+                return Ok(ExitStatus::from(3));
+            }
+
+            Some(dir) => {
+                writeln!(self.writer, "cd: '{}' does not exist.", dir)?;
+                return Ok(ExitStatus::from(2));
+            }
+
+            None => PathBuf::from(path::home_dir()),
+        };
+
+        self.prev_dir = Some(std::env::current_dir()?);
+        Ok(std::env::set_current_dir(path).map(|_| ExitStatus::from(0))?)
+    }
+
+    fn exit(&self, code: i32) -> ! {
+        std::process::exit(code);
+    }
+
+    pub fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
+        let cmd = cmd.as_ref();
+        let has = |s| { cmd == s || cmd.starts_with(&format!("{s} ")) };
+        has("cd") || has("exit")
+    }
+
+    pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
+        let cmd = cmd.expand_all();
+        let command = cmd.cmd_name();
+        let args = cmd.args();
+
+        match (command.as_str(), &args[..]) {
+            ("exit", []) => self.exit(0),
+            ("exit", [code]) => {
+                if let Ok(s) = code.parse::<i32>() {
+                    self.exit(s)
+                } else {
+                    writeln!(self.writer, "invalid integer: '{}'", code)?;
+                    Ok(ExitStatus::from(1))
+                }
+            }
+
+            ("cd", [dir]) => self.cd(Some(dir)),
+            ("cd", []) => self.cd(None::<&str>),
+            ("cd", _) => {
+                writeln!(self.writer, "invalid number of arguments")?;
+                Ok(ExitStatus::from(1))
+            }
+
+            _ => todo!(),
+        }
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
@@ -79,6 +139,10 @@ impl Engine<Stdout> {
 
     pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
         match cmd {
+            CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
+                self.execute_builtin(cmd).map(|r| vec![r])
+            }
+
             CommandType::Single(cmd) => {
                 let cmd = cmd.expand_all();
                 let child = process::Command::new(cmd.cmd_name())
