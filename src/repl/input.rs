@@ -4,7 +4,7 @@ use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
 use crossterm::queue;
-use crossterm::style::{self, Color};
+use crossterm::style;
 use crossterm::terminal;
 
 use crate::config::{Colors, ABBREVIATIONS};
@@ -316,12 +316,12 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                     }
 
                     _ => match str_token {
-                        Token::String(_) => queue!(engine.writer, style::ResetColor)?,
+                        Token::String(_) => queue!(engine.writer, style::SetForegroundColor(Colors::STRING))?,
                         Token::SingleQuotedString(_) => {
-                            queue!(engine.writer, style::SetForegroundColor(Color::Blue))?
+                            queue!(engine.writer, style::SetForegroundColor(Colors::SINGLE_QUOTED_STRING))?
                         }
                         Token::DoubleQuotedString(_) => {
-                            queue!(engine.writer, style::SetForegroundColor(Color::DarkGreen))?
+                            queue!(engine.writer, style::SetForegroundColor(Colors::DOUBLE_QUOTED_STRING))?
                         }
                         _ => unreachable!(),
                     },
@@ -341,55 +341,55 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
 
             Token::Pipe => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Yellow),
+                style::SetForegroundColor(Colors::PIPE),
                 style::Print("|")
             )?,
 
             Token::Semicolon => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Yellow),
+                style::SetForegroundColor(Colors::SEMICOLON),
                 style::Print(";")
             )?,
 
             Token::RedirectOutput(None, to) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print(format!(">{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print(format!("{from}>{to}"))
             )?,
 
             Token::RedirectInput(to) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print(format!("<{to}"))
             )?,
 
             Token::And => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print("&&")
             )?,
 
             Token::Or => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print("||")
             )?,
 
             Token::Colon => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print(":")
             )?,
 
             Token::Ampersand => queue!(
                 engine.writer,
-                style::SetForegroundColor(Color::Red),
+                style::SetForegroundColor(Colors::NYI),
                 style::Print("&")
             )?,
         }

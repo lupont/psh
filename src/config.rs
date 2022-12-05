@@ -8,6 +8,13 @@ impl Colors {
     pub const VALID_BUILTIN: Color = Color::DarkYellow;
     pub const INVALID_CMD: Color = Color::Red;
 
+    pub const STRING: Color = Color::Reset;
+    pub const SINGLE_QUOTED_STRING: Color = Color::Blue;
+    pub const DOUBLE_QUOTED_STRING: Color = Color::DarkGreen;
+    pub const PIPE: Color = Color::DarkMagenta;
+    pub const SEMICOLON: Color = Color::Magenta;
+    pub const NYI: Color = Color::Red;
+
     pub const NON_ZERO_RC: Color = Color::Red;
     pub const PROMPT: Color = Color::Yellow;
     pub const CWD: Color = Color::DarkMagenta;
