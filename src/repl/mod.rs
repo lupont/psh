@@ -7,7 +7,6 @@ use std::process;
 use crossterm::{execute, style, terminal};
 
 use crate::config::{self, Colors};
-use crate::engine::read_and_execute;
 use crate::path::Expand;
 use crate::{Engine, ExitStatus, Result};
 
@@ -33,7 +32,7 @@ impl Repl {
                 )?;
             }
 
-            match read_and_execute(&mut self.engine) {
+            match self.engine.read_and_execute() {
                 Ok(statuses) => {
                     self.last_status = Some(statuses);
                 }

@@ -34,20 +34,3 @@ fn main() {
         eprintln!("rush: Unrecoverable error occurred: {e}");
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-
-//     #[test]
-//     fn echo_works() {
-//         let mut engine = Engine::in_memory();
-//         let line = engine::parser::parse_line(&mut engine, "echo foo!");
-//         if let Ok(Some(cmd)) = line {
-//             if let Ok(status) = engine.execute(cmd) {
-//                 assert_eq!(0, status.code);
-//                 assert_eq!("foo!", String::from_utf8_lossy(&engine.writer));
-//             }
-//         }
-//     }
-// }

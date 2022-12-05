@@ -1,5 +1,7 @@
 use std::ops::RangeInclusive;
 
+use crate::path::home_dir;
+
 use super::{util, Token};
 
 #[derive(Debug, PartialEq)]
@@ -31,6 +33,13 @@ pub struct Command {
 impl Command {
     pub fn cmd_name(&self) -> &String {
         &self.name.name
+    }
+
+    pub fn expand_all(mut self) -> Self {
+        self.name = self.name.expand();
+        self.prefix = self.prefix.into_iter().map(Meta::expand).collect();
+        self.suffix = self.suffix.into_iter().map(Meta::expand).collect();
+        self
     }
 
     pub fn args(&self) -> Vec<String> {
@@ -87,6 +96,28 @@ impl Word {
             expansions,
         }
     }
+
+    fn expand(mut self) -> Self {
+        let home = home_dir().unwrap();
+
+        let mut to_remove = vec![];
+
+        for (i, expansion) in self.expansions.iter().enumerate() {
+            match expansion {
+                Expansion::Tilde { index } => {
+                    self.name.replace_range(index..=index, &home);
+                    to_remove.push(i);
+                }
+                _ => todo!(),
+            }
+        }
+
+        for i in to_remove {
+            self.expansions.remove(i);
+        }
+
+        self
+    }
 }
 
 impl ToString for Word {
@@ -100,6 +131,15 @@ pub enum Meta {
     Redirect(Redirect),
     Word(Word),
     Assignment(Word, Word),
+}
+
+impl Meta {
+    pub fn expand(self) -> Self {
+        match self {
+            Self::Word(word) => Self::Word(word.expand()),
+            _ => todo!()
+        }
+    }
 }
 
 impl ToString for Meta {
@@ -182,6 +222,10 @@ impl SyntaxTree {
 
     pub fn commands(&self) -> &[CommandType] {
         &self.commands
+    }
+
+    pub fn consume(self) -> Vec<CommandType> {
+        self.commands
     }
 }
 
