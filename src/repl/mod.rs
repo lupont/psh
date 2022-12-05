@@ -33,6 +33,8 @@ impl Repl {
             }
 
             match self.engine.read_and_execute() {
+                Ok(statuses) if statuses.is_empty() => {}
+
                 Ok(statuses) => {
                     self.last_status = Some(statuses);
                 }
