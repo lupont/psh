@@ -7,9 +7,8 @@ use std::process::{self, ChildStdout, Stdio};
 
 use crate::config::ABBREVIATIONS;
 use crate::repl::input::read_line;
-use crate::{path, Result};
+use crate::{path, Error, Result};
 
-use self::history::DummyHistory;
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{parse, Command, CommandType, SyntaxTree};
 
@@ -46,7 +45,8 @@ impl<W: Write> Engine<W> {
         };
 
         self.prev_dir = Some(std::env::current_dir()?);
-        Ok(std::env::set_current_dir(path).map(|_| ExitStatus::from(0))?)
+        std::env::set_current_dir(path)?;
+        Ok(ExitStatus::from(0))
     }
 
     fn exit(&self, code: i32) -> ! {
@@ -82,7 +82,7 @@ impl<W: Write> Engine<W> {
                 Ok(ExitStatus::from(1))
             }
 
-            _ => todo!(),
+            (c, _) => Err(Error::UnknownCommand(c.to_string())),
         }
     }
 
@@ -95,16 +95,6 @@ impl<W: Write> Engine<W> {
     pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
         let cmd = cmd.as_ref();
         ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
-    }
-
-    pub fn writer(&mut self) -> &mut W {
-        &mut self.writer
-    }
-
-    fn _expand_all(&self, _cmd: &CommandType) -> Result<Vec<String>> {
-        // This is the place in which we will expand subcommands,
-        // variables, globs, and tildes
-        todo!()
     }
 }
 
@@ -207,75 +197,6 @@ impl Default for Engine<Stdout> {
     }
 }
 
-impl Engine<Vec<u8>> {
-    pub fn in_memory() -> Self {
-        let history = DummyHistory;
-        Self {
-            writer: Vec::new(),
-            prev_dir: None,
-            commands: path::get_cmds_from_path(),
-            history: Box::new(history),
-        }
-    }
-
-    pub fn output(&self) -> std::borrow::Cow<str> {
-        String::from_utf8_lossy(&self.writer)
-    }
-
-    pub fn execute_line(&mut self, line: impl ToString) -> Result<()> {
-        let ast = parse(line.to_string());
-        self.walk_ast(ast)
-    }
-
-    fn walk_ast(&mut self, ast: SyntaxTree) -> Result<()> {
-        ast.commands().iter().fold(Ok(()), |_, c| self.execute(c))
-    }
-
-    fn execute(&mut self, cmd: &CommandType) -> Result<()> {
-        match cmd {
-            CommandType::Single(cmd) => {
-                let mut child = process::Command::new(cmd.cmd_name())
-                    .args(cmd.args())
-                    .output()?;
-
-                self.writer.append(&mut child.stdout);
-
-                Ok(())
-            }
-
-            CommandType::Pipeline(cmds) => {
-                let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
-
-                for (i, cmd) in cmds.iter().enumerate() {
-                    let stdin = match prev_result {
-                        Some((Some(stdout), _)) => Stdio::from(stdout),
-                        _ => Stdio::inherit(),
-                    };
-
-                    if i == cmds.len() - 1 {
-                        let mut child = process::Command::new(cmd.cmd_name())
-                            .args(cmd.args())
-                            .stdin(stdin)
-                            .output()?;
-                        self.writer.append(&mut child.stdout);
-                        break;
-                    } else {
-                        let mut child = process::Command::new(cmd.cmd_name())
-                            .args(cmd.args())
-                            .stdin(stdin)
-                            .stdout(Stdio::piped())
-                            .spawn()?;
-
-                        prev_result = Some((child.stdout.take(), 0));
-                    }
-                }
-
-                Ok(())
-            }
-        }
-    }
-}
-
 pub struct ExitStatus {
     pub code: i32,
 }
@@ -289,6 +210,75 @@ impl ExitStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl Engine<Vec<u8>> {
+        pub fn in_memory() -> Self {
+            let history = self::history::DummyHistory;
+            Self {
+                writer: Vec::new(),
+                prev_dir: None,
+                commands: path::get_cmds_from_path(),
+                history: Box::new(history),
+            }
+        }
+
+        pub fn output(&self) -> std::borrow::Cow<str> {
+            String::from_utf8_lossy(&self.writer)
+        }
+
+        pub fn execute_line(&mut self, line: impl ToString) -> Result<()> {
+            let ast = parse(line.to_string());
+            self.walk_ast(ast)
+        }
+
+        fn walk_ast(&mut self, ast: SyntaxTree) -> Result<()> {
+            ast.commands().iter().fold(Ok(()), |_, c| self.execute(c))
+        }
+
+        fn execute(&mut self, cmd: &CommandType) -> Result<()> {
+            match cmd {
+                CommandType::Single(cmd) => {
+                    let mut child = process::Command::new(cmd.cmd_name())
+                        .args(cmd.args())
+                        .output()?;
+
+                    self.writer.append(&mut child.stdout);
+
+                    Ok(())
+                }
+
+                CommandType::Pipeline(cmds) => {
+                    let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
+
+                    for (i, cmd) in cmds.iter().enumerate() {
+                        let stdin = match prev_result {
+                            Some((Some(stdout), _)) => Stdio::from(stdout),
+                            _ => Stdio::inherit(),
+                        };
+
+                        if i == cmds.len() - 1 {
+                            let mut child = process::Command::new(cmd.cmd_name())
+                                .args(cmd.args())
+                                .stdin(stdin)
+                                .output()?;
+                            self.writer.append(&mut child.stdout);
+                            break;
+                        } else {
+                            let mut child = process::Command::new(cmd.cmd_name())
+                                .args(cmd.args())
+                                .stdin(stdin)
+                                .stdout(Stdio::piped())
+                                .spawn()?;
+
+                            prev_result = Some((child.stdout.take(), 0));
+                        }
+                    }
+
+                    Ok(())
+                }
+            }
+        }
+    }
 
     #[test]
     fn basic_commands_work() {

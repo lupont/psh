@@ -316,13 +316,17 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                     }
 
                     _ => match str_token {
-                        Token::String(_) => queue!(engine.writer, style::SetForegroundColor(Colors::STRING))?,
-                        Token::SingleQuotedString(_) => {
-                            queue!(engine.writer, style::SetForegroundColor(Colors::SINGLE_QUOTED_STRING))?
+                        Token::String(_) => {
+                            queue!(engine.writer, style::SetForegroundColor(Colors::STRING))?
                         }
-                        Token::DoubleQuotedString(_) => {
-                            queue!(engine.writer, style::SetForegroundColor(Colors::DOUBLE_QUOTED_STRING))?
-                        }
+                        Token::SingleQuotedString(_) => queue!(
+                            engine.writer,
+                            style::SetForegroundColor(Colors::SINGLE_QUOTED_STRING)
+                        )?,
+                        Token::DoubleQuotedString(_) => queue!(
+                            engine.writer,
+                            style::SetForegroundColor(Colors::DOUBLE_QUOTED_STRING)
+                        )?,
                         _ => unreachable!(),
                     },
                 }

@@ -137,7 +137,7 @@ impl Meta {
     pub fn expand(self) -> Self {
         match self {
             Self::Word(word) => Self::Word(word.expand()),
-            _ => todo!()
+            _ => todo!(),
         }
     }
 }

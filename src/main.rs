@@ -45,4 +45,3 @@ fn main() {
         eprintln!("rush: Unrecoverable error occurred: {e}");
     }
 }
-
