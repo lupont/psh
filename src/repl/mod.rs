@@ -18,7 +18,7 @@ pub struct Repl {
 impl Repl {
     pub fn new() -> Self {
         Self {
-            engine: Engine::new(),
+            engine: Engine::default(),
             last_status: None,
         }
     }

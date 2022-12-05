@@ -112,8 +112,7 @@ impl Engine<Stdout> {
     pub fn read_and_execute(&mut self) -> Result<Vec<ExitStatus>> {
         let line = read_line(self)?;
         self.history.append(&line)?;
-        let ast = parse(line);
-        self.walk_ast(ast)
+        self.execute_line(line)
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
@@ -197,6 +196,7 @@ impl Default for Engine<Stdout> {
     }
 }
 
+#[derive(Debug)]
 pub struct ExitStatus {
     pub code: i32,
 }
@@ -284,9 +284,17 @@ mod tests {
     fn basic_commands_work() {
         let mut engine = Engine::in_memory();
 
-        engine.execute_line("echo oof | rev; echo bar").unwrap();
-        engine.execute_line("echo baz").unwrap();
+        engine.execute_line("echo foo").unwrap();
 
-        assert_eq!("foo\nbar\nbaz\n", engine.output());
+        assert_eq!("foo\n", engine.output());
+    }
+
+    #[test]
+    fn piping_and_command_separation_work() {
+        let mut engine = Engine::in_memory();
+
+        engine.execute_line("echo oof | rev; echo bar").unwrap();
+
+        assert_eq!("foo\nbar\n", engine.output());
     }
 }

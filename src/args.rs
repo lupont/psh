@@ -7,14 +7,14 @@ pub struct Args {
     #[arg(
         long,
         requires("command"),
-        help("Lex the command specified by --command, and exit")
+        help("Only lex the command specified by --command")
     )]
     pub lex: bool,
 
     #[arg(
         long,
         requires("command"),
-        help("Print the AST of the command specified by --command, and exit")
+        help("Only produce the AST of the command specified by --command")
     )]
     pub ast: bool,
 }

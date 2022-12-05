@@ -231,7 +231,7 @@ impl SyntaxTree {
 
 pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
     let tokens = super::lex(line);
-    parse_tokens(tokens, false)
+    parse_tokens(tokens)
 }
 
 fn parse_command(tokens: &[Token]) -> Option<Command> {
@@ -478,7 +478,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
     }
 }
 
-fn parse_tokens(tokens: Vec<Token>, allow_failures: bool) -> SyntaxTree {
+fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
     // Split tokens by semicolons to get list of commands,
     // then each command by pipe to get pipeline in command
     let commands = tokens
@@ -499,7 +499,7 @@ fn parse_tokens(tokens: Vec<Token>, allow_failures: bool) -> SyntaxTree {
             &[cmd] if !cmd.is_empty() => {
                 if let Some(cmd) = parse_command(cmd) {
                     ast.add_command(CommandType::Single(cmd));
-                } else if !allow_failures {
+                } else {
                     panic!("could not parse command");
                     // FIXME: syntax error?
                 }
@@ -515,7 +515,7 @@ fn parse_tokens(tokens: Vec<Token>, allow_failures: bool) -> SyntaxTree {
 
                     if let Some(cmd) = parse_command(command) {
                         commands.push(cmd);
-                    } else if !allow_failures {
+                    } else {
                         // FIXME: syntax error?
                         panic!("could not parse command");
                     }
@@ -894,7 +894,7 @@ mod tests {
     //     let input = r#"echo "$(cat $(echo "$(cat foo)"))""#.to_string();
     //     let ast = parse(input);
 
-    //     let expected = AST {
+    //     let expected = SyntaxTree {
     //         commands: vec![CommandType::Single(Command {
     //             name: Word::new("echo", vec![]),
     //             prefix: vec![],
@@ -902,7 +902,7 @@ mod tests {
     //                 r#"$(cat $(echo "$(cat foo)"))"#,
     //                 vec![Expansion::Command {
     //                     range: 0..=26,
-    //                     ast: AST {
+    //                     ast: SyntaxTree {
     //                         commands: vec![CommandType::Single(Command {
     //                             name: Word::new("cat", vec![]),
     //                             prefix: vec![],
@@ -910,7 +910,7 @@ mod tests {
     //                                 r#"$(echo "$(cat foo)")"#,
     //                                 vec![Expansion::Command {
     //                                     range: 0..=20,
-    //                                     ast: AST {
+    //                                     ast: SyntaxTree {
     //                                         commands: vec![CommandType::Single(Command {
     //                                             name: Word::new("echo", vec![]),
     //                                             prefix: vec![],
@@ -918,7 +918,7 @@ mod tests {
     //                                                 "$(cat foo)",
     //                                                 vec![Expansion::Command {
     //                                                     range: 0..=10,
-    //                                                     ast: AST {
+    //                                                     ast: SyntaxTree {
     //                                                         commands: vec![CommandType::Single(
     //                                                             Command {
     //                                                                 name: Word::new("cat", vec![]),
