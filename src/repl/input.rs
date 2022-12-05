@@ -398,7 +398,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
             prev_non_space_token = Some(token);
         }
     }
-    if state.about_to_exit {
+    if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
     queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
