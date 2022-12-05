@@ -22,15 +22,22 @@ pub enum Token {
     Colon,
     Semicolon,
     Ampersand,
+
+    Space,
 }
 
 pub fn lex(input: impl AsRef<str>) -> Vec<Token> {
+    tokenize(input, false)
+}
+
+pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
 
     let mut chars = input.as_ref().chars().peekable();
 
     while let Some(ch) = chars.next() {
         match ch {
+            ' ' if include_whitespace => tokens.push(Token::Space),
             ' ' => {}
             // '(' => tokens.push(Token::LParen),
             // ')' => tokens.push(Token::RParen),

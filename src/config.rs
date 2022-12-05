@@ -15,9 +15,8 @@ impl Colors {
 
 pub const PROMPT: &str = "$";
 
-pub const ABBREVIATIONS: [(&str, &str); 4] = [
+pub const ABBREVIATIONS: [(&str, &str); 3] = [
     ("gs", "git status"),
     ("pacs", "sudo pacman -S"),
     ("e", "nvim"),
-    ("ls", "exa --group-directories-first"),
 ];

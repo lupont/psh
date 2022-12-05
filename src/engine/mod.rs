@@ -55,7 +55,7 @@ impl<W: Write> Engine<W> {
 
     pub fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
         let cmd = cmd.as_ref();
-        let has = |s| { cmd == s || cmd.starts_with(&format!("{s} ")) };
+        let has = |s| cmd == s || cmd.starts_with(&format!("{s} "));
         has("cd") || has("exit")
     }
 
@@ -143,7 +143,7 @@ impl Engine<Stdout> {
                 self.execute_builtin(cmd).map(|r| vec![r])
             }
 
-            CommandType::Single(cmd) => {
+            CommandType::Single(cmd) if self.has_command(cmd.cmd_name()) => {
                 let cmd = cmd.expand_all();
                 let child = process::Command::new(cmd.cmd_name())
                     .args(cmd.args())
@@ -154,9 +154,21 @@ impl Engine<Stdout> {
                 Ok(vec![ExitStatus::from(code)])
             }
 
+            CommandType::Single(cmd) => {
+                writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
+                Ok(vec![ExitStatus::from(127)])
+            }
+
             CommandType::Pipeline(cmds) if cmds.is_empty() => todo!(),
 
             CommandType::Pipeline(cmds) => {
+                if let Some(cmd) = cmds.iter().find(|cmd| {
+                    !self.has_command(cmd.cmd_name()) && !self.has_builtin(cmd.cmd_name())
+                }) {
+                    writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
+                    return Ok(vec![ExitStatus::from(127)]);
+                }
+
                 let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
                 let mut statuses = Vec::with_capacity(cmds.len());
 

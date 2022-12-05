@@ -3,10 +3,13 @@ use std::io::Write;
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
-use crossterm::style;
+use crossterm::queue;
+use crossterm::style::{self, Color};
 use crossterm::terminal;
 
 use crate::config::{Colors, ABBREVIATIONS};
+use crate::engine::parser::lexer::tokenize;
+use crate::engine::parser::Token;
 use crate::{Engine, Result};
 
 use super::RawMode;
@@ -40,7 +43,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     continue;
                 }
 
-                line += "^C";
                 about_to_exit = true;
                 cancelled = true;
             }
@@ -227,33 +229,14 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             _ => {}
         }
 
-        let mut highlight_until_index = line.find(' ').unwrap_or(line.len());
-        let mut cmd = &line[..highlight_until_index];
-        if cmd.ends_with("^C") {
-            highlight_until_index -= 2;
-            cmd = &cmd[..cmd.len() - 2];
-        }
         let (x, y) = cursor::position()?;
-
-        let highlight_color = if engine.has_builtin(cmd) {
-            Colors::VALID_BUILTIN
-        } else if highlight_abbreviations && engine.has_abbreviation(cmd) {
-            Colors::VALID_ABBR
-        } else if engine.has_command(cmd) {
-            Colors::VALID_CMD
-        } else {
-            Colors::INVALID_CMD
-        };
-
-        execute!(
-            engine.writer,
-            cursor::MoveTo(start_x, start_y),
-            terminal::Clear(terminal::ClearType::UntilNewLine),
-            style::SetForegroundColor(highlight_color),
-            style::Print(&line[..highlight_until_index]),
-            style::ResetColor,
-            style::Print(&line[highlight_until_index..]),
-            cursor::MoveTo(x, y)
+        print(
+            engine,
+            &line,
+            (start_x, start_y),
+            (x, y),
+            about_to_exit,
+            highlight_abbreviations,
         )?;
 
         if about_to_exit {
@@ -278,6 +261,151 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     } else {
         Ok(line)
     }
+}
+
+fn print<W: Write>(
+    engine: &mut Engine<W>,
+    line: &String,
+    start_pos: (u16, u16),
+    pos: (u16, u16),
+    about_to_exit: bool,
+    highlight_abbreviations: bool,
+) -> Result<()> {
+    let tokens = tokenize(line, true);
+
+    let mut prev_non_space_token = None;
+
+    let (start_x, start_y) = start_pos;
+    let (x, y) = pos;
+
+    queue!(
+        engine.writer,
+        cursor::MoveTo(start_x, start_y),
+        terminal::Clear(terminal::ClearType::UntilNewLine)
+    )?;
+
+    for token in &tokens {
+        match token {
+            Token::Space => queue!(engine.writer, style::Print(" "))?,
+
+            str_token @ (Token::String(s)
+            | Token::SingleQuotedString(s)
+            | Token::DoubleQuotedString(s)) => {
+                match prev_non_space_token {
+                    Some(&Token::Pipe | &Token::Semicolon) | None => {
+                        let color = if engine.has_builtin(s) {
+                            Colors::VALID_BUILTIN
+                        } else if engine.has_command(s) {
+                            Colors::VALID_CMD
+                        } else if engine.has_abbreviation(s) && highlight_abbreviations {
+                            Colors::VALID_ABBR
+                        } else {
+                            Colors::INVALID_CMD
+                        };
+                        queue!(engine.writer, style::SetForegroundColor(color))?;
+                    }
+
+                    _ => match str_token {
+                        Token::String(_) => queue!(engine.writer, style::ResetColor)?,
+                        Token::SingleQuotedString(_) => {
+                            queue!(engine.writer, style::SetForegroundColor(Color::Blue))?
+                        }
+                        Token::DoubleQuotedString(_) => {
+                            queue!(engine.writer, style::SetForegroundColor(Color::DarkGreen))?
+                        }
+                        _ => unreachable!(),
+                    },
+                }
+
+                match str_token {
+                    Token::String(s) => queue!(engine.writer, style::Print(s))?,
+                    Token::SingleQuotedString(_) => {
+                        queue!(engine.writer, style::Print(format!("'{s}'")))?
+                    }
+                    Token::DoubleQuotedString(_) => {
+                        queue!(engine.writer, style::Print(format!("\"{s}\"")))?
+                    }
+                    _ => unreachable!(),
+                }
+            }
+
+            Token::Pipe => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Yellow),
+                style::Print("|")
+            )?,
+
+            Token::Semicolon => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Yellow),
+                style::Print(";")
+            )?,
+
+            Token::RedirectOutput(None, to) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print(format!(">{to}"))
+            )?,
+
+            Token::RedirectOutput(Some(from), to) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print(format!("{from}>{to}"))
+            )?,
+
+            Token::RedirectInput(to) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print(format!("<{to}"))
+            )?,
+
+            Token::And => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print("&&")
+            )?,
+
+            Token::Or => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print("||")
+            )?,
+
+            Token::Colon => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print(":")
+            )?,
+
+            Token::Ampersand => queue!(
+                engine.writer,
+                style::SetForegroundColor(Color::Red),
+                style::Print("&")
+            )?,
+        }
+
+        if !matches!(&token, &Token::Space) {
+            prev_non_space_token = Some(token);
+        }
+    }
+    if about_to_exit {
+        queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
+    }
+    queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
+
+    engine.writer.flush()?;
+
+    // execute!(
+    //     engine.writer,
+    //     cursor::MoveTo(start_x, start_y),
+    //     terminal::Clear(terminal::ClearType::UntilNewLine),
+    //     style::SetForegroundColor(highlight_color),
+    //     style::Print(&line[..highlight_until_index]),
+    //     style::ResetColor,
+    //     style::Print(&line[highlight_until_index..]),
+    //     cursor::MoveTo(x, y),
+    // )?;
+    Ok(())
 }
 
 fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(String, isize)> {

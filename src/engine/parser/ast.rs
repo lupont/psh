@@ -231,7 +231,7 @@ impl SyntaxTree {
 
 pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
     let tokens = super::lex(line);
-    parse_tokens(tokens)
+    parse_tokens(tokens, false)
 }
 
 fn parse_command(tokens: &[Token]) -> Option<Command> {
@@ -284,6 +284,8 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
             // Token::RBrace => todo!("}} command grouping is not yet implemented"),
             Token::And => todo!("AND is not yet implemented"),
             Token::Or => todo!("OR is not yet implemented"),
+
+            Token::Space => {}
 
             Token::Ampersand => todo!("asynchronous execution is not yet implemented"),
 
@@ -476,7 +478,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
     }
 }
 
-fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
+fn parse_tokens(tokens: Vec<Token>, allow_failures: bool) -> SyntaxTree {
     // Split tokens by semicolons to get list of commands,
     // then each command by pipe to get pipeline in command
     let commands = tokens
@@ -497,7 +499,7 @@ fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
             &[cmd] if !cmd.is_empty() => {
                 if let Some(cmd) = parse_command(cmd) {
                     ast.add_command(CommandType::Single(cmd));
-                } else {
+                } else if !allow_failures {
                     panic!("could not parse command");
                     // FIXME: syntax error?
                 }
@@ -513,7 +515,7 @@ fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
 
                     if let Some(cmd) = parse_command(command) {
                         commands.push(cmd);
-                    } else {
+                    } else if !allow_failures {
                         // FIXME: syntax error?
                         panic!("could not parse command");
                     }
