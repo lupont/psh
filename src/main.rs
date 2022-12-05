@@ -28,6 +28,18 @@ fn main() {
         return;
     }
 
+    if let Some(cmd) = args.command {
+        match Engine::default().execute_line(cmd) {
+            Ok(codes) => {
+                std::process::exit(codes.last().map(|e| e.code).unwrap());
+            }
+            Err(e) => {
+                eprintln!("rush: Could not execute command: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     let mut repl = repl::Repl::new();
 
     if let Err(e) = repl.run() {
