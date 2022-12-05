@@ -14,22 +14,40 @@ use crate::{Engine, Result};
 
 use super::RawMode;
 
+struct State {
+    line: String,
+    index: usize,
+
+    start_pos: (u16, u16),
+    size: (u16, u16),
+
+    about_to_exit: bool,
+    cancelled: bool,
+    cleared: bool,
+    highlight_abbreviations: bool,
+}
+
+impl State {
+    fn pos(&self) -> Result<(u16, u16)> {
+        Ok(cursor::position()?)
+    }
+}
+
 pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     let _raw = RawMode::init()?;
 
-    let mut line = String::new();
-    let mut index = 0;
+    let mut state = State {
+        line: String::new(),
+        index: 0,
+        start_pos: cursor::position()?,
+        size: terminal::size()?,
+        about_to_exit: false,
+        cancelled: false,
+        cleared: false,
+        highlight_abbreviations: true,
+    };
 
-    let (start_x, start_y) = cursor::position()?;
-    let (_width, height) = terminal::size()?;
-
-    let mut about_to_exit = false;
-    let mut cancelled = false;
-    let mut cleared = false;
-
-    let mut highlight_abbreviations = true;
-
-    while !about_to_exit {
+    while !state.about_to_exit {
         let (code, modifiers) = match event::read()? {
             Event::Key(KeyEvent {
                 code, modifiers, ..
@@ -39,23 +57,23 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
         match (code, modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                if line.is_empty() {
+                if state.line.is_empty() {
                     continue;
                 }
 
-                about_to_exit = true;
-                cancelled = true;
+                state.about_to_exit = true;
+                state.cancelled = true;
             }
 
             (KeyCode::Enter, _) => {
-                if let Some((expanded_line, _)) = expand_abbreviation(&line, true) {
-                    line = expanded_line;
+                if let Some((expanded_line, _)) = expand_abbreviation(&state.line, true) {
+                    state.line = expanded_line;
                 }
-                about_to_exit = true;
+                state.about_to_exit = true;
             }
 
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                if !line.is_empty() {
+                if !state.line.is_empty() {
                     continue;
                 }
 
@@ -66,56 +84,59 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                line = engine.history.prev()?.cloned().unwrap_or_default();
-                index = line.len();
+                state.line = engine.history.prev()?.cloned().unwrap_or_default();
+                state.index = state.line.len();
 
+                let (start_x, start_y) = state.start_pos;
                 execute!(
                     engine.writer,
-                    cursor::MoveTo(start_x + index as u16, start_y)
+                    cursor::MoveTo(start_x + state.index as u16, start_y)
                 )?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                line = engine.history.next()?.cloned().unwrap_or_default();
-                index = line.len();
+                state.line = engine.history.next()?.cloned().unwrap_or_default();
+                state.index = state.line.len();
 
+                let (start_x, start_y) = state.start_pos;
                 execute!(
                     engine.writer,
-                    cursor::MoveTo(start_x + index as u16, start_y)
+                    cursor::MoveTo(start_x + state.index as u16, start_y)
                 )?;
             }
 
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                line.clear();
-                index = 0;
+                state.line.clear();
+                state.index = 0;
+                let (start_x, start_y) = state.start_pos;
                 execute!(engine.writer, cursor::MoveTo(start_x, start_y))?;
             }
 
             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
-                if index == 0 {
+                if state.index == 0 {
                     continue;
                 }
 
                 let mut space_index = None;
-                for i in (0..index).rev() {
-                    if let Some(' ') = line.chars().nth(i) {
+                for i in (0..state.index).rev() {
+                    if let Some(' ') = state.line.chars().nth(i) {
                         space_index = Some(i);
                         break;
                     }
                 }
 
-                if let Some(' ') = line.chars().nth(index - 1) {
+                if let Some(' ') = state.line.chars().nth(state.index - 1) {
                     // FIXME: this should find the previous space
                     space_index = Some(0);
                 }
 
                 let space_index = space_index.unwrap_or(0);
-                let offset = (index - space_index) as u16;
-                line.replace_range(space_index..index, "");
-                index = space_index;
+                let offset = (state.index - space_index) as u16;
+                state.line.replace_range(space_index..state.index, "");
+                state.index = space_index;
 
-                if engine.has_abbreviation(&line) {
-                    highlight_abbreviations = true;
+                if engine.has_abbreviation(&state.line) {
+                    state.highlight_abbreviations = true;
                 }
 
                 execute!(engine.writer, cursor::MoveLeft(offset))?;
@@ -127,101 +148,103 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     terminal::Clear(terminal::ClearType::All),
                     cursor::MoveTo(0, 0)
                 )?;
-                cleared = true;
+                state.cleared = true;
                 break;
             }
 
-            (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if index > 0 => {
-                index -= 1;
+            (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if state.index > 0 => {
+                state.index -= 1;
                 execute!(engine.writer, cursor::MoveLeft(1))?;
             }
 
             (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
-                if index < line.len() =>
+                if state.index < state.line.len() =>
             {
-                index += 1;
+                state.index += 1;
                 execute!(engine.writer, cursor::MoveRight(1))?;
             }
 
             (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                let (mut x, y) = cursor::position()?;
+                let (mut x, y) = state.pos()?;
 
-                if line.find(' ').is_none() {
-                    if let Some((expanded_line, diff)) = expand_abbreviation(&line, false) {
-                        line = expanded_line;
+                if state.line.find(' ').is_none() {
+                    if let Some((expanded_line, diff)) = expand_abbreviation(&state.line, false) {
+                        state.line = expanded_line;
 
                         // FIXME: replace with something like `wrapping_add_signed` once
                         //        https://github.com/rust-lang/rust/issues/87840 is in stable
                         if diff >= 0 {
                             x = u16::checked_add(x, diff as u16).unwrap_or(0);
-                            index = usize::checked_add(index, diff as usize).unwrap_or(0);
+                            state.index =
+                                usize::checked_add(state.index, diff as usize).unwrap_or(0);
                         } else {
                             x = u16::checked_sub(x, diff.unsigned_abs() as u16).unwrap_or(0);
-                            index = usize::checked_sub(index, diff.unsigned_abs()).unwrap_or(0);
+                            state.index =
+                                usize::checked_sub(state.index, diff.unsigned_abs()).unwrap_or(0);
                         }
                     }
                 }
 
-                line.insert(index, ' ');
-                index += 1;
+                state.line.insert(state.index, ' ');
+                state.index += 1;
 
-                if engine.has_abbreviation(&line) {
-                    highlight_abbreviations = true;
+                if engine.has_abbreviation(&state.line) {
+                    state.highlight_abbreviations = true;
                 }
 
                 execute!(
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
-                    style::Print(&line[index - 1..]),
+                    style::Print(&state.line[state.index - 1..]),
                     cursor::MoveTo(x + 1, y),
                 )?;
             }
 
             (KeyCode::Char(' '), KeyModifiers::CONTROL) => {
-                let (x, y) = cursor::position()?;
+                let (x, y) = state.pos()?;
 
-                line.insert(index, ' ');
-                index += 1;
+                state.line.insert(state.index, ' ');
+                state.index += 1;
 
-                highlight_abbreviations = false;
+                state.highlight_abbreviations = false;
 
                 execute!(
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
-                    style::Print(&line[index - 1..]),
+                    style::Print(&state.line[state.index - 1..]),
                     cursor::MoveTo(x + 1, y),
                 )?;
             }
 
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                let (x, y) = cursor::position()?;
+                let (x, y) = state.pos()?;
 
-                line.insert(index, c);
-                index += 1;
+                state.line.insert(state.index, c);
+                state.index += 1;
 
                 execute!(
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
-                    style::Print(&line[index - 1..]),
+                    style::Print(&state.line[state.index - 1..]),
                     cursor::MoveTo(x + 1, y),
                 )?;
             }
 
-            (KeyCode::Backspace, _) if index > 0 => {
-                let (x, y) = cursor::position()?;
+            (KeyCode::Backspace, _) if state.index > 0 => {
+                let (x, y) = state.pos()?;
 
-                index -= 1;
-                line.remove(index);
+                state.index -= 1;
+                state.line.remove(state.index);
 
-                if engine.has_abbreviation(&line) {
-                    highlight_abbreviations = true;
+                if engine.has_abbreviation(&state.line) {
+                    state.highlight_abbreviations = true;
                 }
 
                 execute!(
                     engine.writer,
                     cursor::MoveTo(x - 1, y),
                     terminal::Clear(terminal::ClearType::UntilNewLine),
-                    style::Print(&line[index..]),
+                    style::Print(&state.line[state.index..]),
                     cursor::MoveTo(x - 1, y),
                 )?;
             }
@@ -229,54 +252,41 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             _ => {}
         }
 
-        let (x, y) = cursor::position()?;
-        print(
-            engine,
-            &line,
-            (start_x, start_y),
-            (x, y),
-            about_to_exit,
-            highlight_abbreviations,
-        )?;
+        print(engine, &state)?;
 
-        if about_to_exit {
+        if state.about_to_exit {
             break;
         }
     }
 
     write!(engine.writer, "\r")?;
+    let (_, start_y) = state.start_pos;
+    let (_, height) = state.size;
     if start_y + 1 >= height {
         execute!(engine.writer, terminal::ScrollUp(1))?;
     }
 
-    if !cleared {
+    if !state.cleared {
         execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
     } else {
         execute!(engine.writer, cursor::MoveTo(0, 0))?;
     }
 
     // FIXME: should probably return Result<Option<String>> with Ok(None) here?
-    if cancelled {
+    if state.cancelled {
         Ok("".to_string())
     } else {
-        Ok(line)
+        Ok(state.line)
     }
 }
 
-fn print<W: Write>(
-    engine: &mut Engine<W>,
-    line: &String,
-    start_pos: (u16, u16),
-    pos: (u16, u16),
-    about_to_exit: bool,
-    highlight_abbreviations: bool,
-) -> Result<()> {
-    let tokens = tokenize(line, true);
+fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
+    let tokens = tokenize(&state.line, true);
 
     let mut prev_non_space_token = None;
 
-    let (start_x, start_y) = start_pos;
-    let (x, y) = pos;
+    let (start_x, start_y) = state.start_pos;
+    let (x, y) = state.pos()?;
 
     queue!(
         engine.writer,
@@ -297,7 +307,7 @@ fn print<W: Write>(
                             Colors::VALID_BUILTIN
                         } else if engine.has_command(s) {
                             Colors::VALID_CMD
-                        } else if engine.has_abbreviation(s) && highlight_abbreviations {
+                        } else if engine.has_abbreviation(s) && state.highlight_abbreviations {
                             Colors::VALID_ABBR
                         } else {
                             Colors::INVALID_CMD
@@ -388,23 +398,13 @@ fn print<W: Write>(
             prev_non_space_token = Some(token);
         }
     }
-    if about_to_exit {
+    if state.about_to_exit {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
     queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
 
     engine.writer.flush()?;
 
-    // execute!(
-    //     engine.writer,
-    //     cursor::MoveTo(start_x, start_y),
-    //     terminal::Clear(terminal::ClearType::UntilNewLine),
-    //     style::SetForegroundColor(highlight_color),
-    //     style::Print(&line[..highlight_until_index]),
-    //     style::ResetColor,
-    //     style::Print(&line[highlight_until_index..]),
-    //     cursor::MoveTo(x, y),
-    // )?;
     Ok(())
 }
 
