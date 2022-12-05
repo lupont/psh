@@ -164,7 +164,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 execute!(engine.writer, cursor::MoveRight(1))?;
             }
 
-            (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+            (KeyCode::Char(c @ (' ' | '|' | ';')), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 let (mut x, y) = state.pos()?;
 
                 if state.line.find(' ').is_none() {
@@ -185,7 +185,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     }
                 }
 
-                state.line.insert(state.index, ' ');
+                state.line.insert(state.index, c);
                 state.index += 1;
 
                 if engine.has_abbreviation(&state.line) {
