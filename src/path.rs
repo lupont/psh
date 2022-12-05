@@ -1,10 +1,10 @@
 use std::env;
 use std::fs;
 
-use crate::{Error, Result};
+use crate::Error;
 
-pub fn home_dir() -> Result<String> {
-    env::var("HOME").map_err(|_| Error::NoHome)
+pub fn home_dir() -> String {
+    env::var("HOME").map_err(|_| Error::NoHome).unwrap()
 }
 
 pub fn get_cmds_from_path() -> Vec<String> {
@@ -23,12 +23,12 @@ pub fn get_cmds_from_path() -> Vec<String> {
 }
 
 pub trait Expand: Sized {
-    fn expand(self) -> Result<Self>;
+    fn expand(self) -> Self;
 }
 
 impl Expand for String {
-    fn expand(self) -> Result<Self> {
-        let home = home_dir()?;
-        Ok(self.replacen(&home, "~", 1))
+    fn expand(self) -> Self {
+        let home = home_dir();
+        self.replacen(&home, "~", 1)
     }
 }

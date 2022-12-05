@@ -50,7 +50,7 @@ impl Repl {
     pub fn prompt(&mut self) -> Result<()> {
         let _raw = RawMode::init()?;
 
-        let cwd = format!("{} ", env::current_dir()?.display().to_string().expand()?);
+        let cwd = format!("{} ", env::current_dir()?.display().to_string().expand());
 
         let exit_code = match &self.last_status {
             Some(codes) if !codes.iter().all(|c| c.code == 0) => {

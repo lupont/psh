@@ -98,7 +98,7 @@ impl Word {
     }
 
     fn expand(mut self) -> Self {
-        let home = home_dir().unwrap();
+        let home = home_dir();
 
         let mut to_remove = vec![];
 
