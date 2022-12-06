@@ -14,6 +14,7 @@ impl Colors {
     pub const PIPE: Color = Color::DarkMagenta;
     pub const SEMICOLON: Color = Color::Magenta;
     pub const NYI: Color = Color::Red;
+    pub const INCOMPLETE: Color = Color::Red;
 
     pub const NON_ZERO_RC: Color = Color::Red;
     pub const PROMPT: Color = Color::Yellow;

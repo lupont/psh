@@ -4,8 +4,8 @@ use std::str::Chars;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     String(String),
-    SingleQuotedString(String),
-    DoubleQuotedString(String),
+    SingleQuotedString(String, bool),
+    DoubleQuotedString(String, bool),
 
     // LParen,
     // RParen,
@@ -64,15 +64,21 @@ pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> 
                 }
             }
 
-            '"' => {
-                let s = advance_until(&mut chars, '"', true);
-                tokens.push(Token::DoubleQuotedString(s));
-            }
+            '"' => match advance_until(&mut chars, '"', true) {
+                Ok(s) => tokens.push(Token::DoubleQuotedString(s, true)),
+                Err(s) => {
+                    // FIXME: syntax error
+                    tokens.push(Token::DoubleQuotedString(s, false));
+                }
+            },
 
-            '\'' => {
-                let s = advance_until(&mut chars, '\'', false);
-                tokens.push(Token::SingleQuotedString(s));
-            }
+            '\'' => match advance_until(&mut chars, '\'', false) {
+                Ok(s) => tokens.push(Token::SingleQuotedString(s, true)),
+                Err(s) => {
+                    // FIXME: syntax error
+                    tokens.push(Token::SingleQuotedString(s, false));
+                }
+            },
 
             ':' => tokens.push(Token::Colon),
             ';' => tokens.push(Token::Semicolon),
@@ -128,15 +134,21 @@ pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> 
     tokens
 }
 
-fn advance_until(chars: &mut Peekable<Chars>, end: char, check_nested_level: bool) -> String {
+fn advance_until(
+    chars: &mut Peekable<Chars>,
+    end: char,
+    check_nested_level: bool,
+) -> Result<String, String> {
     let mut s = String::new();
 
     let mut is_escaped = false;
     let mut nested_level = 0;
+    let mut finished = false;
 
     while let Some(&next) = chars.peek() {
         if !is_escaped && (nested_level == 0 || !check_nested_level) && next == end {
             chars.next();
+            finished = true;
             break;
         }
 
@@ -158,7 +170,12 @@ fn advance_until(chars: &mut Peekable<Chars>, end: char, check_nested_level: boo
             nested_level -= 1;
         }
     }
-    s
+
+    if finished {
+        Ok(s)
+    } else {
+        Err(s)
+    }
 }
 
 fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
@@ -174,7 +191,11 @@ fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
     }
 }
 
-fn try_lex_redirect_output(chars: &mut Peekable<Chars>, dest: Option<String>, capture_space: bool) -> Option<Token> {
+fn try_lex_redirect_output(
+    chars: &mut Peekable<Chars>,
+    dest: Option<String>,
+    capture_space: bool,
+) -> Option<Token> {
     let mut found_space = None;
     while let Some(&' ') = chars.peek() {
         chars.next();
@@ -234,7 +255,7 @@ mod tests {
         assert_eq!(
             vec![
                 String("echo".into()),
-                SingleQuotedString("foo bar".into()),
+                SingleQuotedString("foo bar".into(), true),
                 Pipe,
                 String("lolcat".into()),
             ],
@@ -252,7 +273,7 @@ mod tests {
                 // Assignment("FOO".into(), "".into()),
                 String("FOO=".into()),
                 String("ls".into()),
-                DoubleQuotedString("foo".into()),
+                DoubleQuotedString("foo".into(), true),
                 RedirectOutput(Some("2".into()), "/dev/null".into(), None),
                 Semicolon,
             ],
@@ -284,7 +305,7 @@ mod tests {
         assert_eq!(
             vec![
                 String("groups".into()),
-                DoubleQuotedString("$(whoami)".into()),
+                DoubleQuotedString("$(whoami)".into(), true),
                 RedirectOutput(Some("2".into()), "&1".into(), None),
                 Semicolon,
                 String("sleep".into()),
@@ -347,14 +368,14 @@ mod tests {
         let input = "echo 'foo bar'".to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), SingleQuotedString("foo bar".into())],
+            vec![String("echo".into()), SingleQuotedString("foo bar".into(), true)],
             tokens
         );
 
         let input = r#"echo "foo bar""#.to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), DoubleQuotedString("foo bar".into())],
+            vec![String("echo".into()), DoubleQuotedString("foo bar".into(), true)],
             tokens
         );
 
@@ -363,7 +384,7 @@ mod tests {
         assert_eq!(
             vec![
                 String("echo".into()),
-                SingleQuotedString(r#"it's time to "foo bar""#.into())
+                SingleQuotedString(r#"it's time to "foo bar""#.into(), true)
             ],
             tokens
         );
@@ -371,14 +392,14 @@ mod tests {
         let input = "echo ''".to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), SingleQuotedString("".into())],
+            vec![String("echo".into()), SingleQuotedString("".into(), true)],
             tokens
         );
 
         let input = "echo \"\"".to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), DoubleQuotedString("".into())],
+            vec![String("echo".into()), DoubleQuotedString("".into(), true)],
             tokens
         );
 

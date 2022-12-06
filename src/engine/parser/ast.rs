@@ -265,8 +265,8 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
             Token::Colon => { /* noop */ }
 
             token @ (Token::String(_)
-            | Token::SingleQuotedString(_)
-            | Token::DoubleQuotedString(_)) => match parse_meta(token) {
+            | Token::SingleQuotedString(_, _)
+            | Token::DoubleQuotedString(_, _)) => match parse_meta(token) {
                 Some(word @ Meta::Word(_)) => {
                     if name.is_none() {
                         name = Some(word);
@@ -469,14 +469,24 @@ fn parse_meta(token: &Token) -> Option<Meta> {
             Some(item)
         }
 
-        Token::SingleQuotedString(s) => {
-            let word = parse_word(s, Expand::None);
-            Some(Meta::Word(word))
+        Token::SingleQuotedString(s, finished) => {
+            if *finished {
+                let word = parse_word(s, Expand::None);
+                Some(Meta::Word(word))
+            } else {
+                // FIXME: syntax error
+                None
+            }
         }
 
-        Token::DoubleQuotedString(s) => {
-            let word = parse_word(s, Expand::VariablesAndCommands);
-            Some(Meta::Word(word))
+        Token::DoubleQuotedString(s, finished) => {
+            if *finished {
+                let word = parse_word(s, Expand::VariablesAndCommands);
+                Some(Meta::Word(word))
+            } else {
+                // FIXME: syntax error
+                None
+            }
         }
 
         Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input { to: s.to_string() })),

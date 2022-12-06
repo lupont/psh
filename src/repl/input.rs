@@ -299,8 +299,8 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
             Token::Space => queue!(engine.writer, style::Print(" "))?,
 
             str_token @ (Token::String(s)
-            | Token::SingleQuotedString(s)
-            | Token::DoubleQuotedString(s)) => {
+            | Token::SingleQuotedString(s, _)
+            | Token::DoubleQuotedString(s, _)) => {
                 match prev_non_space_token {
                     Some(&Token::Pipe | &Token::Semicolon) | None => {
                         let color = if engine.has_builtin(s) {
@@ -319,13 +319,21 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                         Token::String(_) => {
                             queue!(engine.writer, style::SetForegroundColor(Colors::STRING))?
                         }
-                        Token::SingleQuotedString(_) => queue!(
+                        Token::SingleQuotedString(_, finished) => queue!(
                             engine.writer,
-                            style::SetForegroundColor(Colors::SINGLE_QUOTED_STRING)
+                            style::SetForegroundColor(if *finished {
+                                Colors::SINGLE_QUOTED_STRING
+                            } else {
+                                Colors::INCOMPLETE
+                            })
                         )?,
-                        Token::DoubleQuotedString(_) => queue!(
+                        Token::DoubleQuotedString(_, finished) => queue!(
                             engine.writer,
-                            style::SetForegroundColor(Colors::DOUBLE_QUOTED_STRING)
+                            style::SetForegroundColor(if *finished {
+                                Colors::DOUBLE_QUOTED_STRING
+                            } else {
+                                Colors::INCOMPLETE
+                            })
                         )?,
                         _ => unreachable!(),
                     },
@@ -333,11 +341,17 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
 
                 match str_token {
                     Token::String(s) => queue!(engine.writer, style::Print(s))?,
-                    Token::SingleQuotedString(_) => {
+                    Token::SingleQuotedString(_, true) => {
                         queue!(engine.writer, style::Print(format!("'{s}'")))?
                     }
-                    Token::DoubleQuotedString(_) => {
+                    Token::DoubleQuotedString(_, true) => {
                         queue!(engine.writer, style::Print(format!("\"{s}\"")))?
+                    }
+                    Token::SingleQuotedString(_, false) => {
+                        queue!(engine.writer, style::Print(format!("'{s}")))?
+                    }
+                    Token::DoubleQuotedString(_, false) => {
+                        queue!(engine.writer, style::Print(format!("\"{s}")))?
                     }
                     _ => unreachable!(),
                 }
