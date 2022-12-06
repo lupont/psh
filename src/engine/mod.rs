@@ -12,6 +12,7 @@ use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{parse, Command, CommandType, SyntaxTree};
+use self::parser::has_relative_command;
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -88,9 +89,12 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
-        self.commands
-            .iter()
-            .any(|c| c.ends_with(&format!("/{}", cmd.as_ref())))
+        let cmd = cmd.as_ref();
+        has_relative_command(cmd)
+            || self
+                .commands
+                .iter()
+                .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
     }
 
     pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
@@ -128,14 +132,14 @@ impl Engine<Stdout> {
     }
 
     pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
+        let cmd = cmd.expand();
+
         match cmd {
             CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
                 self.execute_builtin(cmd).map(|r| vec![r])
             }
 
             CommandType::Single(cmd) => {
-                let cmd = cmd.expand_all();
-
                 if !self.has_command(cmd.cmd_name()) {
                     writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
                     return Ok(vec![ExitStatus::from(127)]);

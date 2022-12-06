@@ -4,3 +4,4 @@ mod util;
 
 pub use ast::SyntaxTree;
 pub use lexer::{lex, Token};
+pub use util::has_relative_command;

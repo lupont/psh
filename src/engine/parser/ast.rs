@@ -10,6 +10,17 @@ pub enum CommandType {
     Pipeline(Vec<Command>),
 }
 
+impl CommandType {
+    pub fn expand(self) -> Self {
+        match self {
+            Self::Single(cmd) => Self::Single(cmd.expand_all()),
+            Self::Pipeline(cmds) => {
+                Self::Pipeline(cmds.into_iter().map(|c| c.expand_all()).collect::<Vec<_>>())
+            }
+        }
+    }
+}
+
 impl ToString for CommandType {
     fn to_string(&self) -> String {
         match self {

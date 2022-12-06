@@ -10,6 +10,7 @@ use crossterm::terminal;
 use crate::config::{Colors, ABBREVIATIONS};
 use crate::engine::parser::lexer::tokenize;
 use crate::engine::parser::Token;
+use crate::path::home_dir;
 use crate::{Engine, Result};
 
 use super::RawMode;
@@ -309,6 +310,17 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                             Colors::VALID_CMD
                         } else if engine.has_abbreviation(s) && state.highlight_abbreviations {
                             Colors::VALID_ABBR
+                        } else if s.starts_with("~/") {
+                            // FIXME: This block is a hack to make syntax highlighting work.
+                            //        The has_command() function expects expanded lines, but
+                            //        since we don't have a CommandType available here, we
+                            //        have to mock the "expansion".
+                            let expanded_s = s.replacen('~', &home_dir(), 1);
+                            if engine.has_command(expanded_s) {
+                                Colors::VALID_CMD
+                            } else {
+                                Colors::INVALID_CMD
+                            }
                         } else {
                             Colors::INVALID_CMD
                         };
@@ -316,13 +328,14 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                     }
 
                     _ => match str_token {
-                        Token::String(s) => {
-                            queue!(engine.writer, style::SetForegroundColor(if s.starts_with('-') {
+                        Token::String(s) => queue!(
+                            engine.writer,
+                            style::SetForegroundColor(if s.starts_with('-') {
                                 Colors::FLAG
                             } else {
                                 Colors::STRING
-                            }))?
-                        }
+                            })
+                        )?,
                         Token::SingleQuotedString(_, finished) => queue!(
                             engine.writer,
                             style::SetForegroundColor(if *finished {
