@@ -187,19 +187,19 @@ pub enum Redirect {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expansion {
     Parameter {
-        name: String,
         range: RangeInclusive<usize>,
+        name: String,
     },
 
     Command {
-        ast: SyntaxTree,
         range: RangeInclusive<usize>,
+        ast: SyntaxTree,
     },
 
     Glob {
+        range: RangeInclusive<usize>,
         pattern: String,
         recursive: bool,
-        range: RangeInclusive<usize>,
     },
 
     Tilde {

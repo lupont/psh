@@ -133,8 +133,14 @@ impl Engine<Stdout> {
                 self.execute_builtin(cmd).map(|r| vec![r])
             }
 
-            CommandType::Single(cmd) if self.has_command(cmd.cmd_name()) => {
+            CommandType::Single(cmd) => {
                 let cmd = cmd.expand_all();
+
+                if !self.has_command(cmd.cmd_name()) {
+                    writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
+                    return Ok(vec![ExitStatus::from(127)]);
+                }
+
                 let stdout = if let Some(Redirect::Output { from: None, to }) = cmd.redirection() {
                     let f = std::fs::File::open(to)?;
                     Stdio::from(f)
@@ -149,11 +155,6 @@ impl Engine<Stdout> {
                 let code = result.status.code().unwrap_or_default();
 
                 Ok(vec![ExitStatus::from(code)])
-            }
-
-            CommandType::Single(cmd) => {
-                writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
-                Ok(vec![ExitStatus::from(127)])
             }
 
             CommandType::Pipeline(cmds) if cmds.is_empty() => todo!(),
