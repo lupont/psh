@@ -355,16 +355,28 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 style::Print(";")
             )?,
 
-            Token::RedirectOutput(None, to) => queue!(
+            Token::RedirectOutput(None, to, Some(space)) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::NYI),
+                style::Print(format!(">{space}{to}"))
+            )?,
+
+            Token::RedirectOutput(None, to, None) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::NYI),
                 style::Print(format!(">{to}"))
             )?,
 
-            Token::RedirectOutput(Some(from), to) => queue!(
+            Token::RedirectOutput(Some(from), to, None) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::NYI),
                 style::Print(format!("{from}>{to}"))
+            )?,
+
+            Token::RedirectOutput(Some(from), to, Some(space)) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::NYI),
+                style::Print(format!("{from}>{space}{to}"))
             )?,
 
             Token::RedirectInput(to) => queue!(

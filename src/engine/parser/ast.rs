@@ -4,7 +4,7 @@ use crate::path::home_dir;
 
 use super::{util, Token};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CommandType {
     Single(Command),
     Pipeline(Vec<Command>),
@@ -23,7 +23,7 @@ impl ToString for CommandType {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Command {
     pub name: Word,
     pub prefix: Vec<Meta>,
@@ -40,6 +40,24 @@ impl Command {
         self.prefix = self.prefix.into_iter().map(Meta::expand).collect();
         self.suffix = self.suffix.into_iter().map(Meta::expand).collect();
         self
+    }
+
+    pub fn redirection(&self) -> Option<Redirect> {
+        let mut redirect = None;
+
+        for p in &self.prefix {
+            if let Meta::Redirect(r) = p {
+                redirect = Some(r.clone());
+            }
+        }
+
+        for s in &self.suffix {
+            if let Meta::Redirect(r) = s {
+                redirect = Some(r.clone());
+            }
+        }
+
+        redirect
     }
 
     pub fn args(&self) -> Vec<String> {
@@ -83,7 +101,7 @@ impl ToString for Command {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Word {
     pub name: String,
     pub expansions: Vec<Expansion>,
@@ -126,7 +144,7 @@ impl ToString for Word {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Meta {
     Redirect(Redirect),
     Word(Word),
@@ -137,6 +155,7 @@ impl Meta {
     pub fn expand(self) -> Self {
         match self {
             Self::Word(word) => Self::Word(word.expand()),
+            Self::Redirect(redirect) => Self::Redirect(redirect),
             _ => todo!(),
         }
     }
@@ -159,13 +178,13 @@ impl ToString for Meta {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Redirect {
     Output { from: Option<String>, to: String },
     Input { to: String },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expansion {
     Parameter {
         name: String,
@@ -188,7 +207,7 @@ pub enum Expansion {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SyntaxTree {
     commands: Vec<CommandType>,
 }
@@ -266,7 +285,7 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
                 None => {}
             },
 
-            token @ Token::RedirectOutput(_, _) => {
+            token @ Token::RedirectOutput(_, _, _) => {
                 if let Some(redirect) = parse_meta(token) {
                     match name {
                         Some(_) => suffix.push(redirect),
@@ -462,7 +481,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
 
         Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input { to: s.to_string() })),
 
-        Token::RedirectOutput(from, to) => {
+        Token::RedirectOutput(from, to, _) => {
             let from = match from {
                 Some(s) => Some(s),
                 None => None,

@@ -15,7 +15,7 @@ fn main() {
     let args = args::Args::parse();
 
     if args.lex {
-        let tokens = engine::parser::lex(args.command.unwrap());
+        let tokens = engine::parser::lexer::tokenize(args.command.unwrap(), args.include_space);
         for token in tokens {
             println!("{:?}", token);
         }

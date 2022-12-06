@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::{self, ChildStdout, Stdio};
 
 use crate::config::ABBREVIATIONS;
+use crate::engine::parser::ast::Redirect;
 use crate::repl::input::read_line;
 use crate::{path, Error, Result};
 
@@ -134,8 +135,15 @@ impl Engine<Stdout> {
 
             CommandType::Single(cmd) if self.has_command(cmd.cmd_name()) => {
                 let cmd = cmd.expand_all();
+                let stdout = if let Some(Redirect::Output { from: None, to }) = cmd.redirection() {
+                    let f = std::fs::File::open(to)?;
+                    Stdio::from(f)
+                } else {
+                    Stdio::inherit()
+                };
                 let child = process::Command::new(cmd.cmd_name())
                     .args(cmd.args())
+                    .stdout(stdout)
                     .spawn()?;
                 let result = child.wait_with_output()?;
                 let code = result.status.code().unwrap_or_default();

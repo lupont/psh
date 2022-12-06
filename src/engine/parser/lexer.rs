@@ -12,7 +12,7 @@ pub enum Token {
 
     // LBrace,
     // RBrace,
-    RedirectOutput(Option<String>, String),
+    RedirectOutput(Option<String>, String, Option<String>),
     RedirectInput(String),
     Pipe,
 
@@ -50,7 +50,7 @@ pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> 
             }
 
             '>' => {
-                if let Some(token) = try_lex_redirect_output(&mut chars, None) {
+                if let Some(token) = try_lex_redirect_output(&mut chars, None, include_whitespace) {
                     tokens.push(token);
                 }
             }
@@ -102,7 +102,7 @@ pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> 
                 let token = match chars.peek() {
                     Some(&'>') => {
                         chars.next();
-                        try_lex_redirect_output(&mut chars, Some(fd))
+                        try_lex_redirect_output(&mut chars, Some(fd), include_whitespace)
                     }
 
                     Some(&'<') => {
@@ -174,13 +174,21 @@ fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
     }
 }
 
-fn try_lex_redirect_output(chars: &mut Peekable<Chars>, dest: Option<String>) -> Option<Token> {
-    if let Some(&' ') = chars.peek() {
+fn try_lex_redirect_output(chars: &mut Peekable<Chars>, dest: Option<String>, capture_space: bool) -> Option<Token> {
+    let mut found_space = None;
+    while let Some(&' ') = chars.peek() {
         chars.next();
+        if capture_space {
+            if found_space.is_none() {
+                found_space = Some(" ".to_string());
+            } else {
+                found_space = found_space.take().map(|s| s + " ");
+            }
+        }
     }
 
     if let Token::String(s) = try_lex_string(chars, None::<char>, true) {
-        let token = Token::RedirectOutput(dest, s);
+        let token = Token::RedirectOutput(dest, s, found_space);
         Some(token)
     } else {
         None
@@ -245,7 +253,7 @@ mod tests {
                 String("FOO=".into()),
                 String("ls".into()),
                 DoubleQuotedString("foo".into()),
-                RedirectOutput(Some("2".into()), "/dev/null".into()),
+                RedirectOutput(Some("2".into()), "/dev/null".into(), None),
                 Semicolon,
             ],
             tokens
@@ -261,7 +269,7 @@ mod tests {
             vec![
                 // Assignment("LC_ALL".into(), "en-US".into()),
                 String("LC_ALL=en-US".into()),
-                RedirectOutput(Some("2".into()), "&1".into()),
+                RedirectOutput(Some("2".into()), "&1".into(), None),
                 String("ls".into()),
             ],
             tokens,
@@ -277,7 +285,7 @@ mod tests {
             vec![
                 String("groups".into()),
                 DoubleQuotedString("$(whoami)".into()),
-                RedirectOutput(Some("2".into()), "&1".into()),
+                RedirectOutput(Some("2".into()), "&1".into(), None),
                 Semicolon,
                 String("sleep".into()),
                 String("3".into()),
@@ -298,7 +306,7 @@ mod tests {
             vec![
                 String("cat".into()),
                 RedirectInput("foo.txt".into()),
-                RedirectOutput(Some("2".into()), "/dev/null".to_string()),
+                RedirectOutput(Some("2".into()), "/dev/null".to_string(), None),
             ],
             tokens,
         );
@@ -307,15 +315,26 @@ mod tests {
     #[test]
     fn lex_num() {
         let input = "echo 123 2> foo.txt".to_string();
-        let tokens = lex(input);
+        let tokens = lex(&input);
+        let tokens_with_space = tokenize(&input, true);
 
         assert_eq!(
             vec![
                 String("echo".into()),
                 String("123".into()),
-                RedirectOutput(Some("2".into()), "foo.txt".into()),
+                RedirectOutput(Some("2".into()), "foo.txt".into(), None),
             ],
             tokens,
+        );
+        assert_eq!(
+            vec![
+                String("echo".into()),
+                Space,
+                String("123".into()),
+                Space,
+                RedirectOutput(Some("2".into()), "foo.txt".into(), Some(" ".into())),
+            ],
+            tokens_with_space,
         );
     }
 
