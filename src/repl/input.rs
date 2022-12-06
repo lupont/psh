@@ -316,8 +316,12 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                     }
 
                     _ => match str_token {
-                        Token::String(_) => {
-                            queue!(engine.writer, style::SetForegroundColor(Colors::STRING))?
+                        Token::String(s) => {
+                            queue!(engine.writer, style::SetForegroundColor(if s.starts_with('-') {
+                                Colors::FLAG
+                            } else {
+                                Colors::STRING
+                            }))?
                         }
                         Token::SingleQuotedString(_, finished) => queue!(
                             engine.writer,
