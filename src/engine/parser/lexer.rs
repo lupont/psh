@@ -26,11 +26,7 @@ pub enum Token {
     Space,
 }
 
-pub fn lex(input: impl AsRef<str>) -> Vec<Token> {
-    tokenize(input, false)
-}
-
-pub fn tokenize(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
+pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
 
     let mut chars = input.as_ref().chars().peekable();
@@ -250,7 +246,7 @@ mod tests {
     #[test]
     fn lex_basic() {
         let input = "echo 'foo bar' |lolcat".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
 
         assert_eq!(
             vec![
@@ -266,7 +262,7 @@ mod tests {
     #[test]
     fn lex_basic_2() {
         let input = "FOO= ls \"foo\" 2>/dev/null;".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
 
         assert_eq!(
             vec![
@@ -284,7 +280,7 @@ mod tests {
     #[test]
     fn lex_command_with_prefixes() {
         let input = "LC_ALL=en-US 2>&1 ls".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
 
         assert_eq!(
             vec![
@@ -300,7 +296,7 @@ mod tests {
     #[test]
     fn lex_multiple_commands_and_substitution() {
         let input = "groups \"$(whoami)\" 2>&1; sleep 3 &; :".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
 
         assert_eq!(
             vec![
@@ -321,7 +317,7 @@ mod tests {
     #[test]
     fn lex_strange_redirection() {
         let input = "cat<foo.txt 2>/dev/null".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
 
         assert_eq!(
             vec![
@@ -336,8 +332,8 @@ mod tests {
     #[test]
     fn lex_num() {
         let input = "echo 123 2> foo.txt".to_string();
-        let tokens = lex(&input);
-        let tokens_with_space = tokenize(&input, true);
+        let tokens = lex(&input, false);
+        let tokens_with_space = lex(&input, true);
 
         assert_eq!(
             vec![
@@ -362,11 +358,11 @@ mod tests {
     #[test]
     fn lex_misc() {
         let input = "echo foo".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(vec![String("echo".into()), String("foo".into())], tokens);
 
         let input = "echo 'foo bar'".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             vec![
                 String("echo".into()),
@@ -376,7 +372,7 @@ mod tests {
         );
 
         let input = r#"echo "foo bar""#.to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             vec![
                 String("echo".into()),
@@ -386,7 +382,7 @@ mod tests {
         );
 
         let input = r#"echo 'it\'s time to "foo bar"'"#.to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             vec![
                 String("echo".into()),
@@ -396,21 +392,21 @@ mod tests {
         );
 
         let input = "echo ''".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             vec![String("echo".into()), SingleQuotedString("".into(), true)],
             tokens
         );
 
         let input = "echo \"\"".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             vec![String("echo".into()), DoubleQuotedString("".into(), true)],
             tokens
         );
 
         let input = "PATH=\"\" ls".to_string();
-        let tokens = lex(input);
+        let tokens = lex(input, false);
         assert_eq!(
             // vec![Assignment("PATH".into(), "".into()), String("ls".into())],
             vec![String("PATH=\"\"".into()), String("ls".into())],

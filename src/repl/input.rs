@@ -8,7 +8,7 @@ use crossterm::style;
 use crossterm::terminal;
 
 use crate::config::{Colors, ABBREVIATIONS};
-use crate::engine::parser::lexer::tokenize;
+use crate::engine::parser::lexer::lex;
 use crate::engine::parser::Token;
 use crate::path::home_dir;
 use crate::{Engine, Result};
@@ -285,7 +285,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
     // Perhaps it would be preferable to use the AST to highlight.
     // Using the tokens is kind of hacky (e.g. since it highlights
     // commands based on what the previous token was)
-    let tokens = tokenize(&state.line, true);
+    let tokens = lex(&state.line, true);
 
     let mut prev_non_space_token = None;
 

@@ -5,7 +5,7 @@ mod error;
 mod path;
 mod repl;
 
-use crate::engine::parser::ast::parse;
+use crate::engine::parser::{lex, parse};
 pub use crate::engine::{Engine, ExitStatus};
 pub use crate::error::{Error, Result};
 
@@ -15,7 +15,7 @@ fn main() {
     let args = args::Args::parse();
 
     if args.lex {
-        let tokens = engine::parser::lexer::tokenize(args.command.unwrap(), args.include_space);
+        let tokens = lex(args.command.unwrap(), args.include_space);
         for token in tokens {
             println!("{:?}", token);
         }
@@ -27,16 +27,18 @@ fn main() {
     }
 
     if let Some(cmd) = args.command {
-        match Engine::default().execute_line(cmd) {
-            Ok(codes) if codes.is_empty() => return,
+        let code = match Engine::default().execute_line(cmd) {
+            Ok(codes) if codes.is_empty() => 0,
 
-            Ok(codes) => std::process::exit(codes.last().map(|e| e.code).unwrap()),
+            Ok(codes) => codes.last().map(|e| e.code).unwrap(),
 
             Err(e) => {
                 eprintln!("rush: Could not execute command: {e}");
-                std::process::exit(1);
+                1
             }
-        }
+        };
+
+        std::process::exit(code);
     }
 
     let mut repl = repl::Repl::new();
