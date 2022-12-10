@@ -368,14 +368,20 @@ mod tests {
         let input = "echo 'foo bar'".to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), SingleQuotedString("foo bar".into(), true)],
+            vec![
+                String("echo".into()),
+                SingleQuotedString("foo bar".into(), true)
+            ],
             tokens
         );
 
         let input = r#"echo "foo bar""#.to_string();
         let tokens = lex(input);
         assert_eq!(
-            vec![String("echo".into()), DoubleQuotedString("foo bar".into(), true)],
+            vec![
+                String("echo".into()),
+                DoubleQuotedString("foo bar".into(), true)
+            ],
             tokens
         );
 

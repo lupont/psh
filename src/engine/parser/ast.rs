@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
-use crate::{Error, Result};
 use crate::path::home_dir;
+use crate::{Error, Result};
 
 use super::{util, Token};
 
@@ -15,9 +15,11 @@ impl CommandType {
     pub fn expand(self) -> Result<Self> {
         match self {
             Self::Single(cmd) => Ok(Self::Single(cmd.expand_all()?)),
-            Self::Pipeline(cmds) => {
-                Ok(Self::Pipeline(cmds.into_iter().map(|c| c.expand_all()).collect::<Result<Vec<_>>>()?))
-            }
+            Self::Pipeline(cmds) => Ok(Self::Pipeline(
+                cmds.into_iter()
+                    .map(|c| c.expand_all())
+                    .collect::<Result<Vec<_>>>()?,
+            )),
         }
     }
 }
@@ -49,8 +51,16 @@ impl Command {
 
     pub fn expand_all(mut self) -> Result<Self> {
         self.name = self.name.expand()?;
-        self.prefix = self.prefix.into_iter().map(|p| p.expand()).collect::<Result<Vec<_>>>()?;
-        self.suffix = self.suffix.into_iter().map(|s| s.expand()).collect::<Result<Vec<_>>>()?;
+        self.prefix = self
+            .prefix
+            .into_iter()
+            .map(|p| p.expand())
+            .collect::<Result<Vec<_>>>()?;
+        self.suffix = self
+            .suffix
+            .into_iter()
+            .map(|s| s.expand())
+            .collect::<Result<Vec<_>>>()?;
         Ok(self)
     }
 
@@ -139,22 +149,34 @@ impl Word {
                     to_remove.push(i);
                 }
 
-                Expansion::Glob { range: _range, pattern: _pattern, recursive: _recursive } => {
+                Expansion::Glob {
+                    range: _range,
+                    pattern: _pattern,
+                    recursive: _recursive,
+                } => {
                     // TODO: implement globbing
                 }
 
-                Expansion::Parameter { range: _range, name: _name } => {
+                Expansion::Parameter {
+                    range: _range,
+                    name: _name,
+                } => {
                     // TODO: implement parameter expansion
                 }
 
-                Expansion::Command { range: _range, ast: _ast } => {
+                Expansion::Command {
+                    range: _range,
+                    ast: _ast,
+                } => {
                     // TODO: implement command expansion
                 }
             }
         }
 
         if !self.expansions.is_empty() && to_remove.is_empty() {
-            Err(Error::Unimplemented("expansion not yet implemented".to_string()))
+            Err(Error::Unimplemented(
+                "expansion not yet implemented".to_string(),
+            ))
         } else {
             for i in to_remove {
                 self.expansions.remove(i);
