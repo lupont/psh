@@ -1,5 +1,6 @@
 use std::ops::RangeInclusive;
 
+use crate::{Error, Result};
 use crate::path::home_dir;
 
 use super::{util, Token};
@@ -11,11 +12,11 @@ pub enum CommandType {
 }
 
 impl CommandType {
-    pub fn expand(self) -> Self {
+    pub fn expand(self) -> Result<Self> {
         match self {
-            Self::Single(cmd) => Self::Single(cmd.expand_all()),
+            Self::Single(cmd) => Ok(Self::Single(cmd.expand_all()?)),
             Self::Pipeline(cmds) => {
-                Self::Pipeline(cmds.into_iter().map(|c| c.expand_all()).collect::<Vec<_>>())
+                Ok(Self::Pipeline(cmds.into_iter().map(|c| c.expand_all()).collect::<Result<Vec<_>>>()?))
             }
         }
     }
@@ -46,11 +47,11 @@ impl Command {
         &self.name.name
     }
 
-    pub fn expand_all(mut self) -> Self {
-        self.name = self.name.expand();
-        self.prefix = self.prefix.into_iter().map(Meta::expand).collect();
-        self.suffix = self.suffix.into_iter().map(Meta::expand).collect();
-        self
+    pub fn expand_all(mut self) -> Result<Self> {
+        self.name = self.name.expand()?;
+        self.prefix = self.prefix.into_iter().map(|p| p.expand()).collect::<Result<Vec<_>>>()?;
+        self.suffix = self.suffix.into_iter().map(|s| s.expand()).collect::<Result<Vec<_>>>()?;
+        Ok(self)
     }
 
     pub fn redirection(&self) -> Option<Redirect> {
@@ -126,7 +127,7 @@ impl Word {
         }
     }
 
-    fn expand(mut self) -> Self {
+    fn expand(mut self) -> Result<Self> {
         let home = home_dir();
 
         let mut to_remove = vec![];
@@ -137,15 +138,30 @@ impl Word {
                     self.name.replace_range(index..=index, &home);
                     to_remove.push(i);
                 }
-                _ => todo!(),
+
+                Expansion::Glob { range: _range, pattern: _pattern, recursive: _recursive } => {
+                    // TODO: implement globbing
+                }
+
+                Expansion::Parameter { range: _range, name: _name } => {
+                    // TODO: implement parameter expansion
+                }
+
+                Expansion::Command { range: _range, ast: _ast } => {
+                    // TODO: implement command expansion
+                }
             }
         }
 
-        for i in to_remove {
-            self.expansions.remove(i);
-        }
+        if !self.expansions.is_empty() && to_remove.is_empty() {
+            Err(Error::Unimplemented("expansion not yet implemented".to_string()))
+        } else {
+            for i in to_remove {
+                self.expansions.remove(i);
+            }
 
-        self
+            Ok(self)
+        }
     }
 }
 
@@ -163,11 +179,11 @@ pub enum Meta {
 }
 
 impl Meta {
-    pub fn expand(self) -> Self {
+    pub fn expand(self) -> Result<Self> {
         match self {
-            Self::Word(word) => Self::Word(word.expand()),
-            Self::Redirect(redirect) => Self::Redirect(redirect),
-            _ => todo!(),
+            Self::Word(word) => Ok(Self::Word(word.expand()?)),
+            Self::Redirect(redirect) => Ok(Self::Redirect(redirect)),
+            Self::Assignment(var, val) => Ok(Self::Assignment(var.expand()?, val.expand()?)),
         }
     }
 }

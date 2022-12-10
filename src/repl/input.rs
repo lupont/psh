@@ -282,6 +282,9 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 }
 
 fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
+    // Perhaps it would be preferable to use the AST to highlight.
+    // Using the tokens is kind of hacky (e.g. since it highlights
+    // commands based on what the previous token was)
     let tokens = tokenize(&state.line, true);
 
     let mut prev_non_space_token = None;
@@ -303,6 +306,8 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
             | Token::SingleQuotedString(s, _)
             | Token::DoubleQuotedString(s, _)) => {
                 match prev_non_space_token {
+                    // If this is the first token, or if it's directly after any
+                    // command separator, it should be highlighted as a command.
                     Some(&Token::Pipe | &Token::Semicolon) | None => {
                         let color = if engine.has_builtin(s) {
                             Colors::VALID_BUILTIN
@@ -336,6 +341,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                                 Colors::STRING
                             })
                         )?,
+
                         Token::SingleQuotedString(_, finished) => queue!(
                             engine.writer,
                             style::SetForegroundColor(if *finished {
@@ -344,6 +350,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                                 Colors::INCOMPLETE
                             })
                         )?,
+
                         Token::DoubleQuotedString(_, finished) => queue!(
                             engine.writer,
                             style::SetForegroundColor(if *finished {
@@ -352,6 +359,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                                 Colors::INCOMPLETE
                             })
                         )?,
+
                         _ => unreachable!(),
                     },
                 }

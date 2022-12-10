@@ -11,6 +11,7 @@ pub enum Error {
     InvalidHistfile(PathBuf),
     HistoryOutOfBounds,
     UnknownCommand(String),
+    Unimplemented(String),
 }
 
 impl fmt::Display for Error {
@@ -25,6 +26,7 @@ impl fmt::Display for Error {
                     format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
                 Self::HistoryOutOfBounds => "Tried to read beyond the history bounds.".to_string(),
                 Self::UnknownCommand(cmd) => format!("Unknown command: {}", cmd),
+                Self::Unimplemented(s) => s.to_string(),
             }
         )
     }

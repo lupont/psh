@@ -62,7 +62,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
-        let cmd = cmd.expand_all();
+        let cmd = cmd.expand_all()?;
         let command = cmd.cmd_name();
         let args = cmd.args();
 
@@ -132,7 +132,7 @@ impl Engine<Stdout> {
     }
 
     pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
-        let cmd = cmd.expand();
+        let cmd = cmd.expand()?;
 
         match cmd {
             CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
@@ -160,8 +160,6 @@ impl Engine<Stdout> {
 
                 Ok(vec![ExitStatus::from(code)])
             }
-
-            CommandType::Pipeline(cmds) if cmds.is_empty() => todo!(),
 
             CommandType::Pipeline(cmds) => {
                 if let Some(cmd) = cmds.iter().find(|cmd| {
