@@ -5,6 +5,48 @@ use crate::{Error, Result};
 
 use super::{util, Token};
 
+pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
+    let tokens = super::lex(line, false);
+    parse_tokens(tokens)
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SyntaxTree {
+    commands: Vec<CommandType>,
+}
+
+impl SyntaxTree {
+    pub fn new() -> Self {
+        Self {
+            commands: Default::default(),
+        }
+    }
+
+    pub fn add_command(&mut self, command: CommandType) {
+        self.commands.push(command);
+    }
+
+    pub fn commands(self) -> Vec<CommandType> {
+        self.commands
+    }
+}
+
+impl Default for SyntaxTree {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToString for SyntaxTree {
+    fn to_string(&self) -> String {
+        self.commands
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum CommandType {
     Single(Command),
@@ -85,7 +127,7 @@ impl Command {
     pub fn args(&self) -> Vec<String> {
         self.suffix
             .iter()
-            .filter_map(|m: &Meta| {
+            .filter_map(|m| {
                 if let Meta::Word(w) = m {
                     Some(w.name.clone())
                 } else {
@@ -104,12 +146,14 @@ impl ToString for Command {
             .map(|s| s.to_string().trim().to_string())
             .collect::<Vec<_>>()
             .join(" ");
+
         let s = self
             .suffix
             .iter()
             .map(|s| s.to_string().trim().to_string())
             .collect::<Vec<_>>()
             .join(" ");
+
         format!(
             "{}{}{}",
             if p.is_empty() {
@@ -138,13 +182,13 @@ impl Word {
     }
 
     fn expand(mut self) -> Result<Self> {
-        let home = home_dir();
-
         let mut to_remove = vec![];
 
         for (i, expansion) in self.expansions.iter().enumerate() {
             match expansion {
                 Expansion::Tilde { index } => {
+                    let home = home_dir();
+
                     self.name.replace_range(index..=index, &home);
                     to_remove.push(i);
                 }
@@ -173,6 +217,7 @@ impl Word {
             }
         }
 
+        // If there were expansion but none were found, we hit a NYI
         if !self.expansions.is_empty() && to_remove.is_empty() {
             Err(Error::Unimplemented(
                 "expansion not yet implemented".to_string(),
@@ -256,50 +301,57 @@ pub enum Expansion {
     },
 }
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct SyntaxTree {
-    commands: Vec<CommandType>,
-}
+fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
+    // Split tokens by semicolons to get list of commands,
+    // then each command by pipe to get pipeline in command
+    let commands = tokens
+        .split(|t| matches!(t, Token::Semicolon))
+        .map(|tokens| {
+            tokens
+                .split(|t| matches!(t, Token::Pipe))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
 
-impl Default for SyntaxTree {
-    fn default() -> Self {
-        Self::new()
+    let mut ast = SyntaxTree {
+        commands: Vec::with_capacity(commands.len()),
+    };
+
+    for pipeline in commands {
+        match &pipeline[..] {
+            &[cmd] if !cmd.is_empty() => {
+                if let Some(cmd) = parse_command(cmd) {
+                    ast.add_command(CommandType::Single(cmd));
+                } else {
+                    panic!("could not parse command");
+                    // FIXME: syntax error?
+                }
+            }
+
+            cmds => {
+                let mut commands = Vec::new();
+
+                for &command in cmds {
+                    if command.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(cmd) = parse_command(command) {
+                        commands.push(cmd);
+                    } else {
+                        // FIXME: syntax error?
+                        panic!("could not parse command");
+                    }
+                }
+
+                if !commands.is_empty() {
+                    ast.add_command(CommandType::Pipeline(commands));
+                }
+            }
+        };
     }
-}
 
-impl ToString for SyntaxTree {
-    fn to_string(&self) -> String {
-        self.commands
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("; ")
-    }
-}
-
-impl SyntaxTree {
-    pub fn new() -> Self {
-        Self {
-            commands: Default::default(),
-        }
-    }
-
-    pub fn add_command(&mut self, command: CommandType) {
-        self.commands.push(command);
-    }
-
-    pub fn commands(&self) -> &[CommandType] {
-        &self.commands
-    }
-
-    pub fn consume(self) -> Vec<CommandType> {
-        self.commands
-    }
-}
-
-pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
-    let tokens = super::lex(line, false);
-    parse_tokens(tokens)
+    ast
 }
 
 fn parse_command(tokens: &[Token]) -> Option<Command> {
@@ -554,59 +606,6 @@ fn parse_meta(token: &Token) -> Option<Meta> {
 
         _ => unreachable!(),
     }
-}
-
-fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
-    // Split tokens by semicolons to get list of commands,
-    // then each command by pipe to get pipeline in command
-    let commands = tokens
-        .split(|t| matches!(t, Token::Semicolon))
-        .map(|tokens| {
-            tokens
-                .split(|t| matches!(t, Token::Pipe))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    let mut ast = SyntaxTree {
-        commands: Vec::with_capacity(commands.len()),
-    };
-
-    for pipeline in commands {
-        match &pipeline[..] {
-            &[cmd] if !cmd.is_empty() => {
-                if let Some(cmd) = parse_command(cmd) {
-                    ast.add_command(CommandType::Single(cmd));
-                } else {
-                    panic!("could not parse command");
-                    // FIXME: syntax error?
-                }
-            }
-
-            cmds => {
-                let mut commands = Vec::new();
-
-                for &command in cmds {
-                    if command.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(cmd) = parse_command(command) {
-                        commands.push(cmd);
-                    } else {
-                        // FIXME: syntax error?
-                        panic!("could not parse command");
-                    }
-                }
-
-                if !commands.is_empty() {
-                    ast.add_command(CommandType::Pipeline(commands));
-                }
-            }
-        };
-    }
-
-    ast
 }
 
 #[cfg(test)]

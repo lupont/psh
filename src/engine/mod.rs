@@ -126,7 +126,7 @@ impl Engine<Stdout> {
     }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        ast.consume()
+        ast.commands()
             .into_iter()
             .fold(Ok(vec![]), |_, c| self.execute(c))
     }
@@ -151,10 +151,12 @@ impl Engine<Stdout> {
                 } else {
                     Stdio::inherit()
                 };
+
                 let child = process::Command::new(cmd.cmd_name())
                     .args(cmd.args())
                     .stdout(stdout)
                     .spawn()?;
+
                 let result = child.wait_with_output()?;
                 let code = result.status.code().unwrap_or_default();
 
