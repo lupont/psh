@@ -281,6 +281,9 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     }
 }
 
+// FIXME: highlighting does not work in command substitutions,
+//        since we are not aware of them because we're using
+//        tokens to highlight instead of the AST
 fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
     // Perhaps it would be preferable to use the AST to highlight.
     // Using the tokens is kind of hacky (e.g. since it highlights

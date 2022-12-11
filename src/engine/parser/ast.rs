@@ -967,59 +967,136 @@ mod tests {
         assert_eq!(expected, ast);
     }
 
-    // #[test]
-    // fn multiple_nested_command_expansions_parsing() {
-    //     let input = r#"echo "$(cat $(echo "$(cat foo)"))""#.to_string();
-    //     let ast = parse(input);
+    #[test]
+    fn command_expansion_without_quotes_parsing() {
+        let input = "echo $(cat $(echo $(cat foo | rev) )) bar".to_string();
+        let ast = parse(input);
 
-    //     let expected = SyntaxTree {
-    //         commands: vec![CommandType::Single(Command {
-    //             name: Word::new("echo", vec![]),
-    //             prefix: vec![],
-    //             suffix: vec![Meta::Word(Word::new(
-    //                 r#"$(cat $(echo "$(cat foo)"))"#,
-    //                 vec![Expansion::Command {
-    //                     range: 0..=26,
-    //                     ast: SyntaxTree {
-    //                         commands: vec![CommandType::Single(Command {
-    //                             name: Word::new("cat", vec![]),
-    //                             prefix: vec![],
-    //                             suffix: vec![Meta::Word(Word::new(
-    //                                 r#"$(echo "$(cat foo)")"#,
-    //                                 vec![Expansion::Command {
-    //                                     range: 0..=20,
-    //                                     ast: SyntaxTree {
-    //                                         commands: vec![CommandType::Single(Command {
-    //                                             name: Word::new("echo", vec![]),
-    //                                             prefix: vec![],
-    //                                             suffix: vec![Meta::Word(Word::new(
-    //                                                 "$(cat foo)",
-    //                                                 vec![Expansion::Command {
-    //                                                     range: 0..=10,
-    //                                                     ast: SyntaxTree {
-    //                                                         commands: vec![CommandType::Single(
-    //                                                             Command {
-    //                                                                 name: Word::new("cat", vec![]),
-    //                                                                 prefix: vec![],
-    //                                                                 suffix: vec![Meta::Word(
-    //                                                                     Word::new("foo", vec![]),
-    //                                                                 )],
-    //                                                             },
-    //                                                         )],
-    //                                                     },
-    //                                                 }],
-    //                                             ))],
-    //                                         })],
-    //                                     },
-    //                                 }],
-    //                             ))],
-    //                         })],
-    //                     },
-    //                 }],
-    //             ))],
-    //         })],
-    //     };
+        let expected = SyntaxTree {
+            commands: vec![CommandType::Single(Command {
+                name: Word::new("echo", vec![]),
+                prefix: vec![],
+                suffix: vec![
+                    Meta::Word(Word::new(
+                        "$(cat $(echo $(cat foo | rev) ))",
+                        vec![Expansion::Command {
+                            range: 0..=31,
+                            ast: SyntaxTree {
+                                commands: vec![CommandType::Single(Command {
+                                    name: Word::new("cat", vec![]),
+                                    prefix: vec![],
+                                    suffix: vec![Meta::Word(Word::new(
+                                        "$(echo $(cat foo | rev) )",
+                                        vec![Expansion::Command {
+                                            range: 0..=24,
+                                            ast: SyntaxTree {
+                                                commands: vec![CommandType::Single(Command {
+                                                    name: Word::new("echo", vec![]),
+                                                    prefix: vec![],
+                                                    suffix: vec![Meta::Word(Word::new(
+                                                        "$(cat foo | rev)",
+                                                        vec![Expansion::Command {
+                                                            range: 0..=15,
+                                                            ast: SyntaxTree {
+                                                                commands: vec![
+                                                                    CommandType::Pipeline(vec![
+                                                                        Command {
+                                                                            name: Word::new(
+                                                                                "cat",
+                                                                                vec![],
+                                                                            ),
+                                                                            prefix: vec![],
+                                                                            suffix: vec![
+                                                                                Meta::Word(
+                                                                                    Word::new(
+                                                                                        "foo",
+                                                                                        vec![],
+                                                                                    ),
+                                                                                ),
+                                                                            ],
+                                                                        },
+                                                                        Command {
+                                                                            name: Word::new(
+                                                                                "rev",
+                                                                                vec![],
+                                                                            ),
+                                                                            prefix: vec![],
+                                                                            suffix: vec![],
+                                                                        },
+                                                                    ]),
+                                                                ],
+                                                            },
+                                                        }],
+                                                    ))],
+                                                })],
+                                            },
+                                        }],
+                                    ))],
+                                })],
+                            },
+                        }],
+                    )),
+                    Meta::Word(Word::new("bar", vec![])),
+                ],
+            })],
+        };
 
-    //     assert_eq!(expected, ast);
-    // }
+        assert_eq!(expected, ast);
+    }
+
+    #[test]
+    fn multiple_nested_command_expansions_parsing() {
+        let input = r#"echo "$(cat $(echo "$(cat foo)"))""#.to_string();
+        let ast = parse(input);
+
+        let expected = SyntaxTree {
+            commands: vec![CommandType::Single(Command {
+                name: Word::new("echo", vec![]),
+                prefix: vec![],
+                suffix: vec![Meta::Word(Word::new(
+                    r#"$(cat $(echo "$(cat foo)"))"#,
+                    vec![Expansion::Command {
+                        range: 0..=26,
+                        ast: SyntaxTree {
+                            commands: vec![CommandType::Single(Command {
+                                name: Word::new("cat", vec![]),
+                                prefix: vec![],
+                                suffix: vec![Meta::Word(Word::new(
+                                    r#"$(echo "$(cat foo)")"#,
+                                    vec![Expansion::Command {
+                                        range: 0..=19,
+                                        ast: SyntaxTree {
+                                            commands: vec![CommandType::Single(Command {
+                                                name: Word::new("echo", vec![]),
+                                                prefix: vec![],
+                                                suffix: vec![Meta::Word(Word::new(
+                                                    "$(cat foo)",
+                                                    vec![Expansion::Command {
+                                                        range: 0..=9,
+                                                        ast: SyntaxTree {
+                                                            commands: vec![CommandType::Single(
+                                                                Command {
+                                                                    name: Word::new("cat", vec![]),
+                                                                    prefix: vec![],
+                                                                    suffix: vec![Meta::Word(
+                                                                        Word::new("foo", vec![]),
+                                                                    )],
+                                                                },
+                                                            )],
+                                                        },
+                                                    }],
+                                                ))],
+                                            })],
+                                        },
+                                    }],
+                                ))],
+                            })],
+                        },
+                    }],
+                ))],
+            })],
+        };
+
+        assert_eq!(expected, ast);
+    }
 }

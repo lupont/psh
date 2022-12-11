@@ -222,8 +222,10 @@ fn try_lex_string(
         None => String::new(),
     };
 
+    let mut nested_level = 0;
+
     while let Some(&next) = chars.peek() {
-        if "<> ;|".contains(next) {
+        if "<> ;|".contains(next) && nested_level == 0 {
             break;
         }
 
@@ -231,8 +233,22 @@ fn try_lex_string(
             break;
         }
 
+        if &s == "$" && next == '(' {
+            nested_level += 1;
+        }
+
         s.push(next);
         chars.next();
+
+        if next == '$' {
+            if let Some(&'(') = chars.peek() {
+                nested_level += 1;
+            }
+        }
+
+        if nested_level > 0 && next == ')' {
+            nested_level -= 1;
+        }
     }
 
     Token::String(s)
