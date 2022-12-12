@@ -311,7 +311,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 match prev_non_space_token {
                     // If this is the first token, or if it's directly after any
                     // command separator, it should be highlighted as a command.
-                    Some(&Token::Pipe | &Token::Semicolon) | None => {
+                    Some(&Token::Pipe | &Token::Semicolon | &Token::RedirectOutput(_, _, _)) | None => {
                         let color = if engine.has_builtin(s) {
                             Colors::VALID_BUILTIN
                         } else if engine.has_command(s) {
@@ -399,25 +399,25 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
 
             Token::RedirectOutput(None, to, Some(space)) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::NYI),
+                style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!(">{space}{to}"))
             )?,
 
             Token::RedirectOutput(None, to, None) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::NYI),
+                style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!(">{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, None) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::NYI),
+                style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!("{from}>{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, Some(space)) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::NYI),
+                style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!("{from}>{space}{to}"))
             )?,
 
@@ -456,9 +456,11 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
             prev_non_space_token = Some(token);
         }
     }
+
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
+
     queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
 
     engine.writer.flush()?;

@@ -106,22 +106,33 @@ impl Command {
         Ok(self)
     }
 
-    pub fn redirection(&self) -> Option<Redirect> {
-        let mut redirect = None;
+    pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>) {
+        let mut stdout_redirect = None;
+        let mut stderr_redirect = None;
 
         for p in &self.prefix {
             if let Meta::Redirect(r) = p {
-                redirect = Some(r.clone());
+                match r {
+                    Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "1" => stdout_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "2" => stderr_redirect = Some(r.clone()),
+                    _ => {}
+                }
             }
         }
 
         for s in &self.suffix {
             if let Meta::Redirect(r) = s {
-                redirect = Some(r.clone());
+                match r {
+                    Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "1" => stdout_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "2" => stderr_redirect = Some(r.clone()),
+                    _ => {}
+                }
             }
         }
 
-        redirect
+        (stdout_redirect, stderr_redirect)
     }
 
     pub fn args(&self) -> Vec<String> {

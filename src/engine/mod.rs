@@ -145,8 +145,23 @@ impl Engine<Stdout> {
                     return Ok(vec![ExitStatus::from(127)]);
                 }
 
-                let stdout = if let Some(Redirect::Output { from: None, to }) = cmd.redirection() {
-                    let f = std::fs::File::open(to)?;
+                let (stdout_redirect, stderr_redirect) = cmd.redirections();
+
+                let stdout = if let Some(Redirect::Output { from: _, to }) = stdout_redirect {
+                    let f = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .open(to)?;
+                    Stdio::from(f)
+                } else {
+                    Stdio::inherit()
+                };
+
+                let stderr = if let Some(Redirect::Output { from: _, to }) = stderr_redirect {
+                    let f = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create(true)
+                        .open(to)?;
                     Stdio::from(f)
                 } else {
                     Stdio::inherit()
@@ -155,6 +170,7 @@ impl Engine<Stdout> {
                 let child = process::Command::new(cmd.cmd_name())
                     .args(cmd.args())
                     .stdout(stdout)
+                    .stderr(stderr)
                     .spawn()?;
 
                 let result = child.wait_with_output()?;
@@ -177,22 +193,49 @@ impl Engine<Stdout> {
                 for (i, cmd) in cmds.iter().enumerate() {
                     let stdin = match prev_result {
                         Some((Some(stdout), _)) => Stdio::from(stdout),
+                        Some((None, _)) => Stdio::null(),
                         _ => Stdio::inherit(),
                     };
 
-                    let stdout = if i == cmds.len() - 1 {
+                    let (stdout_redirect, stderr_redirect) = cmd.redirections();
+                    let mut save_stdout_for_next_cmd = true;
+
+                    let stdout = if let Some(Redirect::Output { from: _, to }) = stdout_redirect {
+                        let f = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .open(to)?;
+                        save_stdout_for_next_cmd = false;
+                        Stdio::from(f)
+                    } else if i == cmds.len() - 1 {
                         Stdio::inherit()
                     } else {
                         Stdio::piped()
+                    };
+
+                    let stderr = if let Some(Redirect::Output { from: _, to }) = stderr_redirect {
+                        let f = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .open(to)?;
+                        Stdio::from(f)
+                    } else {
+                        // FIXME: should this maybe be piped(), like stdout?
+                        Stdio::inherit()
                     };
 
                     let mut child = process::Command::new(cmd.cmd_name())
                         .args(cmd.args())
                         .stdin(stdin)
                         .stdout(stdout)
+                        .stderr(stderr)
                         .spawn()?;
 
-                    prev_result = Some((child.stdout.take(), 0));
+                    if save_stdout_for_next_cmd {
+                        prev_result = Some((child.stdout.take(), 0));
+                    } else {
+                        prev_result = Some((None, 0));
+                    }
 
                     let result = child.wait_with_output()?;
                     statuses.push(ExitStatus::from(result.status.code().unwrap_or_default()));
