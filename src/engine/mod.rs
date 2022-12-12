@@ -52,7 +52,7 @@ impl<W: Write> Engine<W> {
     }
 
     fn exit(&self, code: i32) -> ! {
-        std::process::exit(code);
+        std::process::exit(code)
     }
 
     pub fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {

@@ -16,17 +16,19 @@ fn main() {
 
     if args.lex {
         let tokens = lex(args.command.unwrap(), args.include_space);
+
         for token in tokens {
             println!("{:?}", token);
         }
-        return;
+
+        std::process::exit(0);
     } else if args.ast {
         let ast = parse(args.command.unwrap());
-        println!("{:#?}", ast);
-        return;
-    }
 
-    if let Some(cmd) = args.command {
+        println!("{:#?}", ast);
+
+        std::process::exit(0);
+    } else if let Some(cmd) = args.command {
         let code = match Engine::default().execute_line(cmd) {
             Ok(codes) if codes.is_empty() => 0,
 
