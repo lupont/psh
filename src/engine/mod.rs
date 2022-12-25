@@ -147,20 +147,32 @@ impl Engine<Stdout> {
 
                 let (stdout_redirect, stderr_redirect) = cmd.redirections();
 
-                let stdout = if let Some(Redirect::Output { from: _, to }) = stdout_redirect {
+                let stdout = if let Some(Redirect::Output {
+                    from: _,
+                    to,
+                    append,
+                }) = stdout_redirect
+                {
                     let f = std::fs::OpenOptions::new()
                         .write(true)
                         .create(true)
+                        .append(append)
                         .open(to)?;
                     Stdio::from(f)
                 } else {
                     Stdio::inherit()
                 };
 
-                let stderr = if let Some(Redirect::Output { from: _, to }) = stderr_redirect {
+                let stderr = if let Some(Redirect::Output {
+                    from: _,
+                    to,
+                    append,
+                }) = stderr_redirect
+                {
                     let f = std::fs::OpenOptions::new()
                         .write(true)
                         .create(true)
+                        .append(append)
                         .open(to)?;
                     Stdio::from(f)
                 } else {
@@ -200,10 +212,16 @@ impl Engine<Stdout> {
                     let (stdout_redirect, stderr_redirect) = cmd.redirections();
                     let mut save_stdout_for_next_cmd = true;
 
-                    let stdout = if let Some(Redirect::Output { from: _, to }) = stdout_redirect {
+                    let stdout = if let Some(Redirect::Output {
+                        from: _,
+                        to,
+                        append,
+                    }) = stdout_redirect
+                    {
                         let f = std::fs::OpenOptions::new()
                             .write(true)
                             .create(true)
+                            .append(append)
                             .open(to)?;
                         save_stdout_for_next_cmd = false;
                         Stdio::from(f)
@@ -213,10 +231,16 @@ impl Engine<Stdout> {
                         Stdio::piped()
                     };
 
-                    let stderr = if let Some(Redirect::Output { from: _, to }) = stderr_redirect {
+                    let stderr = if let Some(Redirect::Output {
+                        from: _,
+                        to,
+                        append,
+                    }) = stderr_redirect
+                    {
                         let f = std::fs::OpenOptions::new()
                             .write(true)
                             .create(true)
+                            .append(append)
                             .open(to)?;
                         Stdio::from(f)
                     } else {

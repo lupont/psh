@@ -286,7 +286,7 @@ fn should_highlight_command(prev_token: Option<&Token>) -> bool {
         return true;
     }
 
-    if let Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _)) = prev_token {
+    if let Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _, _)) = prev_token {
         return true;
     }
 
@@ -302,7 +302,7 @@ fn should_highlight_command(prev_token: Option<&Token>) -> bool {
 fn should_highlight_assignment(prev_token: Option<&Token>) -> bool {
     let mut should_highlight_assignment = matches!(
         prev_token,
-        Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _)) | None
+        Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _, _)) | None
     );
 
     if let Some(token @ Token::String(_)) = prev_token {
@@ -462,28 +462,52 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 style::Print(";")
             )?,
 
-            Token::RedirectOutput(None, to, Some(space)) => queue!(
+            Token::RedirectOutput(None, to, Some(space), false) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!(">{space}{to}"))
             )?,
 
-            Token::RedirectOutput(None, to, None) => queue!(
+            Token::RedirectOutput(None, to, Some(space), true) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::REDIRECT),
+                style::Print(format!(">>{space}{to}"))
+            )?,
+
+            Token::RedirectOutput(None, to, None, false) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!(">{to}"))
             )?,
 
-            Token::RedirectOutput(Some(from), to, None) => queue!(
+            Token::RedirectOutput(None, to, None, true) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::REDIRECT),
+                style::Print(format!(">>{to}"))
+            )?,
+
+            Token::RedirectOutput(Some(from), to, None, false) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!("{from}>{to}"))
             )?,
 
-            Token::RedirectOutput(Some(from), to, Some(space)) => queue!(
+            Token::RedirectOutput(Some(from), to, None, true) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::REDIRECT),
+                style::Print(format!("{from}>>{to}"))
+            )?,
+
+            Token::RedirectOutput(Some(from), to, Some(space), false) => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::REDIRECT),
                 style::Print(format!("{from}>{space}{to}"))
+            )?,
+
+            Token::RedirectOutput(Some(from), to, Some(space), true) => queue!(
+                engine.writer,
+                style::SetForegroundColor(Colors::REDIRECT),
+                style::Print(format!("{from}>>{space}{to}"))
             )?,
 
             Token::RedirectInput(to) => queue!(

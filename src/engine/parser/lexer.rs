@@ -12,7 +12,7 @@ pub enum Token {
 
     // LBrace,
     // RBrace,
-    RedirectOutput(Option<String>, String, Option<String>),
+    RedirectOutput(Option<String>, String, Option<String>, bool),
     RedirectInput(String),
     Pipe,
 
@@ -64,7 +64,10 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             }
 
             '>' => {
-                if let Some(token) = try_lex_redirect_output(&mut chars, None, include_whitespace) {
+                let append = chars.peek() == Some(&'>');
+                if let Some(token) =
+                    try_lex_redirect_output(&mut chars, None, include_whitespace, append)
+                {
                     tokens.push(token);
                 }
             }
@@ -127,7 +130,8 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
                 let token = match chars.peek() {
                     Some(&'>') => {
                         chars.next();
-                        try_lex_redirect_output(&mut chars, Some(fd), include_whitespace)
+                        let append = chars.peek() == Some(&'>');
+                        try_lex_redirect_output(&mut chars, Some(fd), include_whitespace, append)
                     }
 
                     Some(&'<') => {
@@ -239,7 +243,12 @@ fn try_lex_redirect_output(
     chars: &mut Peekable<Chars>,
     dest: Option<String>,
     capture_space: bool,
+    append: bool,
 ) -> Option<Token> {
+    if append && chars.peek() == Some(&'>') {
+        chars.next();
+    }
+
     let mut found_space = None;
     while let Some(&' ') = chars.peek() {
         chars.next();
@@ -253,7 +262,7 @@ fn try_lex_redirect_output(
     }
 
     if let Token::String(s) = try_lex_string(chars, None::<char>, true) {
-        let token = Token::RedirectOutput(dest, s, found_space);
+        let token = Token::RedirectOutput(dest, s, found_space, append);
         Some(token)
     } else {
         None
@@ -337,7 +346,7 @@ mod tests {
                 String("FOO=".into()),
                 String("ls".into()),
                 DoubleQuotedString("foo".into(), true),
-                RedirectOutput(Some("2".into()), "/dev/null".into(), None),
+                RedirectOutput(Some("2".into()), "/dev/null".into(), None, false),
                 Semicolon,
             ],
             tokens
@@ -353,7 +362,7 @@ mod tests {
             vec![
                 // Assignment("LC_ALL".into(), Some("en-US".into())),
                 String("LC_ALL=en-US".into()),
-                RedirectOutput(Some("2".into()), "&1".into(), None),
+                RedirectOutput(Some("2".into()), "&1".into(), None, false),
                 String("ls".into()),
             ],
             tokens,
@@ -369,7 +378,7 @@ mod tests {
             vec![
                 String("groups".into()),
                 DoubleQuotedString("$(whoami)".into(), true),
-                RedirectOutput(Some("2".into()), "&1".into(), None),
+                RedirectOutput(Some("2".into()), "&1".into(), None, false),
                 Semicolon,
                 String("sleep".into()),
                 String("3".into()),
@@ -390,7 +399,44 @@ mod tests {
             vec![
                 String("cat".into()),
                 RedirectInput("foo.txt".into()),
-                RedirectOutput(Some("2".into()), "/dev/null".to_string(), None),
+                RedirectOutput(Some("2".into()), "/dev/null".to_string(), None, false),
+            ],
+            tokens,
+        );
+    }
+
+    #[test]
+    fn lext_append_redirection() {
+        let input = "ls > foo; ls|rev >>foo".to_string();
+        let tokens = lex(&input, false);
+
+        assert_eq!(
+            vec![
+                String("ls".into()),
+                RedirectOutput(None, "foo".to_string(), None, false),
+                Semicolon,
+                String("ls".into()),
+                Pipe,
+                String("rev".into()),
+                RedirectOutput(None, "foo".to_string(), None, true),
+            ],
+            tokens,
+        );
+
+        let tokens = lex(&input, true);
+
+        assert_eq!(
+            vec![
+                String("ls".into()),
+                Space,
+                RedirectOutput(None, "foo".to_string(), Some(" ".to_string()), false),
+                Semicolon,
+                Space,
+                String("ls".into()),
+                Pipe,
+                String("rev".into()),
+                Space,
+                RedirectOutput(None, "foo".to_string(), None, true),
             ],
             tokens,
         );
@@ -406,7 +452,7 @@ mod tests {
             vec![
                 String("echo".into()),
                 String("123".into()),
-                RedirectOutput(Some("2".into()), "foo.txt".into(), None),
+                RedirectOutput(Some("2".into()), "foo.txt".into(), None, false),
             ],
             tokens,
         );
@@ -416,7 +462,7 @@ mod tests {
                 Space,
                 String("123".into()),
                 Space,
-                RedirectOutput(Some("2".into()), "foo.txt".into(), Some(" ".into())),
+                RedirectOutput(Some("2".into()), "foo.txt".into(), Some(" ".into()), false),
             ],
             tokens_with_space,
         );

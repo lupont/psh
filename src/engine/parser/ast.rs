@@ -280,11 +280,26 @@ impl ToString for Meta {
             Self::Word(word) => word.name.clone(),
             Self::Redirect(redirect) => match redirect {
                 Redirect::Input { to } => format!("<{}", to),
-                Redirect::Output { from: None, to } => format!(">{}", to),
+                Redirect::Output {
+                    from: None,
+                    to,
+                    append: false,
+                } => format!(">{}", to),
+                Redirect::Output {
+                    from: None,
+                    to,
+                    append: true,
+                } => format!(">>{}", to),
                 Redirect::Output {
                     from: Some(from),
                     to,
+                    append: false,
                 } => format!("{}>{}", from, to),
+                Redirect::Output {
+                    from: Some(from),
+                    to,
+                    append: true,
+                } => format!("{}>>{}", from, to),
             },
             Self::Assignment(var, val) => format!("{}={}", var.name, val.name),
         }
@@ -293,8 +308,14 @@ impl ToString for Meta {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Redirect {
-    Output { from: Option<String>, to: String },
-    Input { to: String },
+    Output {
+        from: Option<String>,
+        to: String,
+        append: bool,
+    },
+    Input {
+        to: String,
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -405,7 +426,7 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
                 None => {}
             },
 
-            token @ Token::RedirectOutput(_, _, _) => {
+            token @ Token::RedirectOutput(_, _, _, _) => {
                 if let Some(redirect) = parse_meta(token) {
                     match name {
                         Some(_) => suffix.push(redirect),
@@ -611,7 +632,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
 
         Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input { to: s.to_string() })),
 
-        Token::RedirectOutput(from, to, _) => {
+        Token::RedirectOutput(from, to, _, append) => {
             let from = match from {
                 Some(s) => Some(s),
                 None => None,
@@ -620,6 +641,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
             Some(Meta::Redirect(Redirect::Output {
                 from: from.cloned(),
                 to,
+                append: *append,
             }))
         }
 
@@ -645,7 +667,8 @@ mod tests {
                         name: Word::new("echo", vec![]),
                         prefix: vec![Meta::Redirect(Redirect::Output {
                             from: Some("2".into()),
-                            to: "&1".into()
+                            to: "&1".into(),
+                            append: false,
                         }),],
                         suffix: vec![
                             Meta::Word(Word::new("hello", vec![])),
@@ -802,6 +825,7 @@ mod tests {
                         Meta::Redirect(Redirect::Output {
                             from: Some("2".into()),
                             to: "&1".into(),
+                            append: false,
                         }),
                     ],
                     suffix: vec![
@@ -838,6 +862,7 @@ mod tests {
                         Meta::Redirect(Redirect::Output {
                             from: None,
                             to: "foo.log".into(),
+                            append: false,
                         }),
                     ],
                 },
