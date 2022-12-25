@@ -32,3 +32,25 @@ impl Expand for String {
         self.replacen(&home, "~", 1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_works() {
+        let home = home_dir();
+
+        let input = format!("{home}/foo");
+        let expanded = input.expand();
+        assert_eq!("~/foo", expanded);
+
+        let input = format!("{home}");
+        let expanded = input.expand();
+        assert_eq!("~", expanded);
+
+        let input = format!("{home}//");
+        let expanded = input.expand();
+        assert_eq!("~//", expanded);
+    }
+}

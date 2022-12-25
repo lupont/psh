@@ -469,6 +469,46 @@ mod tests {
     }
 
     #[test]
+    fn lex_or() {
+        let input = "test -d foo | tee log || exit".to_string();
+        let tokens = lex(input, false);
+
+        assert_eq!(
+            vec![
+                String("test".to_string()),
+                String("-d".to_string()),
+                String("foo".to_string()),
+                Pipe,
+                String("tee".to_string()),
+                String("log".to_string()),
+                Or,
+                String("exit".to_string()),
+            ],
+            tokens
+        );
+    }
+
+    #[test]
+    fn lex_and() {
+        let input = "test -d foo | tee log && exit".to_string();
+        let tokens = lex(input, false);
+
+        assert_eq!(
+            vec![
+                String("test".to_string()),
+                String("-d".to_string()),
+                String("foo".to_string()),
+                Pipe,
+                String("tee".to_string()),
+                String("log".to_string()),
+                And,
+                String("exit".to_string()),
+            ],
+            tokens
+        );
+    }
+
+    #[test]
     fn lex_misc() {
         let input = "echo foo".to_string();
         let tokens = lex(input, false);
@@ -539,5 +579,39 @@ mod tests {
         //     vec![Assignment("PATH".into(), None), String("ls".into())],
         //     tokens,
         // );
+    }
+
+    #[test]
+    fn try_get_assignment_works() {
+        let token = Token::String("FOO=bar".to_string());
+        let assignment = token.try_get_assignment();
+
+        assert_eq!(
+            Some(("FOO".to_string(), Some("bar".to_string()))),
+            assignment
+        );
+
+        let token = Token::String("ARGS=bar=baz,a=b".to_string());
+        let assignment = token.try_get_assignment();
+
+        assert_eq!(
+            Some(("ARGS".to_string(), Some("bar=baz,a=b".to_string()))),
+            assignment
+        );
+
+        let token = Token::String("FOO=".to_string());
+        let assignment = token.try_get_assignment();
+
+        assert_eq!(Some(("FOO".to_string(), None)), assignment);
+
+        let token = Token::String("FOO".to_string());
+        let assignment = token.try_get_assignment();
+
+        assert_eq!(None, assignment);
+
+        let token = Token::SingleQuotedString("a".to_string(), true);
+        let assignment = token.try_get_assignment();
+
+        assert_eq!(None, assignment);
     }
 }
