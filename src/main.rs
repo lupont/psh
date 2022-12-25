@@ -35,7 +35,7 @@ fn main() {
             Ok(codes) => codes.last().map(|e| e.code).unwrap(),
 
             Err(e) => {
-                eprintln!("rush: Could not execute command: {e}");
+                eprintln!("posh: Could not execute command: {e}");
                 1
             }
         };
@@ -46,6 +46,6 @@ fn main() {
     let mut repl = repl::Repl::new();
 
     if let Err(e) = repl.run() {
-        eprintln!("rush: Unrecoverable error occurred: {e}");
+        eprintln!("posh: Unrecoverable error occurred: {e}");
     }
 }

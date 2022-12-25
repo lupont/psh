@@ -23,7 +23,7 @@ impl fmt::Display for Error {
                 Self::Io(e) => e.to_string(),
                 Self::NoHome => "Could not read $HOME".to_string(),
                 Self::InvalidHistfile(path) =>
-                    format!("$RUSH_HISTFILE contains invalid path: {}", path.display()),
+                    format!("$POSH_HISTFILE contains invalid path: {}", path.display()),
                 Self::HistoryOutOfBounds => "Tried to read beyond the history bounds.".to_string(),
                 Self::UnknownCommand(cmd) => format!("Unknown command: {}", cmd),
                 Self::Unimplemented(s) => s.to_string(),

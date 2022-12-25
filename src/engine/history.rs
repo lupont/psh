@@ -23,12 +23,12 @@ pub struct FileHistory {
 
 impl FileHistory {
     pub fn init() -> Result<Self> {
-        let path = match env::var("RUSH_HISTORY") {
+        let path = match env::var("POSH_HISTORY") {
             Ok(path) => PathBuf::from(path),
             Err(_) => match env::var("HOME") {
                 Ok(home) => PathBuf::from(home)
                     .join(".config")
-                    .join("rush")
+                    .join("posh")
                     .join("history"),
                 Err(_) => return Err(Error::NoHome),
             },

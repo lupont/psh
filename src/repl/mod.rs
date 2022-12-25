@@ -28,7 +28,7 @@ impl Repl {
             if let Err(e) = self.prompt() {
                 writeln!(
                     self.engine.writer,
-                    "rush: Error occurred when computing the prompt: {e}"
+                    "posh: Error occurred when computing the prompt: {e}"
                 )?;
             }
 
@@ -42,7 +42,7 @@ impl Repl {
                 Err(e) => {
                     writeln!(
                         self.engine.writer,
-                        "rush: Error occurred when reading or executing: {e}"
+                        "posh: Error occurred when reading or executing: {e}"
                     )?;
                 }
             }

@@ -1,11 +1,11 @@
-# rush
+# posh
 
-`rush` is a shell, mostly aimed at interactive use. It is highly inspired by
+`posh` is a shell, mostly aimed at interactive use. It is highly inspired by
 [`fish`](https://fishshell.com/), but with fewer features.
 
 ## Goals
 
-Before `rush` can be considered feature complete, the following features are
+Before `posh` can be considered feature complete, the following features are
 required:
 
 ### Tab completion
@@ -51,11 +51,11 @@ session.
 ### Configurability
 
 The shell should be able to execute arbitrary files, reading one (or some) of
-them at login. Most likely in `$XDG_CONFIG_HOME/rush/init.rush` or similar.
+them at login. Most likely in `$XDG_CONFIG_HOME/posh/init.posh` or similar.
 
 ### More advanced CLI
 
-The rush CLI should be able to accept some flags, in part in order to be POSIX
+The posh CLI should be able to accept some flags, in part in order to be POSIX
 compliant (I believe). Things like `-c` to execute something, and probably a
 bunch more.
 
@@ -114,6 +114,6 @@ following is a high-level checklist of what is in and what is not.
 
 ## Contributing
 
-`rush` is written in Rust, and uses `cargo` for building, linting, formatting,
+`posh` is written in Rust, and uses `cargo` for building, linting, formatting,
 and testing. Contributing requires having the stable Rust toolchain installed.
 The recommended way to install this is with [rustup](https://rustup.rs).
