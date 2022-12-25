@@ -10,8 +10,18 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
 
+    - name: Clippy
+      run: cargo clippy --no-deps
+
+    - name: Format
+      run: cargo fmt --check --verbose
+
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,11 +30,14 @@ jobs:
     - name: Build
       run: cargo build --verbose
 
-    - name: Lint
-      run: cargo clippy --no-deps
+  test:
+    runs-on: ubuntu-latest
 
-    - name: Format
-      run: cargo fmt --check --verbose
+    steps:
+    - uses: actions/checkout@v3
 
-    - name: Test
-      run: cargo test --verbose
+    - name: Install llvm-cov
+      run: cargo install cargo-llvm-cov
+
+    - name: Test Coverage
+      run: cargo llvm-cov
