@@ -11,6 +11,7 @@ impl Colors {
     pub const STRING: Color = Color::Reset;
     pub const SINGLE_QUOTED_STRING: Color = Color::Blue;
     pub const DOUBLE_QUOTED_STRING: Color = Color::DarkGreen;
+    pub const ASSIGNMENT: Color = Color::DarkBlue;
     pub const FLAG: Color = Color::Grey;
     pub const PIPE: Color = Color::DarkMagenta;
     pub const SEMICOLON: Color = Color::Magenta;

@@ -114,8 +114,12 @@ impl Command {
             if let Meta::Redirect(r) = p {
                 match r {
                     Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "1" => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "2" => stderr_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "1" => {
+                        stdout_redirect = Some(r.clone())
+                    }
+                    Redirect::Output { from: Some(s), .. } if s == "2" => {
+                        stderr_redirect = Some(r.clone())
+                    }
                     _ => {}
                 }
             }
@@ -125,8 +129,12 @@ impl Command {
             if let Meta::Redirect(r) = s {
                 match r {
                     Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "1" => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "2" => stderr_redirect = Some(r.clone()),
+                    Redirect::Output { from: Some(s), .. } if s == "1" => {
+                        stdout_redirect = Some(r.clone())
+                    }
+                    Redirect::Output { from: Some(s), .. } if s == "2" => {
+                        stderr_redirect = Some(r.clone())
+                    }
                     _ => {}
                 }
             }

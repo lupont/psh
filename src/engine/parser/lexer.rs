@@ -26,6 +26,24 @@ pub enum Token {
     Space,
 }
 
+impl Token {
+    pub fn try_get_assignment(&self) -> Option<(String, Option<String>)> {
+        match self {
+            Token::String(s) => match s.split_once('=') {
+                Some((a, b)) => {
+                    if b.is_empty() {
+                        Some((a.to_string(), None))
+                    } else {
+                        Some((a.to_string(), Some(b.to_string())))
+                    }
+                }
+                None => None,
+            },
+            _ => None,
+        }
+    }
+}
+
 pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
     let mut tokens = Vec::new();
 
@@ -91,6 +109,11 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             },
 
             c if c.is_ascii_digit() => {
+                // if let Some(t) = try_lex_assignment(&mut chars) {
+                //     tokens.push(t);
+                //     continue;
+                // }
+
                 let mut fd = String::from(c);
                 while let Some(&c) = chars.peek() {
                     if c.is_ascii_digit() {
@@ -174,6 +197,31 @@ fn advance_until(
     }
 }
 
+// fn try_lex_assignment(chars: &mut Peekable<Chars>) -> Option<Token> {
+//     let mut chars_clone = chars.clone();
+//     if let Token::String(s) = try_lex_string(&mut chars_clone, None::<char>, false) {
+//         println!("s = '{}'", s);
+//         match s.split_once('=') {
+//             Some((lhs, rhs)) => {
+//                 println!("got it");
+//                 *chars = chars_clone;
+//                 if rhs.is_empty() {
+//                     Some(Token::Assignment(lhs.to_string(), None))
+//                 } else {
+//                     Some(Token::Assignment(lhs.to_string(), Some(rhs.to_string())))
+//                 }
+//             }
+//             None => {
+//                 println!("got string but no split");
+//                 None
+//             },
+//         }
+//     } else {
+//         println!("got nothing");
+//         None
+//     }
+// }
+
 fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
     if let Some(&' ') = chars.peek() {
         chars.next();
@@ -225,6 +273,7 @@ fn try_lex_string(
     let mut nested_level = 0;
 
     while let Some(&next) = chars.peek() {
+        // println!("s = '{}', next = '{}'", &s, &next);
         if "<> ;|".contains(next) && nested_level == 0 {
             break;
         }
@@ -250,6 +299,8 @@ fn try_lex_string(
             nested_level -= 1;
         }
     }
+
+    // println!("final s = '{}'", &s);
 
     Token::String(s)
 }
@@ -300,7 +351,7 @@ mod tests {
 
         assert_eq!(
             vec![
-                // Assignment("LC_ALL".into(), "en-US".into()),
+                // Assignment("LC_ALL".into(), Some("en-US".into())),
                 String("LC_ALL=en-US".into()),
                 RedirectOutput(Some("2".into()), "&1".into(), None),
                 String("ls".into()),
@@ -424,22 +475,22 @@ mod tests {
         let input = "PATH=\"\" ls".to_string();
         let tokens = lex(input, false);
         assert_eq!(
-            // vec![Assignment("PATH".into(), "".into()), String("ls".into())],
+            // vec![Assignment("PATH".into(), None), String("ls".into())],
             vec![String("PATH=\"\"".into()), String("ls".into())],
             tokens,
         );
 
         // let input = "PATH='' ls".to_string();
-        // let tokens = lex(input);
+        // let tokens = lex(input, false);
         // assert_eq!(
-        //     vec![Assignment("PATH".into(), "".into()), String("ls".into())],
+        //     vec![Assignment("PATH".into(), None), String("ls".into())],
         //     tokens,
         // );
 
         // let input = "PATH= ls".to_string();
-        // let tokens = lex(input);
+        // let tokens = lex(input, false);
         // assert_eq!(
-        //     vec![Assignment("PATH".into(), "".into()), String("ls".into())],
+        //     vec![Assignment("PATH".into(), None), String("ls".into())],
         //     tokens,
         // );
     }

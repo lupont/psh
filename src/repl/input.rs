@@ -281,6 +281,39 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     }
 }
 
+fn should_highlight_command(prev_token: Option<&Token>) -> bool {
+    if prev_token.is_none() {
+        return true;
+    }
+
+    if let Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _)) = prev_token {
+        return true;
+    }
+
+    if let Some(token @ Token::String(_)) = prev_token {
+        if token.try_get_assignment().is_some() {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn should_highlight_assignment(prev_token: Option<&Token>) -> bool {
+    let mut should_highlight_assignment = matches!(
+        prev_token,
+        Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _)) | None
+    );
+
+    if let Some(token @ Token::String(_)) = prev_token {
+        if token.try_get_assignment().is_some() {
+            should_highlight_assignment = true;
+        }
+    }
+
+    should_highlight_assignment
+}
+
 // FIXME: highlighting does not work in command substitutions,
 //        since we are not aware of them because we're using
 //        tokens to highlight instead of the AST
@@ -311,7 +344,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 match prev_non_space_token {
                     // If this is the first token, or if it's directly after any
                     // command separator, it should be highlighted as a command.
-                    Some(&Token::Pipe | &Token::Semicolon | &Token::RedirectOutput(_, _, _)) | None => {
+                    token if should_highlight_command(token) => {
                         let color = if engine.has_builtin(s) {
                             Colors::VALID_BUILTIN
                         } else if engine.has_command(s) {
@@ -368,19 +401,51 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 }
 
                 match str_token {
-                    Token::String(s) => queue!(engine.writer, style::Print(s))?,
+                    token @ Token::String(s) => {
+                        let highlight_assignment =
+                            should_highlight_assignment(prev_non_space_token);
+
+                        match token.try_get_assignment() {
+                            Some((a, None)) if highlight_assignment => {
+                                queue!(
+                                    engine.writer,
+                                    style::SetForegroundColor(Colors::STRING),
+                                    style::Print(a),
+                                    style::SetForegroundColor(Colors::ASSIGNMENT),
+                                    style::Print('=')
+                                )?;
+                            }
+                            Some((a, Some(b))) if highlight_assignment => {
+                                queue!(
+                                    engine.writer,
+                                    style::SetForegroundColor(Colors::STRING),
+                                    style::Print(a),
+                                    style::SetForegroundColor(Colors::ASSIGNMENT),
+                                    style::Print('='),
+                                    style::SetForegroundColor(Colors::STRING),
+                                    style::Print(b),
+                                )?;
+                            }
+                            _ => queue!(engine.writer, style::Print(s))?,
+                        }
+                    }
+
                     Token::SingleQuotedString(_, true) => {
                         queue!(engine.writer, style::Print(format!("'{s}'")))?
                     }
+
                     Token::DoubleQuotedString(_, true) => {
                         queue!(engine.writer, style::Print(format!("\"{s}\"")))?
                     }
+
                     Token::SingleQuotedString(_, false) => {
                         queue!(engine.writer, style::Print(format!("'{s}")))?
                     }
+
                     Token::DoubleQuotedString(_, false) => {
                         queue!(engine.writer, style::Print(format!("\"{s}")))?
                     }
+
                     _ => unreachable!(),
                 }
             }
