@@ -7,11 +7,6 @@ pub enum Token {
     SingleQuotedString(String, bool),
     DoubleQuotedString(String, bool),
 
-    // LParen,
-    // RParen,
-
-    // LBrace,
-    // RBrace,
     RedirectOutput(Option<String>, String, Option<String>, bool),
     RedirectInput(String),
     Pipe,
@@ -30,13 +25,8 @@ impl Token {
     pub fn try_get_assignment(&self) -> Option<(String, Option<String>)> {
         match self {
             Token::String(s) => match s.split_once('=') {
-                Some((a, b)) => {
-                    if b.is_empty() {
-                        Some((a.to_string(), None))
-                    } else {
-                        Some((a.to_string(), Some(b.to_string())))
-                    }
-                }
+                Some((a, b)) if b.is_empty() => Some((a.to_string(), None)),
+                Some((a, b)) => Some((a.to_string(), Some(b.to_string()))),
                 None => None,
             },
             _ => None,
@@ -53,10 +43,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
         match ch {
             ' ' if include_whitespace => tokens.push(Token::Space),
             ' ' => {}
-            // '(' => tokens.push(Token::LParen),
-            // ')' => tokens.push(Token::RParen),
-            // '{' => tokens.push(Token::LBrace),
-            // '}' => tokens.push(Token::RBrace),
+
             '<' => {
                 if let Some(token) = try_lex_redirect_input(&mut chars) {
                     tokens.push(token);
@@ -84,7 +71,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             '"' => match advance_until(&mut chars, '"', true) {
                 Ok(s) => tokens.push(Token::DoubleQuotedString(s, true)),
                 Err(s) => {
-                    // FIXME: syntax error
+                    // FIXME: this is a syntax error, but is needed for syntax highlighting
                     tokens.push(Token::DoubleQuotedString(s, false));
                 }
             },
@@ -92,7 +79,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             '\'' => match advance_until(&mut chars, '\'', false) {
                 Ok(s) => tokens.push(Token::SingleQuotedString(s, true)),
                 Err(s) => {
-                    // FIXME: syntax error
+                    // FIXME: this is a syntax error, but is needed for syntax highlighting
                     tokens.push(Token::SingleQuotedString(s, false));
                 }
             },
@@ -112,12 +99,8 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             },
 
             c if c.is_ascii_digit() => {
-                // if let Some(t) = try_lex_assignment(&mut chars) {
-                //     tokens.push(t);
-                //     continue;
-                // }
-
                 let mut fd = String::from(c);
+
                 while let Some(&c) = chars.peek() {
                     if c.is_ascii_digit() {
                         fd.push(c);
@@ -201,31 +184,6 @@ fn advance_until(
     }
 }
 
-// fn try_lex_assignment(chars: &mut Peekable<Chars>) -> Option<Token> {
-//     let mut chars_clone = chars.clone();
-//     if let Token::String(s) = try_lex_string(&mut chars_clone, None::<char>, false) {
-//         println!("s = '{}'", s);
-//         match s.split_once('=') {
-//             Some((lhs, rhs)) => {
-//                 println!("got it");
-//                 *chars = chars_clone;
-//                 if rhs.is_empty() {
-//                     Some(Token::Assignment(lhs.to_string(), None))
-//                 } else {
-//                     Some(Token::Assignment(lhs.to_string(), Some(rhs.to_string())))
-//                 }
-//             }
-//             None => {
-//                 println!("got string but no split");
-//                 None
-//             },
-//         }
-//     } else {
-//         println!("got nothing");
-//         None
-//     }
-// }
-
 fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
     if let Some(&' ') = chars.peek() {
         chars.next();
@@ -282,7 +240,6 @@ fn try_lex_string(
     let mut nested_level = 0;
 
     while let Some(&next) = chars.peek() {
-        // println!("s = '{}', next = '{}'", &s, &next);
         if "<> ;|".contains(next) && nested_level == 0 {
             break;
         }
@@ -308,8 +265,6 @@ fn try_lex_string(
             nested_level -= 1;
         }
     }
-
-    // println!("final s = '{}'", &s);
 
     Token::String(s)
 }
@@ -561,24 +516,9 @@ mod tests {
         let input = "PATH=\"\" ls".to_string();
         let tokens = lex(input, false);
         assert_eq!(
-            // vec![Assignment("PATH".into(), None), String("ls".into())],
             vec![String("PATH=\"\"".into()), String("ls".into())],
             tokens,
         );
-
-        // let input = "PATH='' ls".to_string();
-        // let tokens = lex(input, false);
-        // assert_eq!(
-        //     vec![Assignment("PATH".into(), None), String("ls".into())],
-        //     tokens,
-        // );
-
-        // let input = "PATH= ls".to_string();
-        // let tokens = lex(input, false);
-        // assert_eq!(
-        //     vec![Assignment("PATH".into(), None), String("ls".into())],
-        //     tokens,
-        // );
     }
 
     #[test]
