@@ -111,41 +111,37 @@ impl Command {
         &self.name.name
     }
 
-    pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>) {
+    pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>, Option<Redirect>) {
+        let mut stdin_redirect = None;
         let mut stdout_redirect = None;
         let mut stderr_redirect = None;
 
-        for p in &self.prefix {
-            if let Meta::Redirect(r) = p {
-                match r {
-                    Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "1" => {
-                        stdout_redirect = Some(r.clone())
-                    }
-                    Redirect::Output { from: Some(s), .. } if s == "2" => {
-                        stderr_redirect = Some(r.clone())
-                    }
+        for meta in self
+            .prefixes
+            .iter()
+            .cloned()
+            .chain(self.suffixes.iter().cloned())
+        {
+            if let Meta::Redirect(redirect) = meta {
+                match redirect {
+                    Redirect::Output { from: None, .. } => stdout_redirect = Some(redirect.clone()),
+
+                    Redirect::Output {
+                        from: Some(ref s), ..
+                    } if s == "1" => stdout_redirect = Some(redirect.clone()),
+
+                    Redirect::Output {
+                        from: Some(ref s), ..
+                    } if s == "2" => stderr_redirect = Some(redirect.clone()),
+
+                    Redirect::Input { .. } => stdin_redirect = Some(redirect.clone()),
+
                     _ => {}
                 }
             }
         }
 
-        for s in &self.suffix {
-            if let Meta::Redirect(r) = s {
-                match r {
-                    Redirect::Output { from: None, .. } => stdout_redirect = Some(r.clone()),
-                    Redirect::Output { from: Some(s), .. } if s == "1" => {
-                        stdout_redirect = Some(r.clone())
-                    }
-                    Redirect::Output { from: Some(s), .. } if s == "2" => {
-                        stderr_redirect = Some(r.clone())
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        (stdout_redirect, stderr_redirect)
+        (stdin_redirect, stdout_redirect, stderr_redirect)
     }
 
     pub fn args(&self) -> Vec<String> {
@@ -442,7 +438,14 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
                 }
             }
 
-            Token::RedirectInput(_) => todo!("input redirection is not yet implemented"),
+            Token::RedirectInput(_) => {
+                if let Some(redirect) = parse_meta(token) {
+                    match name {
+                        None => prefixes.push(redirect),
+                        Some(_) => suffixes.push(redirect),
+                    }
+                }
+            }
 
             // Token::LParen => todo!("( subshells are not yet implemented"),
             // Token::RParen => todo!(") subshells are not yet implemented"),

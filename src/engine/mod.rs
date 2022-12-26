@@ -145,7 +145,16 @@ impl Engine<Stdout> {
                     return Ok(vec![ExitStatus::from(127)]);
                 }
 
-                let (stdout_redirect, stderr_redirect) = cmd.redirections();
+                let (stdin_redirect, stdout_redirect, stderr_redirect) = cmd.redirections();
+
+                let stdin = if let Some(Redirect::Input { to }) = stdin_redirect {
+                    let f = std::fs::OpenOptions::new()
+                        .read(true)
+                        .open(to)?;
+                    Stdio::from(f)
+                } else {
+                    Stdio::inherit()
+                };
 
                 let stdout = if let Some(Redirect::Output {
                     from: _,
@@ -181,6 +190,7 @@ impl Engine<Stdout> {
 
                 let child = process::Command::new(cmd.cmd_name())
                     .args(cmd.args())
+                    .stdin(stdin)
                     .stdout(stdout)
                     .stderr(stderr)
                     .spawn()?;
@@ -203,14 +213,19 @@ impl Engine<Stdout> {
                 let mut statuses = Vec::with_capacity(cmds.len());
 
                 for (i, cmd) in cmds.iter().enumerate() {
-                    let stdin = match prev_result {
+                    let (stdin_redirect, stdout_redirect, stderr_redirect) = cmd.redirections();
+                    let mut save_stdout_for_next_cmd = true;
+
+                    let mut stdin = match prev_result {
                         Some((Some(stdout), _)) => Stdio::from(stdout),
                         Some((None, _)) => Stdio::null(),
                         _ => Stdio::inherit(),
                     };
 
-                    let (stdout_redirect, stderr_redirect) = cmd.redirections();
-                    let mut save_stdout_for_next_cmd = true;
+                    if let Some(Redirect::Input { to }) = stdin_redirect {
+                        let f = std::fs::OpenOptions::new().read(true).open(to)?;
+                        stdin = Stdio::from(f);
+                    }
 
                     let stdout = if let Some(Redirect::Output {
                         from: _,
