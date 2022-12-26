@@ -11,7 +11,7 @@ use crate::repl::input::read_line;
 use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{parse, Command, CommandType, SyntaxTree};
+use self::parser::ast::{parse, Command, CommandType, Expand, SyntaxTree};
 use self::parser::has_relative_command;
 
 pub struct Engine<W: Write> {
@@ -62,7 +62,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
-        let cmd = cmd.expand_all()?;
+        let cmd = cmd.expand()?;
         let command = cmd.cmd_name();
         let args = cmd.args();
 
@@ -126,7 +126,7 @@ impl Engine<Stdout> {
     }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        ast.commands()
+        ast.commands
             .into_iter()
             .fold(Ok(vec![]), |_, c| self.execute(c))
     }
@@ -312,7 +312,7 @@ mod tests {
         }
 
         fn walk_ast(&mut self, ast: SyntaxTree) -> Result<()> {
-            ast.commands().iter().fold(Ok(()), |_, c| self.execute(c))
+            ast.commands.iter().fold(Ok(()), |_, c| self.execute(c))
         }
 
         fn execute(&mut self, cmd: &CommandType) -> Result<()> {

@@ -10,9 +10,13 @@ pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
     parse_tokens(tokens)
 }
 
+pub trait Expand: Sized {
+    fn expand(self) -> Result<Self>;
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct SyntaxTree {
-    commands: Vec<CommandType>,
+    pub commands: Vec<CommandType>,
 }
 
 impl SyntaxTree {
@@ -24,10 +28,6 @@ impl SyntaxTree {
 
     pub fn add_command(&mut self, command: CommandType) {
         self.commands.push(command);
-    }
-
-    pub fn commands(self) -> Vec<CommandType> {
-        self.commands
     }
 }
 
@@ -53,13 +53,13 @@ pub enum CommandType {
     Pipeline(Vec<Command>),
 }
 
-impl CommandType {
-    pub fn expand(self) -> Result<Self> {
+impl Expand for CommandType {
+    fn expand(self) -> Result<Self> {
         match self {
-            Self::Single(cmd) => Ok(Self::Single(cmd.expand_all()?)),
+            Self::Single(cmd) => Ok(Self::Single(cmd.expand()?)),
             Self::Pipeline(cmds) => Ok(Self::Pipeline(
                 cmds.into_iter()
-                    .map(|c| c.expand_all())
+                    .map(|c| c.expand())
                     .collect::<Result<Vec<_>>>()?,
             )),
         }
@@ -82,28 +82,33 @@ impl ToString for CommandType {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Command {
     pub name: Word,
-    pub prefix: Vec<Meta>,
-    pub suffix: Vec<Meta>,
+    pub prefixes: Vec<Meta>,
+    pub suffixes: Vec<Meta>,
+}
+
+impl Expand for Command {
+    fn expand(mut self) -> Result<Self> {
+        self.name = self.name.expand()?;
+
+        self.prefixes = self
+            .prefixes
+            .into_iter()
+            .map(Expand::expand)
+            .collect::<Result<Vec<_>>>()?;
+
+        self.suffixes = self
+            .suffixes
+            .into_iter()
+            .map(Expand::expand)
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(self)
+    }
 }
 
 impl Command {
     pub fn cmd_name(&self) -> &String {
         &self.name.name
-    }
-
-    pub fn expand_all(mut self) -> Result<Self> {
-        self.name = self.name.expand()?;
-        self.prefix = self
-            .prefix
-            .into_iter()
-            .map(|p| p.expand())
-            .collect::<Result<Vec<_>>>()?;
-        self.suffix = self
-            .suffix
-            .into_iter()
-            .map(|s| s.expand())
-            .collect::<Result<Vec<_>>>()?;
-        Ok(self)
     }
 
     pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>) {
@@ -144,7 +149,7 @@ impl Command {
     }
 
     pub fn args(&self) -> Vec<String> {
-        self.suffix
+        self.suffixes
             .iter()
             .filter_map(|m| {
                 if let Meta::Word(w) = m {
@@ -159,15 +164,15 @@ impl Command {
 
 impl ToString for Command {
     fn to_string(&self) -> String {
-        let p = self
-            .prefix
+        let prefixes = self
+            .prefixes
             .iter()
             .map(|s| s.to_string().trim().to_string())
             .collect::<Vec<_>>()
             .join(" ");
 
-        let s = self
-            .suffix
+        let suffixes = self
+            .suffixes
             .iter()
             .map(|s| s.to_string().trim().to_string())
             .collect::<Vec<_>>()
@@ -175,13 +180,13 @@ impl ToString for Command {
 
         format!(
             "{}{}{}",
-            if p.is_empty() {
+            if prefixes.is_empty() {
                 "".to_string()
             } else {
-                p + " "
+                prefixes + " "
             },
-            self.name.to_string() + if s.is_empty() { "" } else { " " },
-            s,
+            self.name.to_string() + if suffixes.is_empty() { "" } else { " " },
+            suffixes,
         )
     }
 }
@@ -199,7 +204,9 @@ impl Word {
             expansions,
         }
     }
+}
 
+impl Expand for Word {
     fn expand(mut self) -> Result<Self> {
         let mut to_remove = vec![];
 
@@ -264,8 +271,8 @@ pub enum Meta {
     Assignment(Word, Word),
 }
 
-impl Meta {
-    pub fn expand(self) -> Result<Self> {
+impl Expand for Meta {
+    fn expand(self) -> Result<Self> {
         match self {
             Self::Word(word) => Ok(Self::Word(word.expand()?)),
             Self::Redirect(redirect) => Ok(Self::Redirect(redirect)),
@@ -398,8 +405,8 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
     let tokens = tokens.iter().peekable();
 
     let mut name = None;
-    let mut prefix = Vec::new();
-    let mut suffix = Vec::new();
+    let mut prefixes = Vec::new();
+    let mut suffixes = Vec::new();
 
     for token in tokens {
         match token {
@@ -412,14 +419,14 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
                     if name.is_none() {
                         name = Some(word);
                     } else {
-                        suffix.push(word);
+                        suffixes.push(word);
                     }
                 }
                 Some(Meta::Assignment(dest, var)) => {
                     if name.is_none() {
-                        prefix.push(Meta::Assignment(dest, var));
+                        prefixes.push(Meta::Assignment(dest, var));
                     } else {
-                        suffix.push(Meta::Assignment(dest, var));
+                        suffixes.push(Meta::Assignment(dest, var));
                     }
                 }
                 Some(meta) => panic!("disallowed type: {:?}", meta),
@@ -429,8 +436,8 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
             token @ Token::RedirectOutput(_, _, _, _) => {
                 if let Some(redirect) = parse_meta(token) {
                     match name {
-                        Some(_) => suffix.push(redirect),
-                        None => prefix.push(redirect),
+                        None => prefixes.push(redirect),
+                        Some(_) => suffixes.push(redirect),
                     }
                 }
             }
@@ -457,8 +464,8 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
     if let Some(Meta::Word(name)) = name {
         Some(Command {
             name,
-            prefix,
-            suffix,
+            prefixes,
+            suffixes,
         })
     } else {
         eprintln!("{name:?}");
@@ -466,14 +473,14 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
     }
 }
 
-enum Expand {
+enum ExpansionType {
     All,
     VariablesAndCommands,
     None,
 }
 
-fn parse_word(s: impl AsRef<str>, expand: Expand) -> Word {
-    if let Expand::None = expand {
+fn parse_word(s: impl AsRef<str>, expand: ExpansionType) -> Word {
+    if let ExpansionType::None = expand {
         return Word::new(s.as_ref(), Vec::new());
     }
 
@@ -546,7 +553,7 @@ fn parse_word(s: impl AsRef<str>, expand: Expand) -> Word {
                 c => panic!("got unexpected: {c:?}"),
             },
 
-            '*' if matches!(expand, Expand::All) => {
+            '*' if matches!(expand, ExpansionType::All) => {
                 let mut recursive = false;
                 let mut pattern = '*'.to_string();
                 let start_index = index;
@@ -578,7 +585,9 @@ fn parse_word(s: impl AsRef<str>, expand: Expand) -> Word {
                 });
             }
 
-            '~' if matches!(expand, Expand::All) && matches!(prev_char, Some(' ') | None) => {
+            '~' if matches!(expand, ExpansionType::All)
+                && matches!(prev_char, Some(' ') | None) =>
+            {
                 match chars.peek() {
                     Some(' ') | Some('/') | None => expansions.push(Expansion::Tilde { index }),
                     _ => {}
@@ -600,11 +609,11 @@ fn parse_meta(token: &Token) -> Option<Meta> {
         Token::String(s) => {
             let item = match s.split_once('=') {
                 Some((var, val)) => {
-                    let var_word = parse_word(var, Expand::None);
-                    let val_word = parse_word(val, Expand::All);
+                    let var_word = parse_word(var, ExpansionType::None);
+                    let val_word = parse_word(val, ExpansionType::All);
                     Meta::Assignment(var_word, val_word)
                 }
-                None => Meta::Word(parse_word(s, Expand::All)),
+                None => Meta::Word(parse_word(s, ExpansionType::All)),
             };
 
             Some(item)
@@ -612,7 +621,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
 
         Token::SingleQuotedString(s, finished) => {
             if *finished {
-                let word = parse_word(s, Expand::None);
+                let word = parse_word(s, ExpansionType::None);
                 Some(Meta::Word(word))
             } else {
                 // FIXME: syntax error
@@ -622,7 +631,7 @@ fn parse_meta(token: &Token) -> Option<Meta> {
 
         Token::DoubleQuotedString(s, finished) => {
             if *finished {
-                let word = parse_word(s, Expand::VariablesAndCommands);
+                let word = parse_word(s, ExpansionType::VariablesAndCommands);
                 Some(Meta::Word(word))
             } else {
                 // FIXME: syntax error
@@ -665,20 +674,20 @@ mod tests {
                 commands: vec![CommandType::Pipeline(vec![
                     Command {
                         name: Word::new("echo", vec![]),
-                        prefix: vec![Meta::Redirect(Redirect::Output {
+                        prefixes: vec![Meta::Redirect(Redirect::Output {
                             from: Some("2".into()),
                             to: "&1".into(),
                             append: false,
                         }),],
-                        suffix: vec![
+                        suffixes: vec![
                             Meta::Word(Word::new("hello", vec![])),
                             Meta::Word(Word::new("world", vec![])),
                         ],
                     },
                     Command {
                         name: Word::new("lolcat", vec![]),
-                        prefix: vec![],
-                        suffix: vec![Meta::Word(Word::new("-n", vec![])),],
+                        prefixes: vec![],
+                        suffixes: vec![Meta::Word(Word::new("-n", vec![])),],
                     }
                 ]),],
             },
@@ -694,8 +703,8 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new(
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new(
                     "**/*.rs",
                     vec![
                         Expansion::Glob {
@@ -724,8 +733,8 @@ mod tests {
             SyntaxTree {
                 commands: vec![CommandType::Single(Command {
                     name: Word::new("echo", vec![]),
-                    prefix: vec![],
-                    suffix: vec![Meta::Word(Word::new(
+                    prefixes: vec![],
+                    suffixes: vec![Meta::Word(Word::new(
                         "yo $foo $A",
                         vec![
                             Expansion::Parameter {
@@ -752,8 +761,8 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new("** $foo", vec![]))],
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new("** $foo", vec![]))],
             })],
         };
 
@@ -769,8 +778,8 @@ mod tests {
             commands: vec![CommandType::Pipeline(vec![
                 Command {
                     name: Word::new("echo", vec![]),
-                    prefix: vec![],
-                    suffix: vec![Meta::Word(Word::new(
+                    prefixes: vec![],
+                    suffixes: vec![Meta::Word(Word::new(
                         "I \"am\": $(whoami | rev | grep -o -v foo)",
                         vec![Expansion::Command {
                             range: 8..=39,
@@ -778,18 +787,18 @@ mod tests {
                                 commands: vec![CommandType::Pipeline(vec![
                                     Command {
                                         name: Word::new("whoami", vec![]),
-                                        prefix: vec![],
-                                        suffix: vec![],
+                                        prefixes: vec![],
+                                        suffixes: vec![],
                                     },
                                     Command {
                                         name: Word::new("rev", vec![]),
-                                        prefix: vec![],
-                                        suffix: vec![],
+                                        prefixes: vec![],
+                                        suffixes: vec![],
                                     },
                                     Command {
                                         name: Word::new("grep", vec![]),
-                                        prefix: vec![],
-                                        suffix: vec![
+                                        prefixes: vec![],
+                                        suffixes: vec![
                                             Meta::Word(Word::new("-o", vec![])),
                                             Meta::Word(Word::new("-v", vec![])),
                                             Meta::Word(Word::new("foo", vec![])),
@@ -802,8 +811,8 @@ mod tests {
                 },
                 Command {
                     name: Word::new("less", vec![]),
-                    prefix: vec![],
-                    suffix: vec![],
+                    prefixes: vec![],
+                    suffixes: vec![],
                 },
             ])],
         };
@@ -820,7 +829,7 @@ mod tests {
             commands: vec![CommandType::Pipeline(vec![
                 Command {
                     name: Word::new("grep", vec![]),
-                    prefix: vec![
+                    prefixes: vec![
                         Meta::Assignment(Word::new("CMD", vec![]), Word::new("exec=async", vec![])),
                         Meta::Redirect(Redirect::Output {
                             from: Some("2".into()),
@@ -828,7 +837,7 @@ mod tests {
                             append: false,
                         }),
                     ],
-                    suffix: vec![
+                    suffixes: vec![
                         Meta::Word(Word::new(
                             ": $(whoami)",
                             vec![Expansion::Command {
@@ -836,8 +845,8 @@ mod tests {
                                 ast: SyntaxTree {
                                     commands: vec![CommandType::Single(Command {
                                         name: Word::new("whoami", vec![]),
-                                        prefix: vec![],
-                                        suffix: vec![],
+                                        prefixes: vec![],
+                                        suffixes: vec![],
                                     })],
                                 },
                             }],
@@ -847,8 +856,8 @@ mod tests {
                 },
                 Command {
                     name: Word::new("xargs", vec![]),
-                    prefix: vec![],
-                    suffix: vec![
+                    prefixes: vec![],
+                    suffixes: vec![
                         Meta::Word(Word::new("-I", vec![])),
                         Meta::Word(Word::new("{}", vec![])),
                         Meta::Word(Word::new("echo", vec![])),
@@ -880,16 +889,16 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new(
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new(
                     "bat: $(cat /sys/class/power_supply/BAT0/capacity)",
                     vec![Expansion::Command {
                         range: 5..=48,
                         ast: SyntaxTree {
                             commands: vec![CommandType::Single(Command {
                                 name: Word::new("cat", vec![]),
-                                prefix: vec![],
-                                suffix: vec![Meta::Word(Word::new(
+                                prefixes: vec![],
+                                suffixes: vec![Meta::Word(Word::new(
                                     "/sys/class/power_supply/BAT0/capacity",
                                     vec![],
                                 ))],
@@ -911,8 +920,8 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("ls", vec![]),
-                prefix: vec![],
-                suffix: vec![
+                prefixes: vec![],
+                suffixes: vec![
                     Meta::Word(Word::new("~", vec![Expansion::Tilde { index: 0 }])),
                     Meta::Word(Word::new("~/", vec![Expansion::Tilde { index: 0 }])),
                     Meta::Word(Word::new("~/foo", vec![Expansion::Tilde { index: 0 }])),
@@ -940,16 +949,16 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new(
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new(
                     "bat: $(cat \"/sys/class/power_supply/BAT0/capacity\")",
                     vec![Expansion::Command {
                         range: 5..=50,
                         ast: SyntaxTree {
                             commands: vec![CommandType::Single(Command {
                                 name: Word::new("cat", vec![]),
-                                prefix: vec![],
-                                suffix: vec![Meta::Word(Word::new(
+                                prefixes: vec![],
+                                suffixes: vec![Meta::Word(Word::new(
                                     "/sys/class/power_supply/BAT0/capacity",
                                     vec![],
                                 ))],
@@ -971,16 +980,16 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new(
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new(
                     r#"foo: $(echo "$(whoami | lolcat)") yo"#,
                     vec![Expansion::Command {
                         range: 5..=32,
                         ast: SyntaxTree {
                             commands: vec![CommandType::Single(Command {
                                 name: Word::new("echo", vec![]),
-                                prefix: vec![],
-                                suffix: vec![Meta::Word(Word::new(
+                                prefixes: vec![],
+                                suffixes: vec![Meta::Word(Word::new(
                                     "$(whoami | lolcat)",
                                     vec![Expansion::Command {
                                         range: 0..=17,
@@ -988,13 +997,13 @@ mod tests {
                                             commands: vec![CommandType::Pipeline(vec![
                                                 Command {
                                                     name: Word::new("whoami", vec![]),
-                                                    prefix: vec![],
-                                                    suffix: vec![],
+                                                    prefixes: vec![],
+                                                    suffixes: vec![],
                                                 },
                                                 Command {
                                                     name: Word::new("lolcat", vec![]),
-                                                    prefix: vec![],
-                                                    suffix: vec![],
+                                                    prefixes: vec![],
+                                                    suffixes: vec![],
                                                 },
                                             ])],
                                         },
@@ -1018,8 +1027,8 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![
+                prefixes: vec![],
+                suffixes: vec![
                     Meta::Word(Word::new(
                         "$(cat $(echo $(cat foo | rev) ))",
                         vec![Expansion::Command {
@@ -1027,16 +1036,16 @@ mod tests {
                             ast: SyntaxTree {
                                 commands: vec![CommandType::Single(Command {
                                     name: Word::new("cat", vec![]),
-                                    prefix: vec![],
-                                    suffix: vec![Meta::Word(Word::new(
+                                    prefixes: vec![],
+                                    suffixes: vec![Meta::Word(Word::new(
                                         "$(echo $(cat foo | rev) )",
                                         vec![Expansion::Command {
                                             range: 0..=24,
                                             ast: SyntaxTree {
                                                 commands: vec![CommandType::Single(Command {
                                                     name: Word::new("echo", vec![]),
-                                                    prefix: vec![],
-                                                    suffix: vec![Meta::Word(Word::new(
+                                                    prefixes: vec![],
+                                                    suffixes: vec![Meta::Word(Word::new(
                                                         "$(cat foo | rev)",
                                                         vec![Expansion::Command {
                                                             range: 0..=15,
@@ -1048,8 +1057,8 @@ mod tests {
                                                                                 "cat",
                                                                                 vec![],
                                                                             ),
-                                                                            prefix: vec![],
-                                                                            suffix: vec![
+                                                                            prefixes: vec![],
+                                                                            suffixes: vec![
                                                                                 Meta::Word(
                                                                                     Word::new(
                                                                                         "foo",
@@ -1063,8 +1072,8 @@ mod tests {
                                                                                 "rev",
                                                                                 vec![],
                                                                             ),
-                                                                            prefix: vec![],
-                                                                            suffix: vec![],
+                                                                            prefixes: vec![],
+                                                                            suffixes: vec![],
                                                                         },
                                                                     ]),
                                                                 ],
@@ -1095,24 +1104,24 @@ mod tests {
         let expected = SyntaxTree {
             commands: vec![CommandType::Single(Command {
                 name: Word::new("echo", vec![]),
-                prefix: vec![],
-                suffix: vec![Meta::Word(Word::new(
+                prefixes: vec![],
+                suffixes: vec![Meta::Word(Word::new(
                     r#"$(cat $(echo "$(cat foo)"))"#,
                     vec![Expansion::Command {
                         range: 0..=26,
                         ast: SyntaxTree {
                             commands: vec![CommandType::Single(Command {
                                 name: Word::new("cat", vec![]),
-                                prefix: vec![],
-                                suffix: vec![Meta::Word(Word::new(
+                                prefixes: vec![],
+                                suffixes: vec![Meta::Word(Word::new(
                                     r#"$(echo "$(cat foo)")"#,
                                     vec![Expansion::Command {
                                         range: 0..=19,
                                         ast: SyntaxTree {
                                             commands: vec![CommandType::Single(Command {
                                                 name: Word::new("echo", vec![]),
-                                                prefix: vec![],
-                                                suffix: vec![Meta::Word(Word::new(
+                                                prefixes: vec![],
+                                                suffixes: vec![Meta::Word(Word::new(
                                                     "$(cat foo)",
                                                     vec![Expansion::Command {
                                                         range: 0..=9,
@@ -1120,8 +1129,8 @@ mod tests {
                                                             commands: vec![CommandType::Single(
                                                                 Command {
                                                                     name: Word::new("cat", vec![]),
-                                                                    prefix: vec![],
-                                                                    suffix: vec![Meta::Word(
+                                                                    prefixes: vec![],
+                                                                    suffixes: vec![Meta::Word(
                                                                         Word::new("foo", vec![]),
                                                                     )],
                                                                 },

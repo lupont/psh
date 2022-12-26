@@ -52,9 +52,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
 
             '>' => {
                 let append = chars.peek() == Some(&'>');
-                if let Some(token) =
-                    try_lex_redirect_output(&mut chars, None, include_whitespace, append)
-                {
+                if let Some(token) = try_lex_redirect_output(&mut chars, None, append) {
                     tokens.push(token);
                 }
             }
@@ -114,7 +112,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
                     Some(&'>') => {
                         chars.next();
                         let append = chars.peek() == Some(&'>');
-                        try_lex_redirect_output(&mut chars, Some(fd), include_whitespace, append)
+                        try_lex_redirect_output(&mut chars, Some(fd), append)
                     }
 
                     Some(&'<') => {
@@ -122,7 +120,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
                         try_lex_redirect_input(&mut chars)
                     }
 
-                    _ => Some(try_lex_string(&mut chars, Some(fd), false)),
+                    _ => Some(lex_string(&mut chars, Some(fd), false)),
                 };
 
                 if let Some(token) = token {
@@ -131,7 +129,7 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
             }
 
             c => {
-                let token = try_lex_string(&mut chars, Some(c), false);
+                let token = lex_string(&mut chars, Some(c), false);
                 tokens.push(token);
             }
         }
@@ -189,7 +187,7 @@ fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
         chars.next();
     }
 
-    if let Token::String(s) = try_lex_string(chars, None::<char>, false) {
+    if let Token::String(s) = lex_string(chars, None::<char>, false) {
         let token = Token::RedirectInput(s);
         Some(token)
     } else {
@@ -200,7 +198,6 @@ fn try_lex_redirect_input(chars: &mut Peekable<Chars>) -> Option<Token> {
 fn try_lex_redirect_output(
     chars: &mut Peekable<Chars>,
     dest: Option<String>,
-    capture_space: bool,
     append: bool,
 ) -> Option<Token> {
     if append && chars.peek() == Some(&'>') {
@@ -210,16 +207,14 @@ fn try_lex_redirect_output(
     let mut found_space = None;
     while let Some(&' ') = chars.peek() {
         chars.next();
-        if capture_space {
-            if found_space.is_none() {
-                found_space = Some(" ".to_string());
-            } else {
-                found_space = found_space.take().map(|s| s + " ");
-            }
+        if found_space.is_none() {
+            found_space = Some(" ".to_string());
+        } else {
+            found_space = found_space.take().map(|s| s + " ");
         }
     }
 
-    if let Token::String(s) = try_lex_string(chars, None::<char>, true) {
+    if let Token::String(s) = lex_string(chars, None::<char>, true) {
         let token = Token::RedirectOutput(dest, s, found_space, append);
         Some(token)
     } else {
@@ -227,7 +222,7 @@ fn try_lex_redirect_output(
     }
 }
 
-fn try_lex_string(
+fn lex_string(
     chars: &mut Peekable<Chars>,
     start: Option<impl ToString>,
     allow_ampersand: bool,
@@ -368,7 +363,7 @@ mod tests {
         assert_eq!(
             vec![
                 String("ls".into()),
-                RedirectOutput(None, "foo".to_string(), None, false),
+                RedirectOutput(None, "foo".to_string(), Some(" ".to_string()), false),
                 Semicolon,
                 String("ls".into()),
                 Pipe,
@@ -407,7 +402,7 @@ mod tests {
             vec![
                 String("echo".into()),
                 String("123".into()),
-                RedirectOutput(Some("2".into()), "foo.txt".into(), None, false),
+                RedirectOutput(Some("2".into()), "foo.txt".into(), Some(" ".into()), false),
             ],
             tokens,
         );
