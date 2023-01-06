@@ -464,55 +464,55 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
 
             Token::RedirectOutput(None, to, Some(space), false) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!(">{space}{to}"))
             )?,
 
             Token::RedirectOutput(None, to, Some(space), true) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!(">>{space}{to}"))
             )?,
 
             Token::RedirectOutput(None, to, None, false) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!(">{to}"))
             )?,
 
             Token::RedirectOutput(None, to, None, true) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!(">>{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, None, false) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!("{from}>{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, None, true) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!("{from}>>{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, Some(space), false) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!("{from}>{space}{to}"))
             )?,
 
             Token::RedirectOutput(Some(from), to, Some(space), true) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT),
+                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
                 style::Print(format!("{from}>>{space}{to}"))
             )?,
 
             Token::RedirectInput(to) => queue!(
                 engine.writer,
-                style::SetForegroundColor(Colors::NYI),
+                style::SetForegroundColor(Colors::REDIRECT_INPUT),
                 style::Print(format!("<{to}"))
             )?,
 

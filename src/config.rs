@@ -15,7 +15,8 @@ impl Colors {
     pub const FLAG: Color = Color::Grey;
     pub const PIPE: Color = Color::DarkMagenta;
     pub const SEMICOLON: Color = Color::Magenta;
-    pub const REDIRECT: Color = Color::Grey;
+    pub const REDIRECT_OUTPUT: Color = Color::Grey;
+    pub const REDIRECT_INPUT: Color = Color::Grey;
     pub const NYI: Color = Color::Red;
     pub const INCOMPLETE: Color = Color::Red;
 
