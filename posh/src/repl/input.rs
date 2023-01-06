@@ -6,14 +6,13 @@ use crossterm::execute;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
-
-use crate::config::{Colors, ABBREVIATIONS};
-use crate::engine::parser::lexer::lex;
-use crate::engine::parser::Token;
-use crate::path::home_dir;
-use crate::{Engine, Result};
+use posh_core::engine::parser::lexer::lex;
+use posh_core::engine::parser::Token;
+use posh_core::path::home_dir;
+use posh_core::{Engine, Result};
 
 use super::RawMode;
+use crate::config::{Colors, ABBREVIATIONS};
 
 struct State {
     line: String,
@@ -136,7 +135,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 state.line.replace_range(space_index..state.index, "");
                 state.index = space_index;
 
-                if engine.has_abbreviation(&state.line) {
+                if has_abbreviation(&state.line) {
                     state.highlight_abbreviations = true;
                 }
 
@@ -189,7 +188,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 state.line.insert(state.index, c);
                 state.index += 1;
 
-                if engine.has_abbreviation(&state.line) {
+                if has_abbreviation(&state.line) {
                     state.highlight_abbreviations = true;
                 }
 
@@ -237,7 +236,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 state.index -= 1;
                 state.line.remove(state.index);
 
-                if engine.has_abbreviation(&state.line) {
+                if has_abbreviation(&state.line) {
                     state.highlight_abbreviations = true;
                 }
 
@@ -314,6 +313,11 @@ fn should_highlight_assignment(prev_token: Option<&Token>) -> bool {
     should_highlight_assignment
 }
 
+pub fn has_abbreviation(cmd: impl AsRef<str>) -> bool {
+    let cmd = cmd.as_ref();
+    ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
+}
+
 // FIXME: highlighting does not work in command substitutions,
 //        since we are not aware of them because we're using
 //        tokens to highlight instead of the AST
@@ -349,7 +353,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                             Colors::VALID_BUILTIN
                         } else if engine.has_command(s) {
                             Colors::VALID_CMD
-                        } else if engine.has_abbreviation(s) && state.highlight_abbreviations {
+                        } else if has_abbreviation(s) && state.highlight_abbreviations {
                             Colors::VALID_ABBR
                         } else if s.starts_with("~/") {
                             // FIXME: This block is a hack to make syntax highlighting work.

@@ -1,15 +1,10 @@
 mod args;
 mod config;
-mod engine;
-mod error;
-mod path;
 mod repl;
 
-use crate::engine::parser::{lex, parse};
-pub use crate::engine::{Engine, ExitStatus};
-pub use crate::error::{Error, Result};
-
 use clap::Parser;
+use posh_core::engine::parser::{lex, parse};
+use posh_core::Engine;
 
 fn main() {
     let args = args::Args::parse();

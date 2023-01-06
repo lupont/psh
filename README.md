@@ -3,6 +3,13 @@
 `posh` is a shell, mostly aimed at interactive use. It is highly inspired by
 [`fish`](https://fishshell.com/), but with fewer features.
 
+## Projects
+
+The project is (currently) split into two crates:
+
+- [`posh-core`](posh-core/README.md), the engine
+- [`posh`](posh/README.md), the CLI
+
 ## Goals
 
 Before `posh` can be considered feature complete, the following features are

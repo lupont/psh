@@ -5,9 +5,7 @@ use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, ChildStdout, Stdio};
 
-use crate::config::ABBREVIATIONS;
 use crate::engine::parser::ast::Redirect;
-use crate::repl::input::read_line;
 use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
@@ -95,17 +93,6 @@ impl<W: Write> Engine<W> {
                 .commands
                 .iter()
                 .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
-    }
-
-    pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
-        let cmd = cmd.as_ref();
-        ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
-    }
-
-    pub fn read_and_execute(&mut self) -> Result<Vec<ExitStatus>> {
-        let line = read_line(self)?;
-        self.history.append(&line)?;
-        self.execute_line(line)
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {

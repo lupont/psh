@@ -5,10 +5,11 @@ use std::io::{Stdout, Write};
 use std::process;
 
 use crossterm::{execute, style, terminal};
+use posh_core::path::Expand;
+use posh_core::{Engine, ExitStatus, Result};
 
 use crate::config::{self, Colors};
-use crate::path::Expand;
-use crate::{Engine, ExitStatus, Result};
+use crate::repl::input::read_line;
 
 pub struct Repl {
     engine: Engine<Stdout>,
@@ -23,6 +24,12 @@ impl Repl {
         }
     }
 
+    fn read_and_execute(&mut self) -> Result<Vec<ExitStatus>> {
+        let line = read_line(&mut self.engine)?;
+        self.engine.history.append(&line)?;
+        self.engine.execute_line(line)
+    }
+
     pub fn run(&mut self) -> Result<()> {
         loop {
             if let Err(e) = self.prompt() {
@@ -32,7 +39,7 @@ impl Repl {
                 )?;
             }
 
-            match self.engine.read_and_execute() {
+            match self.read_and_execute() {
                 Ok(statuses) if statuses.is_empty() => {}
 
                 Ok(statuses) => {
