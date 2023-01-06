@@ -78,7 +78,7 @@ impl<W: Write> Engine<W> {
             }
 
             ("cd", [dir]) => self.cd(Some(dir)),
-            ("cd", []) => self.cd(None::<&str>),
+            ("cd", []) => self.cd(None),
             ("cd", _) => {
                 writeln!(self.writer, "invalid number of arguments")?;
                 Ok(ExitStatus::from(1))
@@ -101,18 +101,6 @@ impl<W: Write> Engine<W> {
         let cmd = cmd.as_ref();
         ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
     }
-}
-
-impl Engine<Stdout> {
-    pub fn new() -> Self {
-        let history = FileHistory::init().expect("could not initialize history");
-        Self {
-            prev_dir: None,
-            writer: io::stdout(),
-            commands: path::get_cmds_from_path(),
-            history: Box::new(history),
-        }
-    }
 
     pub fn read_and_execute(&mut self) -> Result<Vec<ExitStatus>> {
         let line = read_line(self)?;
@@ -125,10 +113,68 @@ impl Engine<Stdout> {
         self.walk_ast(ast)
     }
 
-    fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        ast.commands
-            .into_iter()
-            .fold(Ok(vec![]), |_, c| self.execute(c))
+    fn build_command(
+        &self,
+        command: &Command,
+        prev_stdout: Option<Option<ChildStdout>>,
+        final_cmd: bool,
+    ) -> Result<process::Command> {
+        let (stdin_redirect, stdout_redirect, stderr_redirect) = command.redirections();
+
+        let mut stdin = match prev_stdout {
+            Some(Some(stdout)) => Stdio::from(stdout),
+            Some(None) => Stdio::null(),
+            None => Stdio::inherit(),
+        };
+
+        if let Some(Redirect::Input { to }) = stdin_redirect {
+            let f = std::fs::OpenOptions::new().read(true).open(to)?;
+            stdin = Stdio::from(f);
+        }
+
+        let stdout = if let Some(Redirect::Output {
+            from: _,
+            to,
+            append,
+        }) = stdout_redirect
+        {
+            let f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .append(append)
+                .open(to)?;
+            Stdio::from(f)
+        } else if final_cmd {
+            Stdio::inherit()
+        } else {
+            Stdio::piped()
+        };
+
+        let stderr = if let Some(Redirect::Output {
+            from: _,
+            to,
+            append,
+        }) = stderr_redirect
+        {
+            let f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .append(append)
+                .open(to)?;
+            Stdio::from(f)
+        } else {
+            Stdio::inherit()
+        };
+
+        let mut cmd = process::Command::new(command.cmd_name());
+        let cmd = cmd
+            .args(command.args())
+            .stdin(stdin)
+            .stdout(stdout)
+            .stderr(stderr);
+
+        let dummy = process::Command::new("tmp");
+        Ok(std::mem::replace(cmd, dummy))
     }
 
     pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
@@ -145,58 +191,10 @@ impl Engine<Stdout> {
                     return Ok(vec![ExitStatus::from(127)]);
                 }
 
-                let (stdin_redirect, stdout_redirect, stderr_redirect) = cmd.redirections();
-
-                let stdin = if let Some(Redirect::Input { to }) = stdin_redirect {
-                    let f = std::fs::OpenOptions::new()
-                        .read(true)
-                        .open(to)?;
-                    Stdio::from(f)
-                } else {
-                    Stdio::inherit()
-                };
-
-                let stdout = if let Some(Redirect::Output {
-                    from: _,
-                    to,
-                    append,
-                }) = stdout_redirect
-                {
-                    let f = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .append(append)
-                        .open(to)?;
-                    Stdio::from(f)
-                } else {
-                    Stdio::inherit()
-                };
-
-                let stderr = if let Some(Redirect::Output {
-                    from: _,
-                    to,
-                    append,
-                }) = stderr_redirect
-                {
-                    let f = std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .append(append)
-                        .open(to)?;
-                    Stdio::from(f)
-                } else {
-                    Stdio::inherit()
-                };
-
-                let child = process::Command::new(cmd.cmd_name())
-                    .args(cmd.args())
-                    .stdin(stdin)
-                    .stdout(stdout)
-                    .stderr(stderr)
-                    .spawn()?;
-
-                let result = child.wait_with_output()?;
-                let code = result.status.code().unwrap_or_default();
+                let mut command = self.build_command(&cmd, None, true)?;
+                let output = command.output()?;
+                self.writer.write_all(&output.stdout)?;
+                let code = output.status.code().unwrap_or_default();
 
                 Ok(vec![ExitStatus::from(code)])
             }
@@ -209,78 +207,43 @@ impl Engine<Stdout> {
                     return Ok(vec![ExitStatus::from(127)]);
                 }
 
-                let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
+                let mut prev_result: Option<ChildStdout> = None;
                 let mut statuses = Vec::with_capacity(cmds.len());
 
                 for (i, cmd) in cmds.iter().enumerate() {
-                    let (stdin_redirect, stdout_redirect, stderr_redirect) = cmd.redirections();
-                    let mut save_stdout_for_next_cmd = true;
+                    let is_final = i == cmds.len() - 1;
+                    let mut command = self.build_command(cmd, Some(prev_result), is_final)?;
 
-                    let mut stdin = match prev_result {
-                        Some((Some(stdout), _)) => Stdio::from(stdout),
-                        Some((None, _)) => Stdio::null(),
-                        _ => Stdio::inherit(),
-                    };
+                    let mut child = command.spawn()?;
 
-                    if let Some(Redirect::Input { to }) = stdin_redirect {
-                        let f = std::fs::OpenOptions::new().read(true).open(to)?;
-                        stdin = Stdio::from(f);
-                    }
+                    prev_result = child.stdout.take();
 
-                    let stdout = if let Some(Redirect::Output {
-                        from: _,
-                        to,
-                        append,
-                    }) = stdout_redirect
-                    {
-                        let f = std::fs::OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .append(append)
-                            .open(to)?;
-                        save_stdout_for_next_cmd = false;
-                        Stdio::from(f)
-                    } else if i == cmds.len() - 1 {
-                        Stdio::inherit()
-                    } else {
-                        Stdio::piped()
-                    };
+                    let output = child.wait_with_output()?;
+                    self.writer.write_all(&output.stdout)?;
 
-                    let stderr = if let Some(Redirect::Output {
-                        from: _,
-                        to,
-                        append,
-                    }) = stderr_redirect
-                    {
-                        let f = std::fs::OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .append(append)
-                            .open(to)?;
-                        Stdio::from(f)
-                    } else {
-                        // FIXME: should this maybe be piped(), like stdout?
-                        Stdio::inherit()
-                    };
-
-                    let mut child = process::Command::new(cmd.cmd_name())
-                        .args(cmd.args())
-                        .stdin(stdin)
-                        .stdout(stdout)
-                        .stderr(stderr)
-                        .spawn()?;
-
-                    if save_stdout_for_next_cmd {
-                        prev_result = Some((child.stdout.take(), 0));
-                    } else {
-                        prev_result = Some((None, 0));
-                    }
-
-                    let result = child.wait_with_output()?;
-                    statuses.push(ExitStatus::from(result.status.code().unwrap_or_default()));
+                    statuses.push(ExitStatus::from(output.status.code().unwrap_or_default()));
                 }
+
                 Ok(statuses)
             }
+        }
+    }
+
+    fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
+        ast.commands
+            .into_iter()
+            .fold(Ok(vec![]), |_, c| self.execute(c))
+    }
+}
+
+impl Engine<Stdout> {
+    pub fn new() -> Self {
+        let history = FileHistory::init().expect("could not initialize history");
+        Self {
+            prev_dir: None,
+            writer: io::stdout(),
+            commands: path::get_cmds_from_path(),
+            history: Box::new(history),
         }
     }
 }
@@ -299,97 +262,5 @@ pub struct ExitStatus {
 impl ExitStatus {
     pub fn from(code: i32) -> Self {
         Self { code }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    impl Engine<Vec<u8>> {
-        pub fn in_memory() -> Self {
-            let history = self::history::DummyHistory;
-            Self {
-                writer: Vec::new(),
-                prev_dir: None,
-                commands: path::get_cmds_from_path(),
-                history: Box::new(history),
-            }
-        }
-
-        pub fn output(&self) -> std::borrow::Cow<str> {
-            String::from_utf8_lossy(&self.writer)
-        }
-
-        pub fn execute_line(&mut self, line: impl ToString) -> Result<()> {
-            let ast = parse(line.to_string());
-            self.walk_ast(ast)
-        }
-
-        fn walk_ast(&mut self, ast: SyntaxTree) -> Result<()> {
-            ast.commands.iter().fold(Ok(()), |_, c| self.execute(c))
-        }
-
-        fn execute(&mut self, cmd: &CommandType) -> Result<()> {
-            match cmd {
-                CommandType::Single(cmd) => {
-                    let mut child = process::Command::new(cmd.cmd_name())
-                        .args(cmd.args())
-                        .output()?;
-
-                    self.writer.append(&mut child.stdout);
-
-                    Ok(())
-                }
-
-                CommandType::Pipeline(cmds) => {
-                    let mut prev_result: Option<(Option<ChildStdout>, i32)> = None;
-
-                    for (i, cmd) in cmds.iter().enumerate() {
-                        let stdin = match prev_result {
-                            Some((Some(stdout), _)) => Stdio::from(stdout),
-                            _ => Stdio::inherit(),
-                        };
-
-                        if i == cmds.len() - 1 {
-                            let mut child = process::Command::new(cmd.cmd_name())
-                                .args(cmd.args())
-                                .stdin(stdin)
-                                .output()?;
-                            self.writer.append(&mut child.stdout);
-                            break;
-                        } else {
-                            let mut child = process::Command::new(cmd.cmd_name())
-                                .args(cmd.args())
-                                .stdin(stdin)
-                                .stdout(Stdio::piped())
-                                .spawn()?;
-
-                            prev_result = Some((child.stdout.take(), 0));
-                        }
-                    }
-
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn basic_commands_work() {
-        let mut engine = Engine::in_memory();
-
-        engine.execute_line("echo foo").unwrap();
-
-        assert_eq!("foo\n", engine.output());
-    }
-
-    #[test]
-    fn piping_and_command_separation_work() {
-        let mut engine = Engine::in_memory();
-
-        engine.execute_line("echo oof | rev; echo bar").unwrap();
-
-        assert_eq!("foo\nbar\n", engine.output());
     }
 }

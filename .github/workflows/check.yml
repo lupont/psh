@@ -41,3 +41,6 @@ jobs:
 
     - name: Test Coverage
       run: cargo llvm-cov
+
+    - name: Run test script
+      run: bash test.sh
