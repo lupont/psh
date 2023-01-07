@@ -410,7 +410,7 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
 
             token @ (Token::String(_)
             | Token::SingleQuotedString(_, _)
-            | Token::DoubleQuotedString(_, _)) => match parse_meta(token) {
+            | Token::DoubleQuotedString(_, _)) => match parse_meta(token, name.is_none()) {
                 Some(word @ Meta::Word(_)) => {
                     if name.is_none() {
                         name = Some(word);
@@ -430,7 +430,7 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
             },
 
             token @ Token::RedirectOutput(_, _, _, _) => {
-                if let Some(redirect) = parse_meta(token) {
+                if let Some(redirect) = parse_meta(token, name.is_none()) {
                     match name {
                         None => prefixes.push(redirect),
                         Some(_) => suffixes.push(redirect),
@@ -439,7 +439,7 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
             }
 
             Token::RedirectInput(_) => {
-                if let Some(redirect) = parse_meta(token) {
+                if let Some(redirect) = parse_meta(token, name.is_none()) {
                     match name {
                         None => prefixes.push(redirect),
                         Some(_) => suffixes.push(redirect),
@@ -607,19 +607,23 @@ fn parse_word(s: impl AsRef<str>, expand: ExpansionType) -> Word {
     Word::new(s, expansions)
 }
 
-fn parse_meta(token: &Token) -> Option<Meta> {
+fn parse_meta(token: &Token, is_prefix: bool) -> Option<Meta> {
     match token {
         Token::String(s) => {
-            let item = match s.split_once('=') {
-                Some((var, val)) => {
-                    let var_word = parse_word(var, ExpansionType::None);
-                    let val_word = parse_word(val, ExpansionType::All);
-                    Meta::Assignment(var_word, val_word)
-                }
-                None => Meta::Word(parse_word(s, ExpansionType::All)),
-            };
+            if is_prefix {
+                let item = match s.split_once('=') {
+                    Some((var, val)) => {
+                        let var_word = parse_word(var, ExpansionType::None);
+                        let val_word = parse_word(val, ExpansionType::All);
+                        Meta::Assignment(var_word, val_word)
+                    }
+                    None => Meta::Word(parse_word(s, ExpansionType::All)),
+                };
 
-            Some(item)
+                Some(item)
+            } else {
+                Some(Meta::Word(parse_word(s, ExpansionType::All)))
+            }
         }
 
         Token::SingleQuotedString(s, finished) => {
