@@ -14,7 +14,6 @@ pub enum Token {
     And,
     Or,
 
-    Colon,
     Semicolon,
     Ampersand,
 
@@ -82,7 +81,6 @@ pub fn lex(input: impl AsRef<str>, include_whitespace: bool) -> Vec<Token> {
                 }
             },
 
-            ':' => tokens.push(Token::Colon),
             ';' => tokens.push(Token::Semicolon),
 
             '&' => match chars.peek() {
@@ -334,7 +332,7 @@ mod tests {
                 String("3".into()),
                 Ampersand,
                 Semicolon,
-                Colon,
+                String(":".into()),
             ],
             tokens
         );

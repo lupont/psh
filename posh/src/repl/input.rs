@@ -564,12 +564,6 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
                 style::Print("||")
             )?,
 
-            Token::Colon => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::NYI),
-                style::Print(":")
-            )?,
-
             Token::Ampersand => queue!(
                 engine.writer,
                 style::SetForegroundColor(Colors::NYI),
