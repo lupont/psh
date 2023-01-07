@@ -6,10 +6,8 @@ use crossterm::execute;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
-use posh_core::engine::parser::lexer::lex;
-use posh_core::engine::parser::Token;
 use posh_core::path::home_dir;
-use posh_core::{Engine, Result};
+use posh_core::{lex, Engine, Result, Token};
 
 use super::RawMode;
 use crate::config::{Colors, ABBREVIATIONS};

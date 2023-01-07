@@ -5,7 +5,7 @@ use std::io::{Stdout, Write};
 use std::process;
 
 use crossterm::{execute, style, terminal};
-use posh_core::path::Expand;
+use posh_core::path::compress_tilde;
 use posh_core::{Engine, ExitStatus, Result};
 
 use crate::config::{self, Colors};
@@ -59,7 +59,10 @@ impl Repl {
     pub fn prompt(&mut self) -> Result<()> {
         let _raw = RawMode::init()?;
 
-        let cwd = format!("{} ", env::current_dir()?.display().to_string().expand());
+        let cwd = format!(
+            "{} ",
+            compress_tilde(env::current_dir()?.display().to_string())
+        );
 
         let exit_code = match &self.last_status {
             Some(codes) if !codes.iter().all(|c| c.code == 0) => {

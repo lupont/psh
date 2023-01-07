@@ -54,15 +54,9 @@ pub fn has_relative_command(cmd: impl AsRef<str>) -> bool {
     }
 }
 
-pub trait Expand: Sized {
-    fn expand(self) -> Self;
-}
-
-impl Expand for String {
-    fn expand(self) -> Self {
-        let home = home_dir();
-        self.replacen(&home, "~", 1)
-    }
+pub fn compress_tilde(s: String) -> String {
+    let home = home_dir();
+    s.replacen(&home, "~", 1)
 }
 
 #[cfg(test)]
@@ -74,15 +68,15 @@ mod tests {
         let home = home_dir();
 
         let input = format!("{home}/foo");
-        let expanded = input.expand();
+        let expanded = compress_tilde(input);
         assert_eq!("~/foo", expanded);
 
         let input = format!("{home}");
-        let expanded = input.expand();
+        let expanded = compress_tilde(input);
         assert_eq!("~", expanded);
 
         let input = format!("{home}//");
-        let expanded = input.expand();
+        let expanded = compress_tilde(input);
         assert_eq!("~//", expanded);
     }
 }
