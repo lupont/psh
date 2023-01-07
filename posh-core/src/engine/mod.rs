@@ -115,7 +115,7 @@ impl<W: Write> Engine<W> {
         };
 
         if let Some(Redirect::Input { to }) = stdin_redirect {
-            let f = std::fs::OpenOptions::new().read(true).open(to)?;
+            let f = std::fs::OpenOptions::new().read(true).open(to.name)?;
             stdin = Stdio::from(f);
         }
 
@@ -129,7 +129,7 @@ impl<W: Write> Engine<W> {
                 .write(true)
                 .create(true)
                 .append(append)
-                .open(to)?;
+                .open(to.name)?;
             Stdio::from(f)
         } else if final_cmd {
             Stdio::inherit()
@@ -147,7 +147,7 @@ impl<W: Write> Engine<W> {
                 .write(true)
                 .create(true)
                 .append(append)
-                .open(to)?;
+                .open(to.name)?;
             Stdio::from(f)
         } else {
             Stdio::inherit()
@@ -156,6 +156,7 @@ impl<W: Write> Engine<W> {
         let mut cmd = process::Command::new(command.cmd_name());
         let cmd = cmd
             .args(command.args())
+            .envs(command.vars())
             .stdin(stdin)
             .stdout(stdout)
             .stderr(stderr);

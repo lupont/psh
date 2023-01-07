@@ -14,7 +14,7 @@ pub trait Expand: Sized {
     fn expand(self) -> Result<Self>;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SyntaxTree {
     pub commands: Vec<CommandType>,
 }
@@ -47,7 +47,7 @@ impl ToString for SyntaxTree {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CommandType {
     Single(Command),
     Pipeline(Vec<Command>),
@@ -79,27 +79,112 @@ impl ToString for CommandType {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Command {
     pub name: Word,
     pub prefixes: Vec<Meta>,
     pub suffixes: Vec<Meta>,
 }
 
+fn expand_meta(vars: &[(String, String)], meta: Meta) -> Result<Meta> {
+    match meta {
+        Meta::Redirect(redirect) => match redirect {
+            Redirect::Output {
+                from: Some(from),
+                to,
+                append,
+            } => Ok(Meta::Redirect(Redirect::Output {
+                from: Some(expand_word(vars, from)?),
+                to: expand_word(vars, to)?,
+                append,
+            })),
+            Redirect::Output {
+                from: None,
+                to,
+                append,
+            } => Ok(Meta::Redirect(Redirect::Output {
+                from: None,
+                to: expand_word(vars, to)?,
+                append,
+            })),
+            Redirect::Input { to } => Ok(Meta::Redirect(Redirect::Input {
+                to: expand_word(vars, to)?,
+            })),
+        },
+        Meta::Word(word) => Ok(Meta::Word(expand_word(vars, word)?)),
+        Meta::Assignment(var, val) => Ok(Meta::Assignment(
+            expand_word(vars, var)?,
+            expand_word(vars, val)?,
+        )),
+    }
+}
+
+fn expand_word(vars: &[(String, String)], mut word: Word) -> Result<Word> {
+    if word.expansions.is_empty() {
+        return Ok(word);
+    }
+
+    let mut to_remove = Vec::new();
+
+    for (i, expansion) in word.expansions.iter().enumerate().rev() {
+        match expansion {
+            Expansion::Tilde { index } => {
+                let home = home_dir();
+                word.name.replace_range(index..=index, &home);
+                to_remove.push(i);
+            }
+
+            Expansion::Parameter { range, name } => {
+                for (var, val) in vars.iter() {
+                    if var == name {
+                        word.name.replace_range(range.clone(), val);
+                        to_remove.push(i);
+                    }
+                }
+            }
+
+            Expansion::Command { range: _, ast: _ } => {
+                return Err(Error::Unimplemented(
+                    "command expansions are not yet implemented".to_string(),
+                ))
+            }
+
+            Expansion::Glob {
+                range: _,
+                pattern: _,
+                recursive: _,
+            } => {
+                return Err(Error::Unimplemented(
+                    "glob expansions are not yet implemented".to_string(),
+                ))
+            }
+        }
+    }
+
+    to_remove.sort();
+    to_remove.dedup();
+    for i in to_remove.into_iter().rev() {
+        word.expansions.remove(i);
+    }
+
+    Ok(word)
+}
+
 impl Expand for Command {
     fn expand(mut self) -> Result<Self> {
-        self.name = self.name.expand()?;
+        let vars = self.vars();
+        self.name = expand_word(&vars, self.name)?;
 
         self.prefixes = self
             .prefixes
             .into_iter()
-            .map(Expand::expand)
+            .map(|m| expand_meta(&vars, m))
             .collect::<Result<Vec<_>>>()?;
 
         self.suffixes = self
             .suffixes
             .into_iter()
-            .map(Expand::expand)
+            .map(|m| expand_meta(&vars, m))
             .collect::<Result<Vec<_>>>()?;
 
         Ok(self)
@@ -109,6 +194,31 @@ impl Expand for Command {
 impl Command {
     pub fn cmd_name(&self) -> &String {
         &self.name.name
+    }
+
+    pub fn vars(&self) -> Vec<(String, String)> {
+        let mut vars = Vec::new();
+
+        for (var, val) in std::env::vars() {
+            vars.push((var, val));
+        }
+
+        for meta in self.prefixes.clone().into_iter().filter_map(|m| {
+            if let Meta::Assignment(_, _) = m {
+                Some(m)
+            } else {
+                None
+            }
+        }) {
+            if let Ok(Meta::Assignment(var, val)) = expand_meta(&vars, meta) {
+                if let Some(index) = vars.iter().position(|(v, _)| v == &var.name) {
+                    vars.remove(index);
+                }
+                vars.push((var.name.clone(), val.name.clone()));
+            }
+        }
+
+        vars
     }
 
     pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>, Option<Redirect>) {
@@ -128,11 +238,11 @@ impl Command {
 
                     Redirect::Output {
                         from: Some(ref s), ..
-                    } if s == "1" => stdout_redirect = Some(redirect.clone()),
+                    } if s.name == "1" => stdout_redirect = Some(redirect.clone()),
 
                     Redirect::Output {
                         from: Some(ref s), ..
-                    } if s == "2" => stderr_redirect = Some(redirect.clone()),
+                    } if s.name == "2" => stderr_redirect = Some(redirect.clone()),
 
                     Redirect::Input { .. } => stdin_redirect = Some(redirect.clone()),
 
@@ -187,7 +297,7 @@ impl ToString for Command {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Word {
     pub name: String,
     pub expansions: Vec<Expansion>,
@@ -202,79 +312,17 @@ impl Word {
     }
 }
 
-impl Expand for Word {
-    fn expand(mut self) -> Result<Self> {
-        let mut to_remove = vec![];
-
-        for (i, expansion) in self.expansions.iter().enumerate() {
-            match expansion {
-                Expansion::Tilde { index } => {
-                    let home = home_dir();
-
-                    self.name.replace_range(index..=index, &home);
-                    to_remove.push(i);
-                }
-
-                Expansion::Glob {
-                    range: _range,
-                    pattern: _pattern,
-                    recursive: _recursive,
-                } => {
-                    // TODO: implement globbing
-                }
-
-                Expansion::Parameter {
-                    range: _range,
-                    name: _name,
-                } => {
-                    // TODO: implement parameter expansion
-                }
-
-                Expansion::Command {
-                    range: _range,
-                    ast: _ast,
-                } => {
-                    // TODO: implement command expansion
-                }
-            }
-        }
-
-        // If there were expansion but none were found, we hit a NYI
-        if !self.expansions.is_empty() && to_remove.is_empty() {
-            Err(Error::Unimplemented(
-                "expansion not yet implemented".to_string(),
-            ))
-        } else {
-            for i in to_remove {
-                self.expansions.remove(i);
-            }
-
-            Ok(self)
-        }
-    }
-}
-
 impl ToString for Word {
     fn to_string(&self) -> String {
         self.name.clone()
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Meta {
     Redirect(Redirect),
     Word(Word),
     Assignment(Word, Word),
-}
-
-impl Expand for Meta {
-    fn expand(self) -> Result<Self> {
-        match self {
-            Self::Word(word) => Ok(Self::Word(word.expand()?)),
-            Self::Redirect(redirect) => Ok(Self::Redirect(redirect)),
-            Self::Assignment(var, val) => Ok(Self::Assignment(var.expand()?, val.expand()?)),
-        }
-    }
 }
 
 impl ToString for Meta {
@@ -282,27 +330,27 @@ impl ToString for Meta {
         match self {
             Self::Word(word) => word.name.clone(),
             Self::Redirect(redirect) => match redirect {
-                Redirect::Input { to } => format!("<{}", to),
+                Redirect::Input { to } => format!("<{}", to.name),
                 Redirect::Output {
                     from: None,
                     to,
                     append: false,
-                } => format!(">{}", to),
+                } => format!(">{}", to.name),
                 Redirect::Output {
                     from: None,
                     to,
                     append: true,
-                } => format!(">>{}", to),
+                } => format!(">>{}", to.name),
                 Redirect::Output {
                     from: Some(from),
                     to,
                     append: false,
-                } => format!("{}>{}", from, to),
+                } => format!("{}>{}", from.name, to.name),
                 Redirect::Output {
                     from: Some(from),
                     to,
                     append: true,
-                } => format!("{}>>{}", from, to),
+                } => format!("{}>>{}", from.name, to.name),
             },
             Self::Assignment(var, val) => format!("{}={}", var.name, val.name),
         }
@@ -312,16 +360,16 @@ impl ToString for Meta {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Redirect {
     Output {
-        from: Option<String>,
-        to: String,
+        from: Option<Word>,
+        to: Word,
         append: bool,
     },
     Input {
-        to: String,
+        to: Word,
     },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expansion {
     Parameter {
         range: RangeInclusive<usize>,
@@ -406,8 +454,6 @@ fn parse_command(tokens: &[Token]) -> Option<Command> {
 
     for token in tokens {
         match token {
-            Token::Colon => { /* noop */ }
-
             token @ (Token::String(_)
             | Token::SingleQuotedString(_, _)
             | Token::DoubleQuotedString(_, _)) => match parse_meta(token, name.is_none()) {
@@ -589,13 +635,14 @@ fn parse_word(s: impl AsRef<str>, expand: ExpansionType) -> Word {
             }
 
             '~' if matches!(expand, ExpansionType::All)
-                && matches!(prev_char, Some(' ') | None) =>
+                && matches!(prev_char, Some(' ' | '=') | None) =>
             {
                 match chars.peek() {
-                    Some(' ') | Some('/') | None => expansions.push(Expansion::Tilde { index }),
+                    Some(' ') | Some('/') | None => {
+                        expansions.push(Expansion::Tilde { index });
+                    }
                     _ => {}
                 }
-                index += 1;
             }
 
             _ => {}
@@ -646,7 +693,10 @@ fn parse_meta(token: &Token, is_prefix: bool) -> Option<Meta> {
             }
         }
 
-        Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input { to: s.to_string() })),
+        // FIXME: this should probably not always use ExpansionType::All
+        Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input {
+            to: parse_word(s, ExpansionType::All),
+        })),
 
         Token::RedirectOutput(from, to, _, append) => {
             let from = match from {
@@ -654,9 +704,10 @@ fn parse_meta(token: &Token, is_prefix: bool) -> Option<Meta> {
                 None => None,
             };
             let to = to.to_string();
+            // FIXME: these should probably not always use ExpansionType::All
             Some(Meta::Redirect(Redirect::Output {
-                from: from.cloned(),
-                to,
+                from: from.cloned().map(|s| parse_word(s, ExpansionType::All)),
+                to: parse_word(to, ExpansionType::All),
                 append: *append,
             }))
         }
@@ -682,8 +733,8 @@ mod tests {
                     Command {
                         name: Word::new("echo", vec![]),
                         prefixes: vec![Meta::Redirect(Redirect::Output {
-                            from: Some("2".into()),
-                            to: "&1".into(),
+                            from: Some(Word::new("2", vec![])),
+                            to: Word::new("&1", vec![]),
                             append: false,
                         }),],
                         suffixes: vec![
@@ -839,8 +890,8 @@ mod tests {
                     prefixes: vec![
                         Meta::Assignment(Word::new("CMD", vec![]), Word::new("exec=async", vec![])),
                         Meta::Redirect(Redirect::Output {
-                            from: Some("2".into()),
-                            to: "&1".into(),
+                            from: Some(Word::new("2", vec![])),
+                            to: Word::new("&1", vec![]),
                             append: false,
                         }),
                     ],
@@ -877,7 +928,7 @@ mod tests {
                         )),
                         Meta::Redirect(Redirect::Output {
                             from: None,
-                            to: "foo.log".into(),
+                            to: Word::new("foo.log", vec![]),
                             append: false,
                         }),
                     ],

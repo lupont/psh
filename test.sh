@@ -37,6 +37,21 @@ run-tests() {
         'echo oof | rev >file; cat <file'
     expect_file file \
         'foo'
+
+    expect "$HOME" \
+        'echo $HOME'
+
+    expect '$HOME' \
+        "echo '\$HOME'"
+
+    expect "$HOME" \
+        'echo "$HOME"'
+
+    expect bar \
+        'foo=bar echo "$foo"'
+
+    expect a/b \
+        'foo=a bar=b echo "$foo/$bar"'
 }
 
 run() {
