@@ -5,12 +5,10 @@ use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, ChildStdout, Stdio};
 
-use crate::engine::parser::ast::Redirect;
 use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{parse, Command, CommandType, Expand, SyntaxTree};
-use self::parser::has_relative_command;
+use self::parser::ast::{parse, Command, CommandType, Expand, Redirect, SyntaxTree};
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -88,7 +86,7 @@ impl<W: Write> Engine<W> {
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
         let cmd = cmd.as_ref();
-        has_relative_command(cmd)
+        path::has_relative_command(cmd)
             || self
                 .commands
                 .iter()

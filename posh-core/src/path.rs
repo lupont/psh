@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::os::unix::prelude::PermissionsExt;
 use std::path::PathBuf;
 
 use crate::Error;
@@ -34,6 +35,23 @@ pub fn get_cmds_from_path() -> Vec<String> {
     }
 
     cmds
+}
+
+pub fn has_relative_command(cmd: impl AsRef<str>) -> bool {
+    let cmd = cmd.as_ref();
+
+    if !cmd.starts_with('/') && !cmd.starts_with('.') {
+        return false;
+    }
+
+    match std::fs::metadata(cmd) {
+        Ok(metadata) => {
+            let mode = metadata.permissions().mode();
+            !metadata.is_dir() && mode & 0o111 != 0
+        }
+
+        Err(_) => false,
+    }
 }
 
 pub trait Expand: Sized {
