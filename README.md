@@ -43,12 +43,12 @@ in either single quotes or double quotes, the latter expanding variables within.
 Laying down pipes by separating statements with `|`, which makes the process
 redirect its stdout to the following process's stdin.
 
-#### Redirections
+#### Redirections (done)
 
 Redirecting the stdout (and stderr) streams with `>`, `>>`, `2>`, etc. As well
 as the stdin stream with `<`.
 
-### Environment variables
+### Environment variables (done)
 
 Part of this ties in with the [globbing and expansion](#globbing-and-expansion)
 section, but to support environment variables fully one should be able to set
@@ -108,10 +108,10 @@ following is a high-level checklist of what is in and what is not.
     - [x] Expand `~` to (expanded) `$HOME`
     - [x] Piping
     - [x] Multiple commands with `;` separator
-    - [ ] Redirections
+    - [x] Redirections
     - [ ] Brace expansion, `{foo,bar}.txt` -> `foo.txt bar.txt`
     - [ ] Globbing, both regular `*.rs` and recursive `**.rs`
-- [ ] Environment variables
+- [x] Environment variables
 - [ ] Configurability
 - [ ] More advanced CLI
     - [x] `--command` flag to execute command and exit
