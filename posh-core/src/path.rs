@@ -1,10 +1,24 @@
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 
 use crate::Error;
 
 pub fn home_dir() -> String {
     env::var("HOME").map_err(|_| Error::NoHome).unwrap()
+}
+
+pub fn history_file() -> PathBuf {
+    match env::var("POSH_HISTORY") {
+        Ok(path) => PathBuf::from(path),
+        Err(_) => match env::var("XDG_CONFIG_HOME") {
+            Ok(config_home) => PathBuf::from(config_home).join("posh").join("history"),
+            Err(_) => PathBuf::from(home_dir())
+                .join(".config")
+                .join("posh")
+                .join("history"),
+        },
+    }
 }
 
 pub fn get_cmds_from_path() -> Vec<String> {

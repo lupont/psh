@@ -1,8 +1,8 @@
-use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+use crate::path::history_file;
 use crate::{Error, Result};
 
 pub trait History {
@@ -23,16 +23,7 @@ pub struct FileHistory {
 
 impl FileHistory {
     pub fn init() -> Result<Self> {
-        let path = match env::var("POSH_HISTORY") {
-            Ok(path) => PathBuf::from(path),
-            Err(_) => match env::var("HOME") {
-                Ok(home) => PathBuf::from(home)
-                    .join(".config")
-                    .join("posh")
-                    .join("history"),
-                Err(_) => return Err(Error::NoHome),
-            },
-        };
+        let path = history_file();
 
         if path.metadata().is_err() {
             // FIXME
