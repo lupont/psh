@@ -15,15 +15,28 @@ use super::RawMode;
 use crate::config::{Colors, ABBREVIATIONS};
 
 struct State {
+    /// The current content of the input line.
     line: String,
+
+    /// The current position the user is on the line.
     index: usize,
 
+    /// The initial position of the terminal grid (start of the line, visually).
     start_pos: (u16, u16),
+
+    /// The size of the terminal window.
     size: (u16, u16),
 
+    /// Will be `true` when the user inputs Enter, ^C, etc.
     about_to_exit: bool,
+
+    /// Will be `true` if the user has just entered ^C.
     cancelled: bool,
+
+    /// Will be `true` if the user just cleared the screen via ^L.
     cleared: bool,
+
+    /// Will be `false` if the user inputs '^ ', which will make abbreviations not expand.
     highlight_abbreviations: bool,
 }
 
@@ -48,11 +61,32 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     };
 
     while !state.about_to_exit {
-        let (code, modifiers) = match event::read()? {
+        execute!(engine.writer, event::EnableBracketedPaste)?;
+
+        let event = event::read()?;
+
+        if let Event::Paste(s) = &event {
+            let (x, y) = state.pos()?;
+
+            state.line.insert_str(state.index, s);
+            state.index += s.len();
+
+            execute!(
+                engine.writer,
+                style::Print(&state.line[state.index - 1..]),
+                cursor::MoveTo(x + s.len() as u16, y),
+            )?;
+
+            print(engine, &state)?;
+        }
+
+        execute!(engine.writer, event::DisableBracketedPaste)?;
+
+        let (code, modifiers) = match event {
             Event::Key(KeyEvent {
                 code, modifiers, ..
             }) => (code, modifiers),
-            _ => break,
+            _ => continue,
         };
 
         match (code, modifiers) {
@@ -224,7 +258,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
                 execute!(
                     engine.writer,
-                    terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
                     cursor::MoveTo(x + 1, y),
                 )?;
@@ -243,7 +276,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 execute!(
                     engine.writer,
                     cursor::MoveTo(x - 1, y),
-                    terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index..]),
                     cursor::MoveTo(x - 1, y),
                 )?;

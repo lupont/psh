@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 posh-core = { path = "../posh-core/" }
 clap = { version = "4.0.19", features = ["derive"] }
-crossterm = "0.25.0"
+crossterm = { version = "0.25.0", features = ["bracketed-paste"] }
