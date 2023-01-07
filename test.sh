@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 
 ALL=0
 FAILED=0
@@ -76,7 +77,8 @@ expect_file() {
     local path="$1"
 
     local expected="$2"
-    local actual="$(cat "$path")"
+    local actual
+    actual="$(cat "$path")"
 
     if [ "$expected" = "$actual" ]; then
         success "Got expected '$expected' in file $path"
@@ -103,7 +105,7 @@ expect() {
 cargo build
 mkdir -p "$TEST_DIR"
 {
-    cd "$TEST_DIR"
+    cd "$TEST_DIR" || exit
     run-tests
 }
 rm -rf "$TEST_DIR"
