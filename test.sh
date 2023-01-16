@@ -7,6 +7,13 @@ ROOT="$(realpath "$(dirname "$0")")"
 TARGET="$ROOT/target/debug/posh"
 TEST_DIR=/tmp/posh-test
 
+QUIET=false
+case "$1" in
+    -q|--quiet)
+        QUIET=true
+        ;;
+esac
+
 run-tests() {
     expect foo \
         'printf foo'
@@ -39,6 +46,11 @@ run-tests() {
     expect_file file \
         'foo'
 
+    expect '' \
+        'echo foo >file; echo bar >> file'
+    expect_file file \
+        $'foo\nbar'
+
     expect "$HOME" \
         'echo $HOME'
 
@@ -66,11 +78,11 @@ success() {
         val='<empty>'
         col=94
     fi
-    printf '\033[%sm%s\033[0m\n' "$col" "$val"
+    ! "$QUIET" && printf '\033[%sm%s\033[0m\n' "$col" "$val"
 }
 
 failure() {
-    printf '\033[91m%s\033[0m\n' "$1" 1>&2
+    ! "$QUIET" && printf '\033[91m%s\033[0m\n' "$1" 1>&2
 }
 
 expect_file() {
@@ -88,8 +100,9 @@ expect_file() {
 }
 
 expect() {
-    echo
-    printf '$ %s\n' "$2"
+    ! "$QUIET" && printf '\n$ %s\n' "$2"
+
+    local res
     res="$(run $2)"
 
     if [ "$1" = "$res" ]; then
@@ -102,7 +115,12 @@ expect() {
     ALL=$((ALL + 1))
 }
 
-cargo build
+if "$QUIET"; then
+    cargo build 2>/dev/null
+else
+    cargo build
+fi
+
 mkdir -p "$TEST_DIR"
 {
     cd "$TEST_DIR" || exit
@@ -110,10 +128,10 @@ mkdir -p "$TEST_DIR"
 }
 rm -rf "$TEST_DIR"
 
-echo
+! "$QUIET" && echo
 if [ "$FAILED" -eq 0 ]; then
-    success "All $ALL tests passed!"
+    QUIET=false success "All $ALL tests passed!"
 else
-    failure "$FAILED/$ALL tests failed."
+    QUIET=false failure "$FAILED/$ALL tests failed."
     exit 1
 fi
