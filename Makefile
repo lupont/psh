@@ -4,6 +4,9 @@ SHELLCHECK := shellcheck
 
 all: lint test
 
+coverage:
+	${CARGO} llvm-cov
+
 fmt:
 	${CARGO} fmt
 
@@ -15,7 +18,7 @@ shellcheck:
 	${SHELLCHECK} test.sh
 
 test:
-	${CARGO} llvm-cov
+	${CARGO} test
 	${BASH} test.sh
 
-.PHONY: all fmt lint shellcheck test
+.PHONY: all coverage fmt lint shellcheck test
