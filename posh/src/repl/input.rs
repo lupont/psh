@@ -42,6 +42,23 @@ impl State {
     fn pos(&self) -> Result<(u16, u16)> {
         Ok(cursor::position()?)
     }
+
+    fn next_pos(&self) -> cursor::MoveTo {
+        let (sx, sy) = self.start_pos;
+
+        let (cx, _) = self.pos().unwrap_or((sx, sy));
+        let (width, _) = self.size;
+
+        let mut x = sx + self.index as u16;
+        let mut y = sy;
+
+        if cx == width {
+            x = sx;
+            y = sy + 1;
+        }
+
+        cursor::MoveTo(x, y)
+    }
 }
 
 pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
@@ -64,15 +81,13 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
         let event = event::read()?;
 
         if let Event::Paste(s) = &event {
-            let (x, y) = state.pos()?;
-
             state.line.insert_str(state.index, s);
             state.index += s.len();
 
             execute!(
                 engine.writer,
                 style::Print(&state.line[state.index - 1..]),
-                cursor::MoveTo(x + s.len() as u16, y),
+                state.next_pos(),
             )?;
 
             print(engine, &state)?;
@@ -119,29 +134,20 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 state.line = engine.history.prev()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                let (start_x, start_y) = state.start_pos;
-                execute!(
-                    engine.writer,
-                    cursor::MoveTo(start_x + state.index as u16, start_y)
-                )?;
+                execute!(engine.writer, state.next_pos(),)?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
                 state.line = engine.history.next()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                let (start_x, start_y) = state.start_pos;
-                execute!(
-                    engine.writer,
-                    cursor::MoveTo(start_x + state.index as u16, start_y)
-                )?;
+                execute!(engine.writer, state.next_pos(),)?;
             }
 
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 state.line.clear();
                 state.index = 0;
-                let (start_x, start_y) = state.start_pos;
-                execute!(engine.writer, cursor::MoveTo(start_x, start_y))?;
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
@@ -163,7 +169,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                 }
 
                 let space_index = space_index.unwrap_or(0);
-                let offset = (state.index - space_index) as u16;
                 state.line.replace_range(space_index..state.index, "");
                 state.index = space_index;
 
@@ -171,14 +176,15 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     state.highlight_abbreviations = true;
                 }
 
-                execute!(engine.writer, cursor::MoveLeft(offset))?;
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+                let (start_x, _) = state.start_pos;
                 execute!(
                     engine.writer,
-                    terminal::Clear(terminal::ClearType::All),
-                    cursor::MoveTo(0, 0)
+                    cursor::MoveTo(start_x, 0),
+                    terminal::Clear(terminal::ClearType::FromCursorDown),
                 )?;
                 state.cleared = true;
                 break;
@@ -186,37 +192,18 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
             (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if state.index > 0 => {
                 state.index -= 1;
-                execute!(engine.writer, cursor::MoveLeft(1))?;
+
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
                 if state.index < state.line.len() =>
             {
                 state.index += 1;
-                execute!(engine.writer, cursor::MoveRight(1))?;
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char(c @ (' ' | '|' | ';')), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                let (mut x, y) = state.pos()?;
-
-                if state.line.find(' ').is_none() {
-                    if let Some((expanded_line, diff)) = expand_abbreviation(&state.line, false) {
-                        state.line = expanded_line;
-
-                        // FIXME: replace with something like `wrapping_add_signed` once
-                        //        https://github.com/rust-lang/rust/issues/87840 is in stable
-                        if diff >= 0 {
-                            x = u16::checked_add(x, diff as u16).unwrap_or(0);
-                            state.index =
-                                usize::checked_add(state.index, diff as usize).unwrap_or(0);
-                        } else {
-                            x = u16::checked_sub(x, diff.unsigned_abs() as u16).unwrap_or(0);
-                            state.index =
-                                usize::checked_sub(state.index, diff.unsigned_abs()).unwrap_or(0);
-                        }
-                    }
-                }
-
                 state.line.insert(state.index, c);
                 state.index += 1;
 
@@ -228,13 +215,11 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
-                    cursor::MoveTo(x + 1, y),
+                    state.next_pos(),
                 )?;
             }
 
             (KeyCode::Char(' '), KeyModifiers::CONTROL) => {
-                let (x, y) = state.pos()?;
-
                 state.line.insert(state.index, ' ');
                 state.index += 1;
 
@@ -244,26 +229,22 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
-                    cursor::MoveTo(x + 1, y),
+                    state.next_pos(),
                 )?;
             }
 
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                let (x, y) = state.pos()?;
-
                 state.line.insert(state.index, c);
                 state.index += 1;
 
                 execute!(
                     engine.writer,
                     style::Print(&state.line[state.index - 1..]),
-                    cursor::MoveTo(x + 1, y),
+                    state.next_pos(),
                 )?;
             }
 
             (KeyCode::Backspace, _) if state.index > 0 => {
-                let (x, y) = state.pos()?;
-
                 state.index -= 1;
                 state.line.remove(state.index);
 
@@ -273,9 +254,9 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
                 execute!(
                     engine.writer,
-                    cursor::MoveTo(x - 1, y),
+                    state.next_pos(),
                     style::Print(&state.line[state.index..]),
-                    cursor::MoveTo(x - 1, y),
+                    state.next_pos(),
                 )?;
             }
 
@@ -296,10 +277,14 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
         execute!(engine.writer, terminal::ScrollUp(1))?;
     }
 
-    if !state.cleared {
-        execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+    if state.cleared {
+        execute!(
+            engine.writer,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        )?;
     } else {
-        execute!(engine.writer, cursor::MoveTo(0, 0))?;
+        execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
     }
 
     // FIXME: should probably return Result<Option<String>> with Ok(None) here?
