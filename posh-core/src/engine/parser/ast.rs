@@ -135,11 +135,19 @@ fn expand_word(vars: &[(String, String)], mut word: Word) -> Result<Word> {
             }
 
             Expansion::Parameter { range, name } => {
+                let mut found = false;
                 for (var, val) in vars.iter() {
                     if var == name {
                         word.name.replace_range(range.clone(), val);
                         to_remove.push(i);
+                        found = true;
+                        break;
                     }
+                }
+
+                if !found {
+                    word.name.replace_range(range.clone(), "");
+                    to_remove.push(i);
                 }
             }
 
