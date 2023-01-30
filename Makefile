@@ -18,7 +18,7 @@ shellcheck:
 	${SHELLCHECK} test.sh
 
 test:
-	${CARGO} test
+	${CARGO} test -q
 	${BASH} test.sh
 
 .PHONY: all coverage fmt lint shellcheck test

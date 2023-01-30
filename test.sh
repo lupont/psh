@@ -7,10 +7,10 @@ ROOT="$(realpath "$(dirname "$0")")"
 TARGET="$ROOT/target/debug/posh"
 TEST_DIR=/tmp/posh-test
 
-QUIET=false
+QUIET=true
 case "$1" in
-    -q|--quiet)
-        QUIET=true
+    -v|--verbose)
+        QUIET=false
         ;;
 esac
 
@@ -100,15 +100,15 @@ expect_file() {
 }
 
 expect() {
-    ! "$QUIET" && printf '\n$ %s\n' "$2"
-
     local res
     res="$(run $2)"
 
     if [ "$1" = "$res" ]; then
+        ! "$QUIET" && printf '\n$ %s\n' "$2"
         success "$res"
     else
-        failure "$res (expected: $1)"
+        printf '$ %s\n' "$2"
+        QUIET=false failure "$res (expected: $1)"
         FAILED=$((FAILED + 1))
     fi
 
@@ -116,7 +116,7 @@ expect() {
 }
 
 if "$QUIET"; then
-    cargo build 2>/dev/null
+    cargo build >/dev/null 2>&1
 else
     cargo build
 fi
@@ -128,10 +128,9 @@ mkdir -p "$TEST_DIR"
 }
 rm -rf "$TEST_DIR"
 
-! "$QUIET" && echo
 if [ "$FAILED" -eq 0 ]; then
-    QUIET=false success "All $ALL tests passed!"
+    QUIET=false success $'\n'"All $ALL tests passed!"
 else
-    QUIET=false failure "$FAILED/$ALL tests failed."
+    QUIET=false failure $'\n'"$FAILED/$ALL tests failed."
     exit 1
 fi
