@@ -15,6 +15,12 @@ The project is (currently) split into two crates:
 Before `posh` can be considered feature complete, the following features are
 required:
 
+## Repository statistics
+
+![Commits since latest version badge](https://img.shields.io/github/commits-since/lupont/rush/latest?style=flat-square)
+![License badge](https://img.shields.io/github/license/lupont/rush?style=flat-square)
+![Most used language badge](https://img.shields.io/github/languages/top/lupont/rush?style=flat-square)
+
 ### Tab completion
 
 Tab completion that works on files, as well as arguments to programs. It will
