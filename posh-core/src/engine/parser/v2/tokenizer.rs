@@ -1,9 +1,10 @@
+use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
 
 use super::consumer::Consumer;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Word(String),
     Whitespace(char),
@@ -23,6 +24,31 @@ pub enum Token {
     RBrace,
     Backtick,
     Backslash,
+}
+
+impl Token {
+    pub fn to_str(&self) -> Cow<str> {
+        match self {
+            Token::Word(s) => Cow::Borrowed(s),
+            Token::Whitespace(c) => Cow::Owned(format!("{c}")),
+            Token::SingleQuote => Cow::Borrowed("'"),
+            Token::DoubleQuote => Cow::Borrowed("\""),
+            Token::Semicolon => Cow::Borrowed(";"),
+            Token::Ampersand => Cow::Borrowed("&"),
+            Token::Equals => Cow::Borrowed("="),
+            Token::Dollar => Cow::Borrowed("$"),
+            Token::Pound => Cow::Borrowed("#"),
+            Token::Pipe => Cow::Borrowed("|"),
+            Token::LAngle => Cow::Borrowed("<"),
+            Token::RAngle => Cow::Borrowed(">"),
+            Token::LParen => Cow::Borrowed("("),
+            Token::RParen => Cow::Borrowed(")"),
+            Token::LBrace => Cow::Borrowed("{"),
+            Token::RBrace => Cow::Borrowed("}"),
+            Token::Backtick => Cow::Borrowed("`"),
+            Token::Backslash => Cow::Borrowed("\\"),
+        }
+    }
 }
 
 pub trait Tokenizer: Iterator<Item = char> {
@@ -143,11 +169,12 @@ impl Tokenizer for Peekable<Chars<'_>> {
     }
 
     fn parse_whitespace(&mut self) -> Option<Token> {
-        self.consume_if(char::is_whitespace).map(Token::Whitespace)
+        self.consume_if(|c| c.is_whitespace())
+            .map(Token::Whitespace)
     }
 
     fn parse_word(&mut self) -> Option<Token> {
-        self.consume_until(is_separator)
+        self.consume_until(|c| is_separator(*c))
             .map(|v| Token::Word(v.iter().collect::<String>()))
     }
 }
@@ -156,7 +183,20 @@ fn is_separator(c: char) -> bool {
     c.is_whitespace()
         || matches!(
             c,
-            '#' | '`' | '=' | '\'' | '"' | '>' | '<' | ';' | '&' | '|' | '(' | ')' | '{' | '}' | '\\'
+            '#' | '`'
+                | '='
+                | '\''
+                | '"'
+                | '>'
+                | '<'
+                | ';'
+                | '&'
+                | '|'
+                | '('
+                | ')'
+                | '{'
+                | '}'
+                | '\\'
         )
 }
 
@@ -258,7 +298,9 @@ mod tests {
 
     #[test]
     fn tokenize_cmd_sub() {
-        let mut input = r#"echo "$(echo "$(cat "`echo file`")" | rev)" #remove this"#.chars().peekable();
+        let mut input = r#"echo "$(echo "$(cat "`echo file`")" | rev)" #remove this"#
+            .chars()
+            .peekable();
 
         let tokens = input.tokenize();
 
