@@ -1,42 +1,40 @@
 use std::iter::Peekable;
-use std::str::Chars;
 
 pub trait Consumer<T>: Iterator<Item = T>
 where
-    T: PartialEq,
+    T: PartialEq + Clone,
 {
-    fn consume_if(&mut self, predicate: impl Fn(char) -> bool) -> Option<T>;
+    fn consume_if(&mut self, predicate: impl Fn(&T) -> bool) -> Option<T>;
     fn consume_single(&mut self, needle: T) -> Option<T>;
-    fn consume_until(&mut self, predicate: impl Fn(T) -> bool) -> Option<Vec<T>>;
-    fn consume_multiple(&mut self, literal: impl Iterator<Item = T>) -> Option<Vec<T>>;
+    fn consume_until(&mut self, predicate: impl Fn(&T) -> bool) -> Option<Vec<T>>;
+    fn consume_multiple(&mut self, literal: impl IntoIterator<Item = T>) -> Option<Vec<T>>;
 }
 
-impl Consumer<char> for Peekable<Chars<'_>> {
-    fn consume_if(&mut self, predicate: impl Fn(char) -> bool) -> Option<char> {
-        if let Some(&t) = self.peek() {
-            if predicate(t) {
-                self.next();
-                return Some(t);
-            }
+impl<T, I> Consumer<T> for Peekable<I>
+where
+    I: Iterator<Item = T> + Clone,
+    T: PartialEq + Clone,
+{
+    fn consume_if(&mut self, predicate: impl Fn(&T) -> bool) -> Option<T> {
+        match self.peek() {
+            Some(t) if predicate(t) => Some(self.next().unwrap()),
+            _ => None,
         }
-
-        None
     }
 
-    fn consume_single(&mut self, needle: char) -> Option<char> {
-        self.consume_if(|c| c == needle)
+    fn consume_single(&mut self, needle: T) -> Option<T> {
+        self.consume_if(|c| c == &needle)
     }
 
-    fn consume_until(&mut self, predicate: impl Fn(char) -> bool) -> Option<Vec<char>> {
+    fn consume_until(&mut self, predicate: impl Fn(&T) -> bool) -> Option<Vec<T>> {
         let mut v = Vec::new();
 
-        while let Some(&c) = self.peek() {
+        while let Some(c) = self.peek() {
             if predicate(c) {
                 break;
             }
 
-            self.next();
-            v.push(c);
+            v.push(self.next().unwrap());
         }
 
         if v.is_empty() {
@@ -46,12 +44,13 @@ impl Consumer<char> for Peekable<Chars<'_>> {
         }
     }
 
-    fn consume_multiple(&mut self, mut literal: impl Iterator<Item = char>) -> Option<Vec<char>> {
+    fn consume_multiple(&mut self, literal: impl IntoIterator<Item = T>) -> Option<Vec<T>> {
         let initial = self.clone();
 
         let mut v = Vec::new();
 
-        for c in literal.by_ref() {
+        let mut iter = literal.into_iter();
+        for c in iter.by_ref() {
             if let Some(i) = self.consume_single(c) {
                 v.push(i);
             } else {
@@ -69,6 +68,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_consume_if() {
+        let mut input = vec![1, 2, 3].into_iter().peekable();
+
+        let consumed = input.consume_if(|&d| d < 3);
+        assert_eq!(Some(1), consumed);
+
+        let consumed = input.consume_if(|&d| d < 3);
+        assert_eq!(Some(2), consumed);
+
+        let consumed = input.consume_if(|&d| d < 3);
+        assert_eq!(None, consumed);
+    }
+
+    #[test]
     fn test_consume_single() {
         let mut input = "hej hopp".chars().peekable();
 
@@ -83,7 +96,7 @@ mod tests {
         let mut input = "hej hopp".chars().peekable();
 
         let consumed = input
-            .consume_until(char::is_whitespace)
+            .consume_until(|c| c.is_whitespace())
             .map(|v| v.iter().collect::<String>());
 
         assert_eq!(Some("hej".to_string()), consumed);
