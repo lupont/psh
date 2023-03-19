@@ -21,7 +21,7 @@ pub enum SemanticToken {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Keyword {
-    Not,
+    Bang,
     LBrace,
     RBrace,
     Case,
@@ -306,7 +306,7 @@ where
                 .map(|_| SemanticToken::Keyword(keyword))
         };
 
-        consume_keyword("!", Keyword::Not)
+        consume_keyword("!", Keyword::Bang)
             .or_else(|| consume_keyword("{", Keyword::LBrace))
             .or_else(|| consume_keyword("}", Keyword::RBrace))
             .or_else(|| consume_keyword("case", Keyword::Case))
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn parse_keyword() {
         let test_data = vec![
-            ("!", super::Keyword::Not),
+            ("!", super::Keyword::Bang),
             ("{", super::Keyword::LBrace),
             ("}", super::Keyword::RBrace),
             ("case", super::Keyword::Case),
