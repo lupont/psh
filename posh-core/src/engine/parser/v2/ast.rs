@@ -9,31 +9,24 @@ pub struct SyntaxTree {
 }
 
 pub trait Parser: Iterator<Item = SemanticToken> {
+    fn parse(&mut self) -> Option<SyntaxTree>;
+
+    fn swallow_whitespace(&mut self);
+
     fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
     fn parse_redirection(&mut self) -> Option<Redirection>;
     fn parse_word(&mut self) -> Option<Word>;
 
+    fn parse_list(&mut self) -> Option<List>;
     fn parse_and_or_list(&mut self) -> Option<AndOrList>;
 
-    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
     fn parse_pipeline(&mut self) -> Option<Pipeline>;
 
     fn parse_command(&mut self) -> Option<Command> {
-        self.parse_pipeline()
-            .map(Command::Pipeline)
-            .or_else(|| self.parse_simple_command().map(Command::Simple))
-    }
-
-    // NOTE: I really dislike this, but this is the simplest way
-    //       I could think of to avoid stack overflows when
-    //       parsing a command in a pipeline
-    fn parse_command_except_pipeline(&mut self) -> Option<Command> {
         self.parse_simple_command().map(Command::Simple)
     }
 
-    fn swallow_whitespace(&mut self);
-
-    fn parse(&mut self) -> Option<SyntaxTree>;
+    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
 }
 
 impl<T> Parser for Peekable<T>
@@ -44,9 +37,39 @@ where
         todo!()
     }
 
+    fn parse_list(&mut self) -> Option<List> {
+        let first = match self.parse_and_or_list() {
+            Some(list) => list,
+            None => return None,
+        };
+
+        let mut rest = Vec::new();
+
+        self.swallow_whitespace();
+
+        while let Some(thing) = self
+            .consume_if(|t| {
+                t == &SemanticToken::SyncSeparator || t == &SemanticToken::AsyncSeparator
+            })
+            .map(|t| match t {
+                SemanticToken::SyncSeparator => Separator::Sync,
+                SemanticToken::AsyncSeparator => Separator::Async,
+                _ => unreachable!(),
+            })
+            .and_then(|separator| {
+                self.swallow_whitespace();
+                self.parse_and_or_list().map(|a| (separator, a))
+            })
+        {
+            rest.push(thing);
+        }
+
+        Some(List { first, rest })
+    }
+
     fn parse_and_or_list(&mut self) -> Option<AndOrList> {
-        let first = match self.parse_command() {
-            Some(cmd) => cmd,
+        let first = match self.parse_pipeline() {
+            Some(pipeline) => pipeline,
             None => return None,
         };
 
@@ -63,7 +86,8 @@ where
             })
             .and_then(|op| {
                 self.swallow_whitespace();
-                self.parse_command().map(|c| (op, c))
+                // FIXME: this currently allows a list to end with a && or ||
+                self.parse_pipeline().map(|c| (op, c))
             })
         {
             rest.push(thing);
@@ -76,11 +100,11 @@ where
         let initial = self.clone();
 
         let negate = self
-            .consume_single(SemanticToken::Keyword(Keyword::Not))
+            .consume_single(SemanticToken::Keyword(Keyword::Bang))
             .is_some();
         self.swallow_whitespace();
 
-        let first = match self.parse_command_except_pipeline() {
+        let first = match self.parse_command() {
             Some(cmd) => cmd,
             None => {
                 *self = initial;
@@ -94,21 +118,14 @@ where
 
         while let Some(cmd) = self.consume_single(SemanticToken::Pipe).and_then(|_| {
             self.swallow_whitespace();
-            self.parse_command_except_pipeline()
+            self.parse_command()
         }) {
             rest.push(cmd);
         }
 
-        // NOTE: not exactly on-spec, but without this, a simple command
-        //       gets parsed as a pipeline
-        if rest.is_empty() {
-            *self = initial;
-            return None;
-        }
-
         Some(Pipeline {
             negate,
-            first: Box::new(first),
+            first,
             rest,
         })
     }
@@ -276,10 +293,27 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct List {
+    first: AndOrList,
+    rest: Vec<(Separator, AndOrList)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AndOrList {
+    first: Pipeline,
+    rest: Vec<(LogicalOp, Pipeline)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Pipeline {
+    negate: bool,
+    first: Command,
+    rest: Vec<Command>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Simple(SimpleCommand),
-    Pipeline(Pipeline),
-    List(List),
     CompoundCommand(CompoundCommand),
     FunctionDefinition(FunctionDefinition),
 }
@@ -424,25 +458,6 @@ pub struct CompoundCommand {
 pub struct FunctionDefinition {
     name: String,
     commands: CompoundCommand,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Pipeline {
-    negate: bool,
-    first: Box<Command>,
-    rest: Vec<Command>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct List {
-    first: Box<AndOrList>,
-    rest: Vec<(Separator, AndOrList)>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct AndOrList {
-    first: Command,
-    rest: Vec<(LogicalOp, Command)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -594,12 +609,12 @@ mod tests {
         let expected = Pipeline {
             negate: false,
 
-            first: Box::new(Command::Simple(SimpleCommand {
+            first: Command::Simple(SimpleCommand {
                 name: Word::new("echo"),
                 words: vec![Word::new("foo")],
                 redirections: vec![Redirection::new_output("2", "/dev/null", false)],
                 assignments: Vec::new(),
-            })),
+            }),
 
             rest: vec![
                 Command::Simple(SimpleCommand {
@@ -627,39 +642,138 @@ mod tests {
         let actual = tokens.parse_and_or_list();
 
         let expected = AndOrList {
-            first: Command::Simple(SimpleCommand {
-                name: Word::new("foo"),
-                words: Vec::new(),
-                redirections: Vec::new(),
-                assignments: Vec::new(),
-            }),
+            first: Pipeline {
+                first: Command::Simple(SimpleCommand {
+                    name: Word::new("foo"),
+                    words: Vec::new(),
+                    redirections: Vec::new(),
+                    assignments: Vec::new(),
+                }),
+                negate: false,
+                rest: Vec::new(),
+            },
             rest: vec![
                 (
                     LogicalOp::And,
-                    Command::Pipeline(Pipeline {
+                    Pipeline {
                         negate: false,
-                        first: Box::new(Command::Simple(SimpleCommand {
+                        first: Command::Simple(SimpleCommand {
                             name: Word::new("bar"),
                             words: Vec::new(),
                             redirections: Vec::new(),
                             assignments: Vec::new(),
-                        })),
+                        }),
                         rest: vec![Command::Simple(SimpleCommand {
                             name: Word::new("rev"),
                             words: Vec::new(),
                             redirections: Vec::new(),
                             assignments: Vec::new(),
                         })],
-                    }),
+                    },
                 ),
                 (
                     LogicalOp::Or,
-                    Command::Simple(SimpleCommand {
-                        name: Word::new("baz"),
+                    Pipeline {
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("baz"),
+                            words: Vec::new(),
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        negate: false,
+                        rest: Vec::new(),
+                    },
+                ),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_simple_list() {
+        let mut tokens = parse("true && foo || bar & baz; quux | rev");
+        let actual = tokens.parse_list();
+
+        let expected = List {
+            first: AndOrList {
+                first: Pipeline {
+                    first: Command::Simple(SimpleCommand {
+                        name: Word::new("true"),
                         words: Vec::new(),
                         redirections: Vec::new(),
                         assignments: Vec::new(),
                     }),
+                    rest: Vec::new(),
+                    negate: false,
+                },
+                rest: vec![
+                    (
+                        LogicalOp::And,
+                        Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("foo"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                    ),
+                    (
+                        LogicalOp::Or,
+                        Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("bar"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                    ),
+                ],
+            },
+            rest: vec![
+                (
+                    Separator::Async,
+                    AndOrList {
+                        first: Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("baz"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                        rest: Vec::new(),
+                    },
+                ),
+                (
+                    Separator::Sync,
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("quux"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: vec![Command::Simple(SimpleCommand {
+                                name: Word::new("rev"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            })],
+                        },
+                        rest: Vec::new(),
+                    },
                 ),
             ],
         };
