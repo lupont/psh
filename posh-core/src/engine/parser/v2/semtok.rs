@@ -15,6 +15,8 @@ pub enum SemanticToken {
     Pipe,
     RedirectInput,
     RedirectOutput,
+    LParen,
+    RParen,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +47,8 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
     fn parse_pipe(&mut self) -> Option<SemanticToken>;
     fn parse_redirect_input(&mut self) -> Option<SemanticToken>;
     fn parse_redirect_output(&mut self) -> Option<SemanticToken>;
+    fn parse_lparen(&mut self) -> Option<SemanticToken>;
+    fn parse_rparen(&mut self) -> Option<SemanticToken>;
     fn parse_whitespace(&mut self) -> Option<SemanticToken>;
     fn parse_word(&mut self) -> Option<SemanticToken>;
     fn parse_keyword(&mut self) -> Option<SemanticToken>;
@@ -103,6 +107,16 @@ where
     fn parse_redirect_output(&mut self) -> Option<SemanticToken> {
         self.consume_single(Token::RAngle)
             .map(|_| SemanticToken::RedirectOutput)
+    }
+
+    fn parse_lparen(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::LParen)
+            .map(|_| SemanticToken::LParen)
+    }
+
+    fn parse_rparen(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::RParen)
+            .map(|_| SemanticToken::RParen)
     }
 
     fn parse_whitespace(&mut self) -> Option<SemanticToken> {
