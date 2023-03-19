@@ -475,7 +475,7 @@ pub enum LogicalOp {
 #[cfg(test)]
 mod tests {
     use super::super::semtok::SemanticTokenizer;
-    use super::super::tokenizer::Tokenizer;
+    use super::super::tok::Tokenizer;
     use super::*;
 
     fn parse(
