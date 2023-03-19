@@ -11,17 +11,6 @@ pub struct SyntaxTree {
     pub program: Vec<CompleteCommand>,
 }
 
-impl ToString for SyntaxTree {
-    fn to_string(&self) -> String {
-        // FIXME: save amount of new lines?
-        self.program
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
 pub fn parse<A>(input: A) -> Result<SyntaxTree>
 where
     A: AsRef<str>,
@@ -366,16 +355,14 @@ where
                 return Some(Word::new("", ws));
             }
 
-            Some(SemanticToken::Word(word)) if word.len() == 1 => {
-                match word.chars().nth(0) {
-                    Some('0'..='9') => {
-                        let word = Word::new(word, ws);
-                        self.next();
-                        Some(word)
-                    }
-                    _ => None,
+            Some(SemanticToken::Word(word)) if word.len() == 1 => match word.chars().nth(0) {
+                Some('0'..='9') => {
+                    let word = Word::new(word, ws);
+                    self.next();
+                    Some(word)
                 }
-            }
+                _ => None,
+            },
 
             _ => None,
         }
@@ -412,48 +399,16 @@ pub struct CompleteCommand {
     pub separator: Option<Separator>,
 }
 
-impl ToString for CompleteCommand {
-    fn to_string(&self) -> String {
-        let mut s = self.list.to_string();
-        if let Some(sep) = &self.separator {
-            s.push_str(&sep.to_string());
-        }
-        s
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub first: AndOrList,
     pub rest: Vec<(Separator, AndOrList)>,
 }
 
-impl ToString for List {
-    fn to_string(&self) -> String {
-        let mut list = self.first.to_string();
-        for (sep, and_or_list) in &self.rest {
-            list.push_str(&sep.to_string());
-            list.push_str(&and_or_list.to_string());
-        }
-        list
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
     pub first: Pipeline,
     pub rest: Vec<(LogicalOp, Pipeline)>,
-}
-
-impl ToString for AndOrList {
-    fn to_string(&self) -> String {
-        let mut list = self.first.to_string();
-        for (op, pipeline) in &self.rest {
-            list.push_str(&op.to_string());
-            list.push_str(&pipeline.to_string());
-        }
-        list
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -472,39 +427,11 @@ impl Pipeline {
     }
 }
 
-impl ToString for Pipeline {
-    fn to_string(&self) -> String {
-        let mut pipeline = self.first.to_string();
-
-        for (ws, cmd) in &self.rest {
-            pipeline.push_str(ws);
-            pipeline.push('|');
-            pipeline.push_str(&cmd.to_string());
-        }
-
-        if self.negate {
-            pipeline.insert(0, '!');
-        }
-
-        pipeline
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Simple(SimpleCommand),
     Compound(CompoundCommand),
     FunctionDefinition(FunctionDefinition),
-}
-
-impl ToString for Command {
-    fn to_string(&self) -> String {
-        match self {
-            Command::Simple(s) => s.to_string(),
-            Command::Compound(c) => c.to_string(),
-            Command::FunctionDefinition(f) => f.to_string(),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -530,35 +457,11 @@ impl SimpleCommand {
     }
 }
 
-impl ToString for SimpleCommand {
-    fn to_string(&self) -> String {
-        let mut s = String::new();
-        for prefix in &self.prefixes {
-            s += &prefix.to_string();
-        }
-        s += &self.name.to_string();
-        for suffix in &self.suffixes {
-            s += &suffix.to_string();
-        }
-        s
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum SimpleCommandMeta {
     Word(Word),
     Redirection(Redirection),
     Assignment(VariableAssignment),
-}
-
-impl ToString for SimpleCommandMeta {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Word(w) => w.to_string(),
-            Self::Redirection(r) => r.to_string(),
-            Self::Assignment(a) => a.to_string(),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -604,35 +507,6 @@ impl Redirection {
     }
 }
 
-impl ToString for Redirection {
-    fn to_string(&self) -> String {
-        match self {
-            Redirection::Input {
-                file_descriptor,
-                target,
-            } => format!("{}<{}", file_descriptor.to_string(), target.to_string()),
-            Redirection::Output {
-                file_descriptor,
-                append,
-                target,
-            } => format!(
-                "{}>{}{}",
-                file_descriptor.to_string(),
-                if *append {
-                    ">".to_string()
-                } else {
-                    "".to_string()
-                },
-                target.to_string()
-            ),
-            Redirection::HereDocument {
-                file_descriptor,
-                delimiter,
-            } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct VariableAssignment {
     lhs: Word,
@@ -642,19 +516,6 @@ pub struct VariableAssignment {
 impl VariableAssignment {
     pub fn new(lhs: Word, rhs: Option<Word>) -> Self {
         Self { lhs, rhs }
-    }
-}
-
-impl ToString for VariableAssignment {
-    fn to_string(&self) -> String {
-        format!(
-            "{}={}",
-            self.lhs.to_string(),
-            match &self.rhs {
-                Some(rhs) => rhs.to_string(),
-                None => "".to_string(),
-            }
-        )
     }
 }
 
@@ -687,12 +548,6 @@ impl Word {
     fn expand(input: &str) -> &str {
         // TODO: expand
         input
-    }
-}
-
-impl ToString for Word {
-    fn to_string(&self) -> String {
-        format!("{}{}", self.whitespace, self.raw)
     }
 }
 
@@ -738,28 +593,191 @@ pub struct CompoundCommand {
     rest: Vec<Command>,
 }
 
-impl ToString for CompoundCommand {
-    fn to_string(&self) -> String {
-        todo!()
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionDefinition {
     name: String,
     commands: CompoundCommand,
 }
 
-impl ToString for FunctionDefinition {
+#[derive(Debug, PartialEq, Eq)]
+pub enum Separator {
+    Sync(String),
+    Async(String),
+}
+
+mod reconstruct {
+    use super::AndOrList;
+    use super::Command;
+    use super::CompleteCommand;
+    use super::List;
+    use super::Pipeline;
+    use super::Redirection;
+    use super::SimpleCommand;
+    use super::SimpleCommandMeta;
+    use super::SyntaxTree;
+    use super::VariableAssignment;
+    use super::Word;
+
+    impl ToString for SyntaxTree {
+        fn to_string(&self) -> String {
+            // FIXME: save amount of new lines?
+            self.program
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
+    }
+
+    impl ToString for CompleteCommand {
+        fn to_string(&self) -> String {
+            let mut s = self.list.to_string();
+            if let Some(sep) = &self.separator {
+                s.push_str(&sep.to_string());
+            }
+            s
+        }
+    }
+
+    impl ToString for List {
+        fn to_string(&self) -> String {
+            let mut list = self.first.to_string();
+            for (sep, and_or_list) in &self.rest {
+                list.push_str(&sep.to_string());
+                list.push_str(&and_or_list.to_string());
+            }
+            list
+        }
+    }
+
+    impl ToString for AndOrList {
+        fn to_string(&self) -> String {
+            let mut list = self.first.to_string();
+            for (op, pipeline) in &self.rest {
+                list.push_str(&op.to_string());
+                list.push_str(&pipeline.to_string());
+            }
+            list
+        }
+    }
+
+    impl ToString for Pipeline {
+        fn to_string(&self) -> String {
+            let mut pipeline = self.first.to_string();
+
+            for (ws, cmd) in &self.rest {
+                pipeline.push_str(ws);
+                pipeline.push('|');
+                pipeline.push_str(&cmd.to_string());
+            }
+
+            if self.negate {
+                pipeline.insert(0, '!');
+            }
+
+            pipeline
+        }
+    }
+
+    impl ToString for Command {
+        fn to_string(&self) -> String {
+            match self {
+                Command::Simple(s) => s.to_string(),
+                Command::Compound(c) => c.to_string(),
+                Command::FunctionDefinition(f) => f.to_string(),
+            }
+        }
+    }
+
+    impl ToString for SimpleCommand {
+        fn to_string(&self) -> String {
+            let mut s = String::new();
+            for prefix in &self.prefixes {
+                s += &prefix.to_string();
+            }
+            s += &self.name.to_string();
+            for suffix in &self.suffixes {
+                s += &suffix.to_string();
+            }
+            s
+        }
+    }
+
+    impl ToString for SimpleCommandMeta {
+        fn to_string(&self) -> String {
+            match self {
+                Self::Word(w) => w.to_string(),
+                Self::Redirection(r) => r.to_string(),
+                Self::Assignment(a) => a.to_string(),
+            }
+        }
+    }
+
+    impl ToString for Redirection {
+        fn to_string(&self) -> String {
+            match self {
+                Redirection::Input {
+                    file_descriptor,
+                    target,
+                } => format!("{}<{}", file_descriptor.to_string(), target.to_string()),
+                Redirection::Output {
+                    file_descriptor,
+                    append,
+                    target,
+                } => format!(
+                    "{}>{}{}",
+                    file_descriptor.to_string(),
+                    if *append {
+                        ">".to_string()
+                    } else {
+                        "".to_string()
+                    },
+                    target.to_string()
+                ),
+                Redirection::HereDocument {
+                    file_descriptor,
+                    delimiter,
+                } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
+            }
+        }
+    }
+
+    impl ToString for VariableAssignment {
+        fn to_string(&self) -> String {
+            format!(
+                "{}={}",
+                self.lhs.to_string(),
+                match &self.rhs {
+                    Some(rhs) => rhs.to_string(),
+                    None => "".to_string(),
+                }
+            )
+        }
+    }
+
+    impl ToString for Word {
+        fn to_string(&self) -> String {
+            format!("{}{}", self.whitespace, self.raw)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum LogicalOp {
+    And(String),
+    Or(String),
+}
+
+impl ToString for CompoundCommand {
     fn to_string(&self) -> String {
         todo!()
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Separator {
-    Sync(String),
-    Async(String),
+impl ToString for FunctionDefinition {
+    fn to_string(&self) -> String {
+        todo!()
+    }
 }
 
 impl ToString for Separator {
@@ -769,12 +787,6 @@ impl ToString for Separator {
             Separator::Async(ws) => format!("{ws}&"),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum LogicalOp {
-    And(String),
-    Or(String),
 }
 
 impl ToString for LogicalOp {
@@ -995,19 +1007,6 @@ mod tests {
 
         assert_eq!(Some(expected), actual);
         assert!(tokens.next().is_none());
-    }
-
-    #[test]
-    fn baaaar() {
-        let mut tokens = parse("cat> foo");
-        let actual = tokens.parse_simple_command();
-        println!("cat> foo : {actual:?}");
-
-        // let mut tokens = parse("cat > foo");
-        // let actual = tokens.parse_simple_command();
-        // println!("cat > foo: {actual:?}");
-
-        assert!(false);
     }
 
     #[test]
