@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 
 use super::consumer::Consumer;
-use super::tokenizer::Token;
+use super::tok::Token;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticToken {
@@ -327,7 +327,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::super::tokenizer::Tokenizer;
+    use super::super::tok::Tokenizer;
     use super::SemanticToken::*;
     use super::*;
 
