@@ -1,7 +1,7 @@
 pub mod ast;
-pub mod lexer;
+pub mod consumer;
+pub mod semtok;
+pub mod tok;
 mod util;
-pub mod v2;
 
 pub use ast::{parse, SyntaxTree};
-pub use lexer::{lex, Token};

@@ -1,384 +1,718 @@
-use std::ops::RangeInclusive;
+use std::{iter::Peekable, ops::RangeInclusive};
 
-use crate::path::home_dir;
-use crate::{Error, Result};
+use super::consumer::Consumer;
+use super::semtok::{Keyword, SemanticToken, SemanticTokenizer};
+use super::tok::Tokenizer;
 
-use super::{util, Token};
+use crate::Result;
 
-pub fn parse(line: impl AsRef<str>) -> SyntaxTree {
-    let tokens = super::lex(line, false);
-    parse_tokens(tokens)
-}
-
-pub trait Expand: Sized {
-    fn expand(self) -> Result<Self>;
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
-    pub commands: Vec<CommandType>,
-}
-
-impl SyntaxTree {
-    pub fn new() -> Self {
-        Self {
-            commands: Default::default(),
-        }
-    }
-
-    pub fn add_command(&mut self, command: CommandType) {
-        self.commands.push(command);
-    }
-}
-
-impl Default for SyntaxTree {
-    fn default() -> Self {
-        Self::new()
-    }
+    pub program: Vec<CompleteCommand>,
 }
 
 impl ToString for SyntaxTree {
     fn to_string(&self) -> String {
-        self.commands
+        // FIXME: save amount of new lines?
+        self.program
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
-            .join("; ")
+            .join("\n")
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum CommandType {
-    Single(Command),
-    Pipeline(Vec<Command>),
+pub fn parse<A>(input: A) -> Result<SyntaxTree>
+where
+    A: AsRef<str>,
+{
+    input
+        .as_ref()
+        .chars()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .parse()
 }
 
-impl Expand for CommandType {
-    fn expand(self) -> Result<Self> {
-        match self {
-            Self::Single(cmd) => Ok(Self::Single(cmd.expand()?)),
-            Self::Pipeline(cmds) => Ok(Self::Pipeline(
-                cmds.into_iter()
-                    .map(|c| c.expand())
-                    .collect::<Result<Vec<_>>>()?,
-            )),
+pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
+    fn parse(&mut self) -> Result<SyntaxTree> {
+        let mut complete_commands = Vec::new();
+
+        while let Some(thing) = self.parse_complete_command() {
+            complete_commands.push(thing);
         }
+
+        Ok(SyntaxTree {
+            program: complete_commands,
+        })
     }
+
+    fn parse_complete_command(&mut self) -> Option<CompleteCommand> {
+        let list = match self.parse_list() {
+            Some(list) => list,
+            None => return None,
+        };
+
+        let separator = self.parse_separator();
+
+        Some(CompleteCommand { list, separator })
+    }
+
+    fn parse_list(&mut self) -> Option<List>;
+    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
+    fn parse_pipeline(&mut self) -> Option<Pipeline>;
+
+    fn parse_command(&mut self) -> Option<Command> {
+        self.parse_function_definition()
+            .map(Command::FunctionDefinition)
+            .or_else(|| self.parse_compound_command().map(Command::Compound))
+            .or_else(|| self.parse_simple_command().map(Command::Simple))
+    }
+    fn parse_function_definition(&mut self) -> Option<FunctionDefinition>;
+    fn parse_compound_command(&mut self) -> Option<CompoundCommand>;
+    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
+
+    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
+    fn parse_redirection(&mut self) -> Option<Redirection>;
+    fn parse_word(&mut self, allow_ampersand: bool) -> Option<Word>;
+    fn parse_redirection_fd(&mut self) -> Option<Word>;
+    fn parse_separator(&mut self) -> Option<Separator>;
+    fn parse_logical_op(&mut self) -> Option<LogicalOp>;
+    fn parse_pipe(&mut self) -> Option<String>;
+
+    fn swallow_whitespace(&mut self) -> String;
 }
 
-impl ToString for CommandType {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Single(cmd) => cmd.to_string(),
-            Self::Pipeline(cmds) => cmds
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(" | "),
+impl<T> Parser for Peekable<T>
+where
+    T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
+{
+    fn parse_list(&mut self) -> Option<List> {
+        let first = match self.parse_and_or_list() {
+            Some(list) => list,
+            None => return None,
+        };
+
+        let mut rest = Vec::new();
+        let mut initial = self.clone();
+
+        while let Some(thing) = self.parse_separator().and_then(|separator| {
+            self.parse_and_or_list()
+                .map(|a| (separator, a))
+                .or_else(|| {
+                    *self = initial.clone();
+                    None
+                })
+        }) {
+            rest.push(thing);
+            initial = self.clone();
         }
-    }
-}
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Command {
-    pub name: Word,
-    pub prefixes: Vec<Meta>,
-    pub suffixes: Vec<Meta>,
-}
-
-fn expand_meta(vars: &[(String, String)], meta: Meta) -> Result<Meta> {
-    match meta {
-        Meta::Redirect(redirect) => match redirect {
-            Redirect::Output {
-                from: Some(from),
-                to,
-                append,
-            } => Ok(Meta::Redirect(Redirect::Output {
-                from: Some(expand_word(vars, from)?),
-                to: expand_word(vars, to)?,
-                append,
-            })),
-            Redirect::Output {
-                from: None,
-                to,
-                append,
-            } => Ok(Meta::Redirect(Redirect::Output {
-                from: None,
-                to: expand_word(vars, to)?,
-                append,
-            })),
-            Redirect::Input { to } => Ok(Meta::Redirect(Redirect::Input {
-                to: expand_word(vars, to)?,
-            })),
-        },
-        Meta::Word(word) => Ok(Meta::Word(expand_word(vars, word)?)),
-        Meta::Assignment(var, val) => Ok(Meta::Assignment(
-            expand_word(vars, var)?,
-            expand_word(vars, val)?,
-        )),
-    }
-}
-
-fn expand_word(vars: &[(String, String)], mut word: Word) -> Result<Word> {
-    if word.expansions.is_empty() {
-        return Ok(word);
+        Some(List { first, rest })
     }
 
-    let mut to_remove = Vec::new();
+    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
+        let first = match self.parse_pipeline() {
+            Some(pipeline) => pipeline,
+            None => return None,
+        };
 
-    for (i, expansion) in word.expansions.iter().enumerate().rev() {
-        match expansion {
-            Expansion::Tilde { index } => {
-                let home = home_dir();
-                word.name.replace_range(index..=index, &home);
-                to_remove.push(i);
+        let mut rest = Vec::new();
+
+        while let Some(thing) = self.parse_logical_op().and_then(|op| {
+            // FIXME: this currently allows a list to end with a && or ||
+            self.parse_pipeline().map(|c| (op, c))
+        }) {
+            rest.push(thing);
+        }
+
+        Some(AndOrList { first, rest })
+    }
+
+    fn parse_pipeline(&mut self) -> Option<Pipeline> {
+        let initial = self.clone();
+
+        let negate = self
+            .consume_single(SemanticToken::Keyword(Keyword::Bang))
+            .is_some();
+
+        let first = match self.parse_command() {
+            Some(cmd) => cmd,
+            None => {
+                *self = initial;
+                return None;
             }
+        };
 
-            Expansion::Parameter { range, name } => {
-                let mut found = false;
-                for (var, val) in vars.iter() {
-                    if var == name {
-                        word.name.replace_range(range.clone(), val);
-                        to_remove.push(i);
-                        found = true;
-                        break;
+        let mut rest = Vec::new();
+
+        while let Some((ws, cmd)) = self
+            .parse_pipe()
+            .and_then(|ws| self.parse_command().map(|cmd| (ws, cmd)))
+        {
+            rest.push((ws, cmd));
+        }
+
+        Some(Pipeline {
+            negate,
+            first,
+            rest,
+        })
+    }
+
+    fn parse_function_definition(&mut self) -> Option<FunctionDefinition> {
+        None
+    }
+
+    fn parse_compound_command(&mut self) -> Option<CompoundCommand> {
+        None
+    }
+
+    fn parse_simple_command(&mut self) -> Option<SimpleCommand> {
+        let initial = self.clone();
+
+        let mut prefixes = Vec::new();
+        let mut suffixes = Vec::new();
+
+        while let Some(thing) = self
+            .parse_variable_assignment()
+            .map(SimpleCommandMeta::Assignment)
+            .or_else(|| self.parse_redirection().map(SimpleCommandMeta::Redirection))
+        {
+            println!("prefix: {:?}", thing);
+            match thing {
+                a @ SimpleCommandMeta::Assignment(_) => prefixes.push(a),
+                r @ SimpleCommandMeta::Redirection(_) => prefixes.push(r),
+                SimpleCommandMeta::Word(_) => unreachable!(),
+            }
+        }
+
+        // FIXME: we need to support variable assignments without command execution,
+        //        e.g. just ^foo=bar$
+        let name = match self.parse_word(false) {
+            Some(word) => word,
+            None => {
+                println!("NONE");
+                *self = initial;
+                return None;
+            }
+        };
+
+        while let Some(thing) = self
+            .parse_redirection()
+            .map(SimpleCommandMeta::Redirection)
+            .or_else(|| self.parse_word(false).map(SimpleCommandMeta::Word))
+        {
+            match thing {
+                r @ SimpleCommandMeta::Redirection(_) => suffixes.push(r),
+                w @ SimpleCommandMeta::Word(_) => suffixes.push(w),
+                SimpleCommandMeta::Assignment(_) => unreachable!(),
+            }
+        }
+
+        Some(SimpleCommand {
+            name,
+            prefixes,
+            suffixes,
+        })
+    }
+
+    fn parse_separator(&mut self) -> Option<Separator> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+        self.consume_single(SemanticToken::SyncSeparator)
+            .or_else(|| self.consume_single(SemanticToken::AsyncSeparator))
+            .map(|t| match t {
+                SemanticToken::SyncSeparator => Separator::Sync(ws),
+                SemanticToken::AsyncSeparator => Separator::Async(ws),
+                _ => unreachable!(),
+            })
+            .or_else(|| {
+                *self = initial;
+                None
+            })
+    }
+
+    fn parse_logical_op(&mut self) -> Option<LogicalOp> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+        self.consume_single(SemanticToken::And)
+            .or_else(|| self.consume_single(SemanticToken::Or))
+            .map(|t| match t {
+                SemanticToken::And => LogicalOp::And(ws),
+                SemanticToken::Or => LogicalOp::Or(ws),
+                _ => unreachable!(),
+            })
+            .or_else(|| {
+                *self = initial;
+                None
+            })
+    }
+
+    fn parse_pipe(&mut self) -> Option<String> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+        self.consume_single(SemanticToken::Pipe)
+            .map(|_| ws)
+            .or_else(|| {
+                *self = initial;
+                None
+            })
+    }
+
+    fn swallow_whitespace(&mut self) -> String {
+        let mut s = String::new();
+        while let Some(SemanticToken::Whitespace(c)) = self.peek() {
+            s.push(*c);
+            self.next();
+        }
+        s
+    }
+
+    fn parse_redirection(&mut self) -> Option<Redirection> {
+        let initial = self.clone();
+
+        let fd = self.parse_redirection_fd().unwrap_or_else(|| {
+            let ws = self.swallow_whitespace();
+            Word::new("", ws)
+        });
+
+        match self
+            .consume_single(SemanticToken::RedirectOutput)
+            .or_else(|| self.consume_single(SemanticToken::RedirectInput))
+        {
+            Some(SemanticToken::RedirectInput) => {
+                let is_here_doc = self.consume_single(SemanticToken::RedirectInput).is_some();
+
+                match self.parse_word(false) {
+                    Some(target) if is_here_doc => Some(Redirection::HereDocument {
+                        file_descriptor: fd,
+                        delimiter: target,
+                    }),
+
+                    Some(target) => Some(Redirection::Input {
+                        file_descriptor: fd,
+                        target,
+                    }),
+
+                    None => {
+                        *self = initial;
+                        None
                     }
                 }
-
-                if !found {
-                    word.name.replace_range(range.clone(), "");
-                    to_remove.push(i);
-                }
             }
 
-            Expansion::Command { range: _, ast: _ } => {
-                return Err(Error::Unimplemented(
-                    "command expansions are not yet implemented".to_string(),
-                ))
+            Some(SemanticToken::RedirectOutput) => {
+                let append = self.consume_single(SemanticToken::RedirectOutput).is_some();
+
+                let target = match self.parse_word(true) {
+                    Some(word) => word,
+                    None => {
+                        *self = initial;
+                        return None;
+                    }
+                };
+
+                Some(Redirection::Output {
+                    file_descriptor: fd,
+                    append,
+                    target,
+                })
             }
 
-            Expansion::Glob {
-                range: _,
-                pattern: _,
-                recursive: _,
-            } => {
-                return Err(Error::Unimplemented(
-                    "glob expansions are not yet implemented".to_string(),
-                ))
-            }
-        }
-    }
-
-    to_remove.sort();
-    to_remove.dedup();
-    for i in to_remove.into_iter().rev() {
-        word.expansions.remove(i);
-    }
-
-    Ok(word)
-}
-
-impl Expand for Command {
-    fn expand(mut self) -> Result<Self> {
-        let vars = self.vars();
-        self.name = expand_word(&vars, self.name)?;
-
-        self.prefixes = self
-            .prefixes
-            .into_iter()
-            .map(|m| expand_meta(&vars, m))
-            .collect::<Result<Vec<_>>>()?;
-
-        self.suffixes = self
-            .suffixes
-            .into_iter()
-            .map(|m| expand_meta(&vars, m))
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(self)
-    }
-}
-
-impl Command {
-    pub fn cmd_name(&self) -> &String {
-        &self.name.name
-    }
-
-    pub fn vars(&self) -> Vec<(String, String)> {
-        let mut vars = Vec::new();
-
-        for (var, val) in std::env::vars() {
-            vars.push((var, val));
-        }
-
-        for meta in self.prefixes.clone().into_iter().filter_map(|m| {
-            if let Meta::Assignment(_, _) = m {
-                Some(m)
-            } else {
+            _ => {
+                *self = initial;
                 None
             }
-        }) {
-            if let Ok(Meta::Assignment(var, val)) = expand_meta(&vars, meta) {
-                if let Some(index) = vars.iter().position(|(v, _)| v == &var.name) {
-                    vars.remove(index);
-                }
-                vars.push((var.name.clone(), val.name.clone()));
+        }
+    }
+
+    fn parse_word(&mut self, allow_ampersand: bool) -> Option<Word> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+
+        let mut s = String::new();
+        if allow_ampersand {
+            if let Some(SemanticToken::AsyncSeparator) = self.peek() {
+                self.next();
+                s.push('&');
             }
         }
 
-        vars
+        match self.peek() {
+            Some(SemanticToken::Word(xs)) => {
+                s.push_str(xs);
+                let word = Word::new(&s, ws);
+                self.next();
+                Some(word)
+            }
+            _ => {
+                *self = initial;
+                None
+            }
+        }
     }
 
-    pub fn redirections(&self) -> (Option<Redirect>, Option<Redirect>, Option<Redirect>) {
-        let mut stdin_redirect = None;
-        let mut stdout_redirect = None;
-        let mut stderr_redirect = None;
+    fn parse_redirection_fd(&mut self) -> Option<Word> {
+        let ws = self.swallow_whitespace();
 
-        for meta in self
-            .prefixes
-            .iter()
-            .cloned()
-            .chain(self.suffixes.iter().cloned())
+        match self.peek() {
+            Some(SemanticToken::RedirectOutput | SemanticToken::RedirectInput) => {
+                return Some(Word::new("", ws));
+            }
+
+            Some(SemanticToken::Word(word)) if word.len() == 1 => {
+                match word.chars().nth(0) {
+                    Some('0'..='9') => {
+                        let word = Word::new(word, ws);
+                        self.next();
+                        Some(word)
+                    }
+                    _ => None,
+                }
+            }
+
+            _ => None,
+        }
+    }
+
+    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment> {
+        let initial = self.clone();
+
+        if let Some(Word {
+            name, whitespace, ..
+        }) = self.parse_word(false)
         {
-            if let Meta::Redirect(redirect) = meta {
-                match redirect {
-                    Redirect::Output { from: None, .. } => stdout_redirect = Some(redirect.clone()),
-
-                    Redirect::Output {
-                        from: Some(ref s), ..
-                    } if s.name == "1" => stdout_redirect = Some(redirect.clone()),
-
-                    Redirect::Output {
-                        from: Some(ref s), ..
-                    } if s.name == "2" => stderr_redirect = Some(redirect.clone()),
-
-                    Redirect::Input { .. } => stdin_redirect = Some(redirect.clone()),
-
-                    _ => {}
-                }
+            if let Some((lhs, rhs)) = name.split_once('=') {
+                let var_assg = VariableAssignment::new(
+                    Word::new(lhs, whitespace),
+                    if rhs.is_empty() {
+                        None
+                    } else {
+                        Some(Word::new(rhs, ""))
+                    },
+                );
+                return Some(var_assg);
             }
         }
 
-        (stdin_redirect, stdout_redirect, stderr_redirect)
+        *self = initial;
+        None
     }
+}
 
-    pub fn args(&self) -> Vec<String> {
-        self.suffixes
-            .iter()
-            .filter_map(|m| {
-                if let Meta::Word(w) = m {
-                    Some(w.name.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompleteCommand {
+    pub list: List,
+    pub separator: Option<Separator>,
+}
+
+impl ToString for CompleteCommand {
+    fn to_string(&self) -> String {
+        let mut s = self.list.to_string();
+        if let Some(sep) = &self.separator {
+            s.push_str(&sep.to_string());
+        }
+        s
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct List {
+    pub first: AndOrList,
+    pub rest: Vec<(Separator, AndOrList)>,
+}
+
+impl ToString for List {
+    fn to_string(&self) -> String {
+        let mut list = self.first.to_string();
+        for (sep, and_or_list) in &self.rest {
+            list.push_str(&sep.to_string());
+            list.push_str(&and_or_list.to_string());
+        }
+        list
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct AndOrList {
+    pub first: Pipeline,
+    pub rest: Vec<(LogicalOp, Pipeline)>,
+}
+
+impl ToString for AndOrList {
+    fn to_string(&self) -> String {
+        let mut list = self.first.to_string();
+        for (op, pipeline) in &self.rest {
+            list.push_str(&op.to_string());
+            list.push_str(&pipeline.to_string());
+        }
+        list
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Pipeline {
+    negate: bool,
+    pub first: Command,
+    rest: Vec<(String, Command)>,
+}
+
+impl Pipeline {
+    pub fn all(&self) -> &[Command] {
+        todo!()
+        // let mut copy = &self.rest[..];
+        // copy.insert(0, self.first);
+        // copy
+    }
+}
+
+impl ToString for Pipeline {
+    fn to_string(&self) -> String {
+        let mut pipeline = self.first.to_string();
+
+        for (ws, cmd) in &self.rest {
+            pipeline.push_str(ws);
+            pipeline.push('|');
+            pipeline.push_str(&cmd.to_string());
+        }
+
+        if self.negate {
+            pipeline.insert(0, '!');
+        }
+
+        pipeline
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Command {
+    Simple(SimpleCommand),
+    Compound(CompoundCommand),
+    FunctionDefinition(FunctionDefinition),
 }
 
 impl ToString for Command {
     fn to_string(&self) -> String {
-        let prefixes = self
-            .prefixes
-            .iter()
-            .map(|s| s.to_string().trim().to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
+        match self {
+            Command::Simple(s) => s.to_string(),
+            Command::Compound(c) => c.to_string(),
+            Command::FunctionDefinition(f) => f.to_string(),
+        }
+    }
+}
 
-        let suffixes = self
-            .suffixes
-            .iter()
-            .map(|s| s.to_string().trim().to_string())
-            .collect::<Vec<_>>()
-            .join(" ");
+#[derive(Debug, PartialEq, Eq)]
+pub struct SimpleCommand {
+    name: Word,
+    prefixes: Vec<SimpleCommandMeta>,
+    suffixes: Vec<SimpleCommandMeta>,
+}
 
+impl SimpleCommand {
+    pub fn name(&self) -> &String {
+        &self.name.name
+    }
+
+    pub fn args<'a>(&'a self) -> impl Iterator<Item = &'a String> {
+        self.suffixes
+            .iter()
+            .filter_map(|m| match m {
+                SimpleCommandMeta::Word(w) => Some(w),
+                _ => None,
+            })
+            .map(|w| &w.name)
+    }
+}
+
+impl ToString for SimpleCommand {
+    fn to_string(&self) -> String {
+        let mut s = String::new();
+        for prefix in &self.prefixes {
+            s += &prefix.to_string();
+        }
+        s += &self.name.to_string();
+        for suffix in &self.suffixes {
+            s += &suffix.to_string();
+        }
+        s
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SimpleCommandMeta {
+    Word(Word),
+    Redirection(Redirection),
+    Assignment(VariableAssignment),
+}
+
+impl ToString for SimpleCommandMeta {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Word(w) => w.to_string(),
+            Self::Redirection(r) => r.to_string(),
+            Self::Assignment(a) => a.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Redirection {
+    Output {
+        file_descriptor: Word,
+        append: bool,
+        target: Word,
+    },
+
+    Input {
+        file_descriptor: Word,
+        target: Word,
+    },
+
+    HereDocument {
+        file_descriptor: Word,
+        delimiter: Word,
+    },
+}
+
+impl Redirection {
+    pub fn new_output(fd: Word, target: Word, append: bool) -> Self {
+        Self::Output {
+            file_descriptor: fd,
+            append,
+            target,
+        }
+    }
+
+    pub fn new_input(fd: Word, target: Word) -> Self {
+        Self::Input {
+            file_descriptor: fd,
+            target,
+        }
+    }
+
+    pub fn new_here_doc(fd: Word, delimiter: Word) -> Self {
+        Self::HereDocument {
+            file_descriptor: fd,
+            delimiter,
+        }
+    }
+}
+
+impl ToString for Redirection {
+    fn to_string(&self) -> String {
+        match self {
+            Redirection::Input {
+                file_descriptor,
+                target,
+            } => format!("{}<{}", file_descriptor.to_string(), target.to_string()),
+            Redirection::Output {
+                file_descriptor,
+                append,
+                target,
+            } => format!(
+                "{}>{}{}",
+                file_descriptor.to_string(),
+                if *append {
+                    ">".to_string()
+                } else {
+                    "".to_string()
+                },
+                target.to_string()
+            ),
+            Redirection::HereDocument {
+                file_descriptor,
+                delimiter,
+            } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VariableAssignment {
+    lhs: Word,
+    rhs: Option<Word>,
+}
+
+impl VariableAssignment {
+    pub fn new(lhs: Word, rhs: Option<Word>) -> Self {
+        Self { lhs, rhs }
+    }
+}
+
+impl ToString for VariableAssignment {
+    fn to_string(&self) -> String {
         format!(
-            "{}{}{}",
-            if prefixes.is_empty() {
-                "".to_string()
-            } else {
-                prefixes + " "
-            },
-            self.name.to_string() + if suffixes.is_empty() { "" } else { " " },
-            suffixes,
+            "{}={}",
+            self.lhs.to_string(),
+            match &self.rhs {
+                Some(rhs) => rhs.to_string(),
+                None => "".to_string(),
+            }
         )
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Word {
-    pub name: String,
-    pub expansions: Vec<Expansion>,
+    raw: String,
+    name: String,
+    whitespace: String,
+    expansions: Vec<Expansion>,
 }
 
 impl Word {
-    fn new(name: impl ToString, expansions: Vec<Expansion>) -> Self {
+    pub fn new(input: &str, whitespace: impl ToString) -> Self {
+        let quote_removed = Self::do_quote_removal(input);
+        let expanded = Self::expand(quote_removed);
+
         Self {
-            name: name.to_string(),
-            expansions,
+            raw: input.to_string(),
+            name: expanded.to_string(),
+            whitespace: whitespace.to_string(),
+            expansions: Default::default(),
         }
+    }
+
+    fn do_quote_removal(input: &str) -> &str {
+        // TODO: do quote removal
+        input
+    }
+
+    fn expand(input: &str) -> &str {
+        // TODO: expand
+        input
     }
 }
 
 impl ToString for Word {
     fn to_string(&self) -> String {
-        self.name.clone()
+        format!("{}{}", self.whitespace, self.raw)
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Meta {
-    Redirect(Redirect),
-    Word(Word),
-    Assignment(Word, Word),
-}
-
-impl ToString for Meta {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Word(word) => word.name.clone(),
-            Self::Redirect(redirect) => match redirect {
-                Redirect::Input { to } => format!("<{}", to.name),
-                Redirect::Output {
-                    from: None,
-                    to,
-                    append: false,
-                } => format!(">{}", to.name),
-                Redirect::Output {
-                    from: None,
-                    to,
-                    append: true,
-                } => format!(">>{}", to.name),
-                Redirect::Output {
-                    from: Some(from),
-                    to,
-                    append: false,
-                } => format!("{}>{}", from.name, to.name),
-                Redirect::Output {
-                    from: Some(from),
-                    to,
-                    append: true,
-                } => format!("{}>>{}", from.name, to.name),
-            },
-            Self::Assignment(var, val) => format!("{}={}", var.name, val.name),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Redirect {
-    Output {
-        from: Option<Word>,
-        to: Word,
-        append: bool,
-    },
-    Input {
-        to: Word,
-    },
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expansion {
+    Tilde {
+        index: usize,
+    },
+
+    Glob {
+        range: RangeInclusive<usize>,
+        recursive: bool,
+        pattern: String,
+    },
+
+    Brace {
+        range: RangeInclusive<usize>,
+        pattern: String,
+    },
+
     Parameter {
         range: RangeInclusive<usize>,
         name: String,
@@ -386,835 +720,808 @@ pub enum Expansion {
 
     Command {
         range: RangeInclusive<usize>,
-        ast: SyntaxTree,
+        tree: SyntaxTree,
     },
 
-    Glob {
+    Arithmetic {
         range: RangeInclusive<usize>,
-        pattern: String,
-        recursive: bool,
-    },
-
-    Tilde {
-        index: usize,
+        expression: Word,
     },
 }
 
-fn parse_tokens(tokens: Vec<Token>) -> SyntaxTree {
-    // Split tokens by semicolons to get list of commands,
-    // then each command by pipe to get pipeline in command
-    let commands = tokens
-        .split(|t| matches!(t, Token::Semicolon))
-        .map(|tokens| {
-            tokens
-                .split(|t| matches!(t, Token::Pipe))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    let mut ast = SyntaxTree {
-        commands: Vec::with_capacity(commands.len()),
-    };
-
-    for pipeline in commands {
-        match &pipeline[..] {
-            &[cmd] if !cmd.is_empty() => {
-                if let Some(cmd) = parse_command(cmd) {
-                    ast.add_command(CommandType::Single(cmd));
-                } else {
-                    panic!("could not parse command");
-                    // FIXME: syntax error?
-                }
-            }
-
-            cmds => {
-                let mut commands = Vec::new();
-
-                for &command in cmds {
-                    if command.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(cmd) = parse_command(command) {
-                        commands.push(cmd);
-                    } else {
-                        // FIXME: syntax error?
-                        panic!("could not parse command");
-                    }
-                }
-
-                if !commands.is_empty() {
-                    ast.add_command(CommandType::Pipeline(commands));
-                }
-            }
-        };
-    }
-
-    ast
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompoundCommand {
+    //  true: (cmd; cmd)
+    //  false: { cmd; cmd; }
+    subshell: bool,
+    first: Box<Command>,
+    rest: Vec<Command>,
 }
 
-fn parse_command(tokens: &[Token]) -> Option<Command> {
-    let tokens = tokens.iter().peekable();
-
-    let mut name = None;
-    let mut prefixes = Vec::new();
-    let mut suffixes = Vec::new();
-
-    for token in tokens {
-        match token {
-            token @ (Token::String(_)
-            | Token::SingleQuotedString(_, _)
-            | Token::DoubleQuotedString(_, _)) => match parse_meta(token, name.is_none()) {
-                Some(word @ Meta::Word(_)) => {
-                    if name.is_none() {
-                        name = Some(word);
-                    } else {
-                        suffixes.push(word);
-                    }
-                }
-                Some(Meta::Assignment(dest, var)) => {
-                    if name.is_none() {
-                        prefixes.push(Meta::Assignment(dest, var));
-                    } else {
-                        suffixes.push(Meta::Assignment(dest, var));
-                    }
-                }
-                Some(meta) => panic!("disallowed type: {:?}", meta),
-                None => {}
-            },
-
-            token @ Token::RedirectOutput(_, _, _, _) => {
-                if let Some(redirect) = parse_meta(token, name.is_none()) {
-                    match name {
-                        None => prefixes.push(redirect),
-                        Some(_) => suffixes.push(redirect),
-                    }
-                }
-            }
-
-            Token::RedirectInput(_) => {
-                if let Some(redirect) = parse_meta(token, name.is_none()) {
-                    match name {
-                        None => prefixes.push(redirect),
-                        Some(_) => suffixes.push(redirect),
-                    }
-                }
-            }
-
-            // Token::LParen => todo!("( subshells are not yet implemented"),
-            // Token::RParen => todo!(") subshells are not yet implemented"),
-
-            // Token::LBrace => todo!("{{ command grouping is not yet implemented"),
-            // Token::RBrace => todo!("}} command grouping is not yet implemented"),
-            Token::And => todo!("AND is not yet implemented"),
-            Token::Or => todo!("OR is not yet implemented"),
-
-            Token::Space => {}
-
-            Token::Ampersand => todo!("asynchronous execution is not yet implemented"),
-
-            Token::Semicolon => unreachable!("semicolons should have been found already"),
-            Token::Pipe => unreachable!("pipes should have been found already"),
-        }
-    }
-
-    if let Some(Meta::Word(name)) = name {
-        Some(Command {
-            name,
-            prefixes,
-            suffixes,
-        })
-    } else {
-        eprintln!("{name:?}");
-        None
+impl ToString for CompoundCommand {
+    fn to_string(&self) -> String {
+        todo!()
     }
 }
 
-enum ExpansionType {
-    All,
-    VariablesAndCommands,
-    None,
+#[derive(Debug, PartialEq, Eq)]
+pub struct FunctionDefinition {
+    name: String,
+    commands: CompoundCommand,
 }
 
-fn parse_word(s: impl AsRef<str>, expand: ExpansionType) -> Word {
-    if let ExpansionType::None = expand {
-        return Word::new(s.as_ref(), Vec::new());
+impl ToString for FunctionDefinition {
+    fn to_string(&self) -> String {
+        todo!()
     }
-
-    let s = s.as_ref();
-    let mut chars = s.chars().peekable();
-    let mut expansions = Vec::new();
-    let mut index = 0;
-
-    let mut prev_char = None;
-
-    while let Some(ch) = chars.next() {
-        match ch {
-            ' ' => {}
-
-            // should be guarded by !matches!(expand, Expand::None), but since
-            // we have an early return specifically for Expand::None, it is not
-            // needed.
-            '$' => match chars.peek() {
-                Some(&c) if util::is_valid_first_character_of_expansion(c) => {
-                    let c = chars.next().unwrap();
-
-                    let mut var = c.to_string();
-                    let start_index = index;
-
-                    while let Some(&c) = chars.peek() {
-                        if !util::is_valid_first_character_of_expansion(c) {
-                            break;
-                        }
-                        var.push(chars.next().unwrap());
-                        index += 1;
-                    }
-
-                    index += 1;
-
-                    expansions.push(Expansion::Parameter {
-                        name: var,
-                        range: start_index..=index,
-                    });
-                }
-
-                Some(&'(') => {
-                    let mut nested_level = 0;
-                    let start_index = index;
-                    chars.next();
-                    let mut subcmd = String::new();
-                    while let Some(next) = chars.next() {
-                        if next == '$' {
-                            if let Some(&'(') = chars.peek() {
-                                nested_level += 1;
-                            }
-                        }
-                        index += 1;
-                        if next == ')' {
-                            if nested_level > 0 {
-                                nested_level -= 1;
-                            } else {
-                                break;
-                            }
-                        }
-                        subcmd.push(next);
-                    }
-                    index += 1;
-                    let ast = parse(subcmd);
-                    expansions.push(Expansion::Command {
-                        ast,
-                        range: start_index..=index,
-                    });
-                }
-
-                c => panic!("got unexpected: {c:?}"),
-            },
-
-            '*' if matches!(expand, ExpansionType::All) => {
-                let mut recursive = false;
-                let mut pattern = '*'.to_string();
-                let start_index = index;
-
-                while let Some(&c) = chars.peek() {
-                    match c {
-                        '*' => {
-                            chars.next();
-                            index += 1;
-                            recursive = true;
-                            pattern.push('*');
-                        }
-
-                        c => {
-                            if " /".contains(c) {
-                                break;
-                            }
-                            pattern.push(c);
-                            chars.next();
-                            index += 1;
-                        }
-                    }
-                }
-
-                expansions.push(Expansion::Glob {
-                    pattern,
-                    recursive,
-                    range: start_index..=index,
-                });
-            }
-
-            '~' if matches!(expand, ExpansionType::All)
-                && matches!(prev_char, Some(' ' | '=') | None) =>
-            {
-                match chars.peek() {
-                    Some(' ') | Some('/') | None => {
-                        expansions.push(Expansion::Tilde { index });
-                    }
-                    _ => {}
-                }
-            }
-
-            _ => {}
-        }
-        index += 1;
-        prev_char = Some(ch);
-    }
-
-    Word::new(s, expansions)
 }
 
-fn parse_meta(token: &Token, is_prefix: bool) -> Option<Meta> {
-    match token {
-        Token::String(s) => {
-            if is_prefix {
-                let item = match s.split_once('=') {
-                    Some((var, val)) => {
-                        let var_word = parse_word(var, ExpansionType::None);
-                        let val_word = parse_word(val, ExpansionType::All);
-                        Meta::Assignment(var_word, val_word)
-                    }
-                    None => Meta::Word(parse_word(s, ExpansionType::All)),
-                };
+#[derive(Debug, PartialEq, Eq)]
+pub enum Separator {
+    Sync(String),
+    Async(String),
+}
 
-                Some(item)
-            } else {
-                Some(Meta::Word(parse_word(s, ExpansionType::All)))
-            }
+impl ToString for Separator {
+    fn to_string(&self) -> String {
+        match self {
+            Separator::Sync(ws) => format!("{ws};"),
+            Separator::Async(ws) => format!("{ws}&"),
         }
+    }
+}
 
-        Token::SingleQuotedString(s, finished) => {
-            if *finished {
-                let word = parse_word(s, ExpansionType::None);
-                Some(Meta::Word(word))
-            } else {
-                // FIXME: syntax error
-                None
-            }
+#[derive(Debug, PartialEq, Eq)]
+pub enum LogicalOp {
+    And(String),
+    Or(String),
+}
+
+impl ToString for LogicalOp {
+    fn to_string(&self) -> String {
+        match self {
+            LogicalOp::And(ws) => format!("{ws}&&"),
+            LogicalOp::Or(ws) => format!("{ws}||"),
         }
-
-        Token::DoubleQuotedString(s, finished) => {
-            if *finished {
-                let word = parse_word(s, ExpansionType::VariablesAndCommands);
-                Some(Meta::Word(word))
-            } else {
-                // FIXME: syntax error
-                None
-            }
-        }
-
-        // FIXME: this should probably not always use ExpansionType::All
-        Token::RedirectInput(s) => Some(Meta::Redirect(Redirect::Input {
-            to: parse_word(s, ExpansionType::All),
-        })),
-
-        Token::RedirectOutput(from, to, _, append) => {
-            let from = match from {
-                Some(s) => Some(s),
-                None => None,
-            };
-            let to = to.to_string();
-            // FIXME: these should probably not always use ExpansionType::All
-            Some(Meta::Redirect(Redirect::Output {
-                from: from.cloned().map(|s| parse_word(s, ExpansionType::All)),
-                to: parse_word(to, ExpansionType::All),
-                append: *append,
-            }))
-        }
-
-        _ => unreachable!(),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::semtok::SemanticTokenizer;
+    use super::super::tok::Tokenizer;
     use super::*;
 
+    fn parse(
+        input: &str,
+    ) -> Peekable<impl Iterator<Item = SemanticToken> + Clone + std::fmt::Debug> {
+        input
+            .chars()
+            .peekable()
+            .tokenize()
+            .into_iter()
+            .peekable()
+            .tokenize()
+            .into_iter()
+            .peekable()
+    }
+
     #[test]
-    fn basic_parsing() {
-        let input = "2>&1 echo hello world | lolcat -n;".to_string();
-        let ast = parse(input);
+    fn parse_variable_assignment() {
+        let mut tokens = parse("  foo='bar baz'");
+        let actual = tokens.parse_variable_assignment();
+        let expected =
+            VariableAssignment::new(Word::new("foo", "  "), Some(Word::new("'bar baz'", "")));
+        assert_eq!(Some(expected), actual);
 
-        println!("{:#?}", &ast);
+        let mut tokens = parse(" foo=bar\\ baz");
+        let actual = tokens.parse_variable_assignment();
+        let expected =
+            VariableAssignment::new(Word::new("foo", " "), Some(Word::new("bar\\ baz", "")));
+        assert_eq!(Some(expected), actual);
 
-        assert_eq!(
-            SyntaxTree {
-                commands: vec![CommandType::Pipeline(vec![
-                    Command {
-                        name: Word::new("echo", vec![]),
-                        prefixes: vec![Meta::Redirect(Redirect::Output {
-                            from: Some(Word::new("2", vec![])),
-                            to: Word::new("&1", vec![]),
-                            append: false,
-                        }),],
-                        suffixes: vec![
-                            Meta::Word(Word::new("hello", vec![])),
-                            Meta::Word(Word::new("world", vec![])),
+        let mut tokens = parse(r#"foo="bar baz""#);
+        let actual = tokens.parse_variable_assignment();
+        let expected =
+            VariableAssignment::new(Word::new("foo", ""), Some(Word::new("\"bar baz\"", "")));
+        assert_eq!(Some(expected), actual);
+
+        let mut tokens = parse("foo=");
+        let actual = tokens.parse_variable_assignment();
+        let expected = VariableAssignment::new(Word::new("foo", ""), None);
+        assert_eq!(Some(expected), actual);
+    }
+
+    #[test]
+    fn parse_redirect_output() {
+        for (item, ws) in vec!["  2>/dev/null", "  2> /dev/null"]
+            .iter()
+            .zip(["", " "])
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected =
+                Redirection::new_output(Word::new("2", "  "), Word::new("/dev/null", ws), false);
+            assert_eq!(Some(expected), actual);
+        }
+
+        for (item, ws) in vec![" >>'foo bar baz'", " >> 'foo bar baz'"]
+            .iter()
+            .zip(["", " "])
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected =
+                Redirection::new_output(Word::new("", " "), Word::new("'foo bar baz'", ws), true);
+            assert_eq!(Some(expected), actual);
+        }
+
+        for (item, ws) in vec!["2>>'foo bar baz'", "2>> 'foo bar baz'"]
+            .iter()
+            .zip(["", " "])
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected =
+                Redirection::new_output(Word::new("2", ""), Word::new("'foo bar baz'", ws), true);
+            assert_eq!(Some(expected), actual);
+        }
+
+        let mut tokens = parse(">><");
+        let actual = tokens.parse_redirection();
+        assert!(actual.is_none());
+        assert_eq!(Some(SemanticToken::RedirectOutput), tokens.next());
+        assert_eq!(Some(SemanticToken::RedirectOutput), tokens.next());
+        assert_eq!(Some(SemanticToken::RedirectInput), tokens.next());
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_redirect_input_and_here_document() {
+        for (item, ws) in vec![r#"  2<"foo.txt""#, r#"  2< "foo.txt""#]
+            .iter()
+            .zip(["", " "].iter())
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected =
+                Redirection::new_input(Word::new("2", "  "), Word::new(r#""foo.txt""#, ws));
+            assert_eq!(Some(expected), actual);
+        }
+
+        for (item, ws) in vec![r#" 2<<"EOF""#, r#" 2<< "EOF""#]
+            .iter()
+            .zip(["", " "].iter())
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected =
+                Redirection::new_here_doc(Word::new("2", " "), Word::new(r#""EOF""#, ws));
+            assert_eq!(Some(expected), actual);
+        }
+
+        for (item, ws) in vec![r#"<<"EOF""#, r#"<< "EOF""#]
+            .iter()
+            .zip(["", " "].iter())
+        {
+            let mut tokens = parse(item);
+            let actual = tokens.parse_redirection();
+            let expected = Redirection::new_here_doc(Word::new("", ""), Word::new(r#""EOF""#, ws));
+            assert_eq!(Some(expected), actual);
+        }
+    }
+
+    #[test]
+    fn parse_simple_command() {
+        let mut tokens = parse("echo");
+        let actual = tokens.parse_simple_command();
+
+        let expected = SimpleCommand {
+            name: Word::new("echo", ""),
+            prefixes: Vec::new(),
+            suffixes: Vec::new(),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("   echo foo bar baz");
+        let actual = tokens.parse_simple_command();
+
+        let expected = SimpleCommand {
+            name: Word::new("echo", "   "),
+            prefixes: Vec::new(),
+            suffixes: vec![
+                SimpleCommandMeta::Word(Word::new("foo", " ")),
+                SimpleCommandMeta::Word(Word::new("bar", " ")),
+                SimpleCommandMeta::Word(Word::new("baz", " ")),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens =
+            parse("foo='bar baz' 3>foo bar=yo echo 4</dev/null foo 2>> stderr.log bar baz");
+        let actual = tokens.parse_simple_command();
+
+        let expected = SimpleCommand {
+            name: Word::new("echo", " "),
+            prefixes: vec![
+                SimpleCommandMeta::Assignment(VariableAssignment::new(
+                    Word::new("foo", ""),
+                    Some(Word::new("'bar baz'", "")),
+                )),
+                SimpleCommandMeta::Redirection(Redirection::new_output(
+                    Word::new("3", " "),
+                    Word::new("foo", ""),
+                    false,
+                )),
+                SimpleCommandMeta::Assignment(VariableAssignment::new(
+                    Word::new("bar", " "),
+                    Some(Word::new("yo", "")),
+                )),
+            ],
+            suffixes: vec![
+                SimpleCommandMeta::Redirection(Redirection::new_input(
+                    Word::new("4", " "),
+                    Word::new("/dev/null", ""),
+                )),
+                SimpleCommandMeta::Word(Word::new("foo", " ")),
+                SimpleCommandMeta::Redirection(Redirection::new_output(
+                    Word::new("2", " "),
+                    Word::new("stderr.log", " "),
+                    true,
+                )),
+                SimpleCommandMeta::Word(Word::new("bar", " ")),
+                SimpleCommandMeta::Word(Word::new("baz", " ")),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("foo=bar echo bar=baz");
+        let actual = tokens.parse_simple_command();
+
+        let expected = SimpleCommand {
+            name: Word::new("echo", " "),
+            prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
+                Word::new("foo", ""),
+                Some(Word::new("bar", "")),
+            ))],
+            suffixes: vec![SimpleCommandMeta::Word(Word::new("bar=baz", " "))],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn baaaar() {
+        let mut tokens = parse("cat> foo");
+        let actual = tokens.parse_simple_command();
+        println!("cat> foo : {actual:?}");
+
+        // let mut tokens = parse("cat > foo");
+        // let actual = tokens.parse_simple_command();
+        // println!("cat > foo: {actual:?}");
+
+        assert!(false);
+    }
+
+    #[test]
+    fn parse_simple_pipeline() {
+        let mut tokens = parse("echo foo 2>/dev/null|rev 2< file | cat");
+        let actual = tokens.parse_pipeline();
+
+        let expected = Pipeline {
+            negate: false,
+
+            first: Command::Simple(SimpleCommand {
+                name: Word::new("echo", ""),
+                prefixes: Vec::new(),
+                suffixes: vec![
+                    SimpleCommandMeta::Word(Word::new("foo", " ")),
+                    SimpleCommandMeta::Redirection(Redirection::new_output(
+                        Word::new("2", " "),
+                        Word::new("/dev/null", ""),
+                        false,
+                    )),
+                ],
+            }),
+
+            rest: vec![
+                (
+                    "".to_string(),
+                    Command::Simple(SimpleCommand {
+                        name: Word::new("rev", ""),
+                        prefixes: Vec::new(),
+                        suffixes: vec![SimpleCommandMeta::Redirection(Redirection::new_input(
+                            Word::new("2", " "),
+                            Word::new("file", " "),
+                        ))],
+                    }),
+                ),
+                (
+                    " ".to_string(),
+                    Command::Simple(SimpleCommand {
+                        name: Word::new("cat", " "),
+                        prefixes: Vec::new(),
+                        suffixes: Vec::new(),
+                    }),
+                ),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_simple_and_or_list() {
+        let mut tokens = parse("foo && bar | rev || baz");
+        let actual = tokens.parse_and_or_list();
+
+        let expected = AndOrList {
+            first: Pipeline {
+                first: Command::Simple(SimpleCommand {
+                    name: Word::new("foo", ""),
+                    prefixes: Vec::new(),
+                    suffixes: Vec::new(),
+                }),
+                negate: false,
+                rest: Vec::new(),
+            },
+            rest: vec![
+                (
+                    LogicalOp::And(" ".to_string()),
+                    Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("bar", " "),
+                            prefixes: Vec::new(),
+                            suffixes: Vec::new(),
+                        }),
+                        rest: vec![(
+                            " ".to_string(),
+                            Command::Simple(SimpleCommand {
+                                name: Word::new("rev", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                        )],
+                    },
+                ),
+                (
+                    LogicalOp::Or(" ".to_string()),
+                    Pipeline {
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("baz", " "),
+                            prefixes: Vec::new(),
+                            suffixes: Vec::new(),
+                        }),
+                        negate: false,
+                        rest: Vec::new(),
+                    },
+                ),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_simple_list() {
+        let mut tokens = parse("true && foo || bar & baz; quux | rev");
+        let actual = tokens.parse_list();
+
+        let expected = List {
+            first: AndOrList {
+                first: Pipeline {
+                    first: Command::Simple(SimpleCommand {
+                        name: Word::new("true", ""),
+                        prefixes: Vec::new(),
+                        suffixes: Vec::new(),
+                    }),
+                    rest: Vec::new(),
+                    negate: false,
+                },
+                rest: vec![
+                    (
+                        LogicalOp::And(" ".to_string()),
+                        Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("foo", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                    ),
+                    (
+                        LogicalOp::Or(" ".to_string()),
+                        Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("bar", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                    ),
+                ],
+            },
+            rest: vec![
+                (
+                    Separator::Async(" ".to_string()),
+                    AndOrList {
+                        first: Pipeline {
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("baz", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                            negate: false,
+                        },
+                        rest: Vec::new(),
+                    },
+                ),
+                (
+                    Separator::Sync("".to_string()),
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("quux", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: vec![(
+                                " ".to_string(),
+                                Command::Simple(SimpleCommand {
+                                    name: Word::new("rev", " "),
+                                    prefixes: Vec::new(),
+                                    suffixes: Vec::new(),
+                                }),
+                            )],
+                        },
+                        rest: Vec::new(),
+                    },
+                ),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_complete_command() {
+        let mut tokens = parse("echo foo");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: None,
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo ;");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: Some(Separator::Sync(" ".to_string())),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo&");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: Some(Separator::Async("".to_string())),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo& true ;");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: vec![(
+                    Separator::Async("".to_string()),
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("true", " "),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                        },
+                        rest: Vec::new(),
+                    },
+                )],
+            },
+            separator: Some(Separator::Sync(" ".to_string())),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo;true&");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: vec![(
+                    Separator::Sync("".to_string()),
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("true", ""),
+                                prefixes: Vec::new(),
+                                suffixes: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                        },
+                        rest: Vec::new(),
+                    },
+                )],
+            },
+            separator: Some(Separator::Async("".to_string())),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn ast() {
+        let mut tokens = parse("2>&1 echo foo | rev&& exit ||die; sleep 3s  &");
+        let ast = tokens.parse();
+
+        let expected = SyntaxTree {
+            program: vec![CompleteCommand {
+                list: List {
+                    first: AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("echo", " "),
+                                prefixes: vec![SimpleCommandMeta::Redirection(
+                                    Redirection::new_output(
+                                        Word::new("2", ""),
+                                        Word::new("&1", ""),
+                                        false,
+                                    ),
+                                )],
+                                suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                            }),
+                            rest: vec![(
+                                " ".to_string(),
+                                Command::Simple(SimpleCommand {
+                                    name: Word::new("rev", " "),
+                                    prefixes: Vec::new(),
+                                    suffixes: Vec::new(),
+                                }),
+                            )],
+                        },
+                        rest: vec![
+                            (
+                                LogicalOp::And("".to_string()),
+                                Pipeline {
+                                    negate: false,
+                                    first: Command::Simple(SimpleCommand {
+                                        name: Word::new("exit", " "),
+                                        prefixes: Vec::new(),
+                                        suffixes: Vec::new(),
+                                    }),
+                                    rest: Vec::new(),
+                                },
+                            ),
+                            (
+                                LogicalOp::Or(" ".to_string()),
+                                Pipeline {
+                                    negate: false,
+                                    first: Command::Simple(SimpleCommand {
+                                        name: Word::new("die", ""),
+                                        prefixes: Vec::new(),
+                                        suffixes: Vec::new(),
+                                    }),
+                                    rest: Vec::new(),
+                                },
+                            ),
                         ],
                     },
-                    Command {
-                        name: Word::new("lolcat", vec![]),
-                        prefixes: vec![],
-                        suffixes: vec![Meta::Word(Word::new("-n", vec![])),],
-                    }
-                ]),],
-            },
-            ast
-        );
-    }
-
-    #[test]
-    fn asterisk_expansion_parsing() {
-        let input = "echo **/*.rs".to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new(
-                    "**/*.rs",
-                    vec![
-                        Expansion::Glob {
-                            pattern: "**".into(),
-                            recursive: true,
-                            range: 0..=1,
-                        },
-                        Expansion::Glob {
-                            pattern: "*.rs".into(),
-                            recursive: false,
-                            range: 3..=6,
-                        },
-                    ],
-                ))],
-            })],
-        };
-        assert_eq!(expected, ast);
-    }
-
-    #[test]
-    fn variable_expansion_parsing() {
-        let input = "echo \"yo $foo $A\"".to_string();
-        let ast = parse(input);
-
-        assert_eq!(
-            SyntaxTree {
-                commands: vec![CommandType::Single(Command {
-                    name: Word::new("echo", vec![]),
-                    prefixes: vec![],
-                    suffixes: vec![Meta::Word(Word::new(
-                        "yo $foo $A",
-                        vec![
-                            Expansion::Parameter {
-                                name: "foo".into(),
-                                range: 3..=6,
+                    rest: vec![(
+                        Separator::Sync("".to_string()),
+                        AndOrList {
+                            first: Pipeline {
+                                negate: false,
+                                first: Command::Simple(SimpleCommand {
+                                    name: Word::new("sleep", " "),
+                                    prefixes: Vec::new(),
+                                    suffixes: vec![SimpleCommandMeta::Word(Word::new("3s", " "))],
+                                }),
+                                rest: Vec::new(),
                             },
-                            Expansion::Parameter {
-                                name: "A".into(),
-                                range: 8..=9,
-                            },
-                        ],
-                    )),],
-                })],
-            },
-            ast
-        );
-    }
-
-    #[test]
-    fn single_quote_doesnt_expand_parsing() {
-        let input = "echo '** $foo'".to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new("** $foo", vec![]))],
-            })],
-        };
-
-        assert_eq!(expected, ast);
-    }
-
-    #[test]
-    fn nested_pipeline_parsing() {
-        let input = r#"echo "I \"am\": $(whoami | rev | grep -o -v foo)" | less"#.to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Pipeline(vec![
-                Command {
-                    name: Word::new("echo", vec![]),
-                    prefixes: vec![],
-                    suffixes: vec![Meta::Word(Word::new(
-                        "I \"am\": $(whoami | rev | grep -o -v foo)",
-                        vec![Expansion::Command {
-                            range: 8..=39,
-                            ast: SyntaxTree {
-                                commands: vec![CommandType::Pipeline(vec![
-                                    Command {
-                                        name: Word::new("whoami", vec![]),
-                                        prefixes: vec![],
-                                        suffixes: vec![],
-                                    },
-                                    Command {
-                                        name: Word::new("rev", vec![]),
-                                        prefixes: vec![],
-                                        suffixes: vec![],
-                                    },
-                                    Command {
-                                        name: Word::new("grep", vec![]),
-                                        prefixes: vec![],
-                                        suffixes: vec![
-                                            Meta::Word(Word::new("-o", vec![])),
-                                            Meta::Word(Word::new("-v", vec![])),
-                                            Meta::Word(Word::new("foo", vec![])),
-                                        ],
-                                    },
-                                ])],
-                            },
-                        }],
-                    ))],
-                },
-                Command {
-                    name: Word::new("less", vec![]),
-                    prefixes: vec![],
-                    suffixes: vec![],
-                },
-            ])],
-        };
-
-        assert_eq!(expected, ast);
-    }
-
-    #[test]
-    fn complicated_parsing() {
-        let input = r#"CMD=exec=async 2>&1 grep ": $(whoami)" ~/.cache/ | xargs -I {} echo "$CMD: {}" >foo.log"#.to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Pipeline(vec![
-                Command {
-                    name: Word::new("grep", vec![]),
-                    prefixes: vec![
-                        Meta::Assignment(Word::new("CMD", vec![]), Word::new("exec=async", vec![])),
-                        Meta::Redirect(Redirect::Output {
-                            from: Some(Word::new("2", vec![])),
-                            to: Word::new("&1", vec![]),
-                            append: false,
-                        }),
-                    ],
-                    suffixes: vec![
-                        Meta::Word(Word::new(
-                            ": $(whoami)",
-                            vec![Expansion::Command {
-                                range: 2..=10,
-                                ast: SyntaxTree {
-                                    commands: vec![CommandType::Single(Command {
-                                        name: Word::new("whoami", vec![]),
-                                        prefixes: vec![],
-                                        suffixes: vec![],
-                                    })],
-                                },
-                            }],
-                        )),
-                        Meta::Word(Word::new("~/.cache/", vec![Expansion::Tilde { index: 0 }])),
-                    ],
-                },
-                Command {
-                    name: Word::new("xargs", vec![]),
-                    prefixes: vec![],
-                    suffixes: vec![
-                        Meta::Word(Word::new("-I", vec![])),
-                        Meta::Word(Word::new("{}", vec![])),
-                        Meta::Word(Word::new("echo", vec![])),
-                        Meta::Word(Word::new(
-                            "$CMD: {}",
-                            vec![Expansion::Parameter {
-                                name: "CMD".into(),
-                                range: 0..=3,
-                            }],
-                        )),
-                        Meta::Redirect(Redirect::Output {
-                            from: None,
-                            to: Word::new("foo.log", vec![]),
-                            append: false,
-                        }),
-                    ],
-                },
-            ])],
-        };
-
-        assert_eq!(expected, ast);
-    }
-
-    #[test]
-    fn basic_command_expansion_parsing() {
-        let input = r#"echo "bat: $(cat /sys/class/power_supply/BAT0/capacity)""#.to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new(
-                    "bat: $(cat /sys/class/power_supply/BAT0/capacity)",
-                    vec![Expansion::Command {
-                        range: 5..=48,
-                        ast: SyntaxTree {
-                            commands: vec![CommandType::Single(Command {
-                                name: Word::new("cat", vec![]),
-                                prefixes: vec![],
-                                suffixes: vec![Meta::Word(Word::new(
-                                    "/sys/class/power_supply/BAT0/capacity",
-                                    vec![],
-                                ))],
-                            })],
+                            rest: Vec::new(),
                         },
-                    }],
-                ))],
-            })],
+                    )],
+                },
+                separator: Some(Separator::Async("  ".to_string())),
+            }],
         };
-
-        assert_eq!(expected, ast);
+        assert_eq!(expected, ast.unwrap());
+        assert!(tokens.next().is_none());
     }
 
     #[test]
-    fn tilde_expansion_parsing() {
-        let input = "ls ~ ~/ ~/foo foo~ bar/~ ./~ ~% ~baz".to_string();
-        let ast = parse(input);
+    fn parse_word() {
+        let mut tokens = parse("  echo");
+        let actual = tokens.parse_word(false);
+        let expected = Word::new("echo", "  ");
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
 
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("ls", vec![]),
-                prefixes: vec![],
-                suffixes: vec![
-                    Meta::Word(Word::new("~", vec![Expansion::Tilde { index: 0 }])),
-                    Meta::Word(Word::new("~/", vec![Expansion::Tilde { index: 0 }])),
-                    Meta::Word(Word::new("~/foo", vec![Expansion::Tilde { index: 0 }])),
-                    Meta::Word(Word::new("foo~", vec![])),
-                    Meta::Word(Word::new("bar/~", vec![])),
-                    Meta::Word(Word::new("./~", vec![])),
-                    Meta::Word(Word::new("~%", vec![])),
-                    Meta::Word(Word::new("~baz", vec![])),
-                ],
-            })],
-        };
+        let mut tokens = parse(" 	'echo yo'");
+        let actual = tokens.parse_word(false);
+        let expected = Word::new("'echo yo'", " 	");
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
 
-        assert_eq!(expected, ast);
-    }
+        let mut tokens = parse(r#" "echo yo""#);
+        let actual = tokens.parse_word(false);
+        let expected = Word::new(r#""echo yo""#, " ");
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
 
-    // FIXME: this probably requires (major?) changes to the lexing.
-    //        it's making me wonder if the lexing part should be
-    //        removed entirely, since lexing a POSIX shell-ish language
-    //        seems really difficult
-    #[test]
-    fn nested_quotes_in_command_expansion_parsing() {
-        let input = r#"echo "bat: $(cat "/sys/class/power_supply/BAT0/capacity")""#.to_string();
-        let ast = parse(input);
+        let mut tokens = parse(" echo\\ yo");
+        let actual = tokens.parse_word(false);
+        let expected = Word::new("echo\\ yo", " ");
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
 
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new(
-                    "bat: $(cat \"/sys/class/power_supply/BAT0/capacity\")",
-                    vec![Expansion::Command {
-                        range: 5..=50,
-                        ast: SyntaxTree {
-                            commands: vec![CommandType::Single(Command {
-                                name: Word::new("cat", vec![]),
-                                prefixes: vec![],
-                                suffixes: vec![Meta::Word(Word::new(
-                                    "/sys/class/power_supply/BAT0/capacity",
-                                    vec![],
-                                ))],
-                            })],
-                        },
-                    }],
-                ))],
-            })],
-        };
+        let mut tokens = parse("echo");
+        let actual = tokens.parse_word(false);
+        let expected = Word::new("echo", "");
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
 
-        assert_eq!(expected, ast);
+        let mut tokens = parse("echo foo");
+        let actual = tokens.parse_word(false);
+        let expected = Word::new("echo", "");
+        assert_eq!(Some(expected), actual);
+        assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
+        assert_eq!(Some(SemanticToken::Word("foo".to_string())), tokens.next());
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse(">foo");
+        let actual = tokens.parse_word(false);
+        assert!(actual.is_none());
+        assert_eq!(Some(SemanticToken::RedirectOutput), tokens.next());
+
+        let mut tokens = parse("  >foo");
+        let actual = tokens.parse_word(false);
+        assert!(actual.is_none());
+        assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
+        assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
     }
 
     #[test]
-    fn nested_commands_parsing() {
-        let input = r#"echo "foo: $(echo "$(whoami | lolcat)") yo""#.to_string();
-        let ast = parse(input);
+    fn parse_redirection_fd() {
+        let mut tokens = parse(" >");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(Some(Word::new("", " ")), actual);
 
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new(
-                    r#"foo: $(echo "$(whoami | lolcat)") yo"#,
-                    vec![Expansion::Command {
-                        range: 5..=32,
-                        ast: SyntaxTree {
-                            commands: vec![CommandType::Single(Command {
-                                name: Word::new("echo", vec![]),
-                                prefixes: vec![],
-                                suffixes: vec![Meta::Word(Word::new(
-                                    "$(whoami | lolcat)",
-                                    vec![Expansion::Command {
-                                        range: 0..=17,
-                                        ast: SyntaxTree {
-                                            commands: vec![CommandType::Pipeline(vec![
-                                                Command {
-                                                    name: Word::new("whoami", vec![]),
-                                                    prefixes: vec![],
-                                                    suffixes: vec![],
-                                                },
-                                                Command {
-                                                    name: Word::new("lolcat", vec![]),
-                                                    prefixes: vec![],
-                                                    suffixes: vec![],
-                                                },
-                                            ])],
-                                        },
-                                    }],
-                                ))],
-                            })],
-                        },
-                    }],
-                ))],
-            })],
-        };
+        let mut tokens = parse(">>");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(Some(Word::new("", "")), actual);
 
-        assert_eq!(expected, ast);
+        let mut tokens = parse(" <");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(Some(Word::new("", " ")), actual);
+
+        let mut tokens = parse("2>");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(Some(Word::new("2", "")), actual);
+
+        let mut tokens = parse(" 2");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(Some(Word::new("2", " ")), actual);
+
+        let mut tokens = parse("a");
+        let actual = tokens.parse_redirection_fd();
+        assert_eq!(None, actual);
     }
 
     #[test]
-    fn command_expansion_without_quotes_parsing() {
-        let input = "echo $(cat $(echo $(cat foo | rev) )) bar".to_string();
-        let ast = parse(input);
+    fn syntax_tree_back_to_string() {
+        let input = "   foo='bar  baz'\\ quux  echo yo hello	2< file && true|cat> foo; hello";
+        let mut tokens = parse(input);
+        let actual = tokens.parse().unwrap();
 
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![
-                    Meta::Word(Word::new(
-                        "$(cat $(echo $(cat foo | rev) ))",
-                        vec![Expansion::Command {
-                            range: 0..=31,
-                            ast: SyntaxTree {
-                                commands: vec![CommandType::Single(Command {
-                                    name: Word::new("cat", vec![]),
-                                    prefixes: vec![],
-                                    suffixes: vec![Meta::Word(Word::new(
-                                        "$(echo $(cat foo | rev) )",
-                                        vec![Expansion::Command {
-                                            range: 0..=24,
-                                            ast: SyntaxTree {
-                                                commands: vec![CommandType::Single(Command {
-                                                    name: Word::new("echo", vec![]),
-                                                    prefixes: vec![],
-                                                    suffixes: vec![Meta::Word(Word::new(
-                                                        "$(cat foo | rev)",
-                                                        vec![Expansion::Command {
-                                                            range: 0..=15,
-                                                            ast: SyntaxTree {
-                                                                commands: vec![
-                                                                    CommandType::Pipeline(vec![
-                                                                        Command {
-                                                                            name: Word::new(
-                                                                                "cat",
-                                                                                vec![],
-                                                                            ),
-                                                                            prefixes: vec![],
-                                                                            suffixes: vec![
-                                                                                Meta::Word(
-                                                                                    Word::new(
-                                                                                        "foo",
-                                                                                        vec![],
-                                                                                    ),
-                                                                                ),
-                                                                            ],
-                                                                        },
-                                                                        Command {
-                                                                            name: Word::new(
-                                                                                "rev",
-                                                                                vec![],
-                                                                            ),
-                                                                            prefixes: vec![],
-                                                                            suffixes: vec![],
-                                                                        },
-                                                                    ]),
-                                                                ],
-                                                            },
-                                                        }],
-                                                    ))],
-                                                })],
-                                            },
-                                        }],
-                                    ))],
-                                })],
-                            },
-                        }],
-                    )),
-                    Meta::Word(Word::new("bar", vec![])),
-                ],
-            })],
-        };
-
-        assert_eq!(expected, ast);
-    }
-
-    #[test]
-    fn multiple_nested_command_expansions_parsing() {
-        let input = r#"echo "$(cat $(echo "$(cat foo)"))""#.to_string();
-        let ast = parse(input);
-
-        let expected = SyntaxTree {
-            commands: vec![CommandType::Single(Command {
-                name: Word::new("echo", vec![]),
-                prefixes: vec![],
-                suffixes: vec![Meta::Word(Word::new(
-                    r#"$(cat $(echo "$(cat foo)"))"#,
-                    vec![Expansion::Command {
-                        range: 0..=26,
-                        ast: SyntaxTree {
-                            commands: vec![CommandType::Single(Command {
-                                name: Word::new("cat", vec![]),
-                                prefixes: vec![],
-                                suffixes: vec![Meta::Word(Word::new(
-                                    r#"$(echo "$(cat foo)")"#,
-                                    vec![Expansion::Command {
-                                        range: 0..=19,
-                                        ast: SyntaxTree {
-                                            commands: vec![CommandType::Single(Command {
-                                                name: Word::new("echo", vec![]),
-                                                prefixes: vec![],
-                                                suffixes: vec![Meta::Word(Word::new(
-                                                    "$(cat foo)",
-                                                    vec![Expansion::Command {
-                                                        range: 0..=9,
-                                                        ast: SyntaxTree {
-                                                            commands: vec![CommandType::Single(
-                                                                Command {
-                                                                    name: Word::new("cat", vec![]),
-                                                                    prefixes: vec![],
-                                                                    suffixes: vec![Meta::Word(
-                                                                        Word::new("foo", vec![]),
-                                                                    )],
-                                                                },
-                                                            )],
-                                                        },
-                                                    }],
-                                                ))],
-                                            })],
-                                        },
-                                    }],
-                                ))],
-                            })],
-                        },
-                    }],
-                ))],
-            })],
-        };
-
-        assert_eq!(expected, ast);
+        assert_eq!(input.to_string(), actual.to_string());
     }
 }

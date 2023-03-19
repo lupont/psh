@@ -3,12 +3,14 @@ pub mod parser;
 
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
-use std::process::{self, ChildStdout, Stdio};
+use std::process::{self, Stdio};
 
 use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{parse, Command, CommandType, Expand, Redirect, SyntaxTree};
+use self::parser::ast::{
+    parse, AndOrList, Command, CompleteCommand, Pipeline, SimpleCommand, SyntaxTree,
+};
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -57,31 +59,31 @@ impl<W: Write> Engine<W> {
         has("cd") || has("exit")
     }
 
-    pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
-        let cmd = cmd.expand()?;
-        let command = cmd.cmd_name();
-        let args = cmd.args();
+    pub fn execute_builtin(&mut self, cmd: CompleteCommand) -> Result<ExitStatus> {
+        todo!()
+        // let command = cmd.cmd_name();
+        // let args = cmd.args();
 
-        match (command.as_str(), &args[..]) {
-            ("exit", []) => self.exit(0),
-            ("exit", [code]) => {
-                if let Ok(s) = code.parse::<i32>() {
-                    self.exit(s)
-                } else {
-                    writeln!(self.writer, "invalid integer: '{}'", code)?;
-                    Ok(ExitStatus::from(1))
-                }
-            }
+        // match (command.as_str(), &args[..]) {
+        //     ("exit", []) => self.exit(0),
+        //     ("exit", [code]) => {
+        //         if let Ok(s) = code.parse::<i32>() {
+        //             self.exit(s)
+        //         } else {
+        //             writeln!(self.writer, "invalid integer: '{}'", code)?;
+        //             Ok(ExitStatus::from(1))
+        //         }
+        //     }
 
-            ("cd", [dir]) => self.cd(Some(dir)),
-            ("cd", []) => self.cd(None),
-            ("cd", _) => {
-                writeln!(self.writer, "invalid number of arguments")?;
-                Ok(ExitStatus::from(1))
-            }
+        //     ("cd", [dir]) => self.cd(Some(dir)),
+        //     ("cd", []) => self.cd(None),
+        //     ("cd", _) => {
+        //         writeln!(self.writer, "invalid number of arguments")?;
+        //         Ok(ExitStatus::from(1))
+        //     }
 
-            (c, _) => Err(Error::UnknownCommand(c.to_string())),
-        }
+        //     (c, _) => Err(Error::UnknownCommand(c.to_string())),
+        // }
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
@@ -94,131 +96,172 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
-        let ast = parse(line.to_string());
+        let ast = parse(line.to_string())?;
         self.walk_ast(ast)
     }
 
-    fn build_command(
-        &self,
-        command: &Command,
-        prev_stdout: Option<Option<ChildStdout>>,
-        final_cmd: bool,
-    ) -> Result<process::Command> {
-        let (stdin_redirect, stdout_redirect, stderr_redirect) = command.redirections();
+    // fn build_command(
+    //     &self,
+    //     command: &CompleteCommand,
+    //     prev_stdout: Option<Option<ChildStdout>>,
+    //     final_cmd: bool,
+    // ) -> Result<process::Command> {
+    //     let (stdin_redirect, stdout_redirect, stderr_redirect) = command.redirections();
 
-        let mut stdin = match prev_stdout {
-            Some(Some(stdout)) => Stdio::from(stdout),
-            Some(None) => Stdio::null(),
-            None => Stdio::inherit(),
-        };
+    //     let mut stdin = match prev_stdout {
+    //         Some(Some(stdout)) => Stdio::from(stdout),
+    //         Some(None) => Stdio::null(),
+    //         None => Stdio::inherit(),
+    //     };
 
-        if let Some(Redirect::Input { to }) = stdin_redirect {
-            let f = std::fs::OpenOptions::new().read(true).open(to.name)?;
-            stdin = Stdio::from(f);
-        }
+    //     if let Some(Redirect::Input { to }) = stdin_redirect {
+    //         let f = std::fs::OpenOptions::new().read(true).open(to.name)?;
+    //         stdin = Stdio::from(f);
+    //     }
 
-        let stdout = if let Some(Redirect::Output {
-            from: _,
-            to,
-            append,
-        }) = stdout_redirect
-        {
-            let f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .append(append)
-                .open(to.name)?;
-            Stdio::from(f)
-        } else if final_cmd {
-            Stdio::inherit()
-        } else {
-            Stdio::piped()
-        };
+    //     let stdout = if let Some(Redirect::Output {
+    //         from: _,
+    //         to,
+    //         append,
+    //     }) = stdout_redirect
+    //     {
+    //         let f = std::fs::OpenOptions::new()
+    //             .write(true)
+    //             .create(true)
+    //             .append(append)
+    //             .open(to.name)?;
+    //         Stdio::from(f)
+    //     } else if final_cmd {
+    //         Stdio::inherit()
+    //     } else {
+    //         Stdio::piped()
+    //     };
 
-        let stderr = if let Some(Redirect::Output {
-            from: _,
-            to,
-            append,
-        }) = stderr_redirect
-        {
-            let f = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .append(append)
-                .open(to.name)?;
-            Stdio::from(f)
-        } else {
-            Stdio::inherit()
-        };
+    //     let stderr = if let Some(Redirect::Output {
+    //         from: _,
+    //         to,
+    //         append,
+    //     }) = stderr_redirect
+    //     {
+    //         let f = std::fs::OpenOptions::new()
+    //             .write(true)
+    //             .create(true)
+    //             .append(append)
+    //             .open(to.name)?;
+    //         Stdio::from(f)
+    //     } else {
+    //         Stdio::inherit()
+    //     };
 
-        let mut cmd = process::Command::new(command.cmd_name());
-        let cmd = cmd
-            .args(command.args())
-            .envs(command.vars())
-            .stdin(stdin)
-            .stdout(stdout)
-            .stderr(stderr);
+    //     let mut cmd = process::Command::new(command.cmd_name());
+    //     let cmd = cmd
+    //         .args(command.args())
+    //         .envs(command.vars())
+    //         .stdin(stdin)
+    //         .stdout(stdout)
+    //         .stderr(stderr);
 
-        let dummy = process::Command::new("tmp");
-        Ok(std::mem::replace(cmd, dummy))
+    //     let dummy = process::Command::new("tmp");
+    //     Ok(std::mem::replace(cmd, dummy))
+    // }
+
+    pub fn execute_simple_command(&mut self, cmd: &SimpleCommand) -> Result<ExitStatus> {
+        let mut command = process::Command::new(cmd.name());
+
+        let mut child = command.args(cmd.args()).spawn()?;
+        let exit_status = child.wait()?;
+        // self.writer.write_all(&output.stdout)?;
+        // let code = output.status.code().unwrap_or_default();
+        Ok(ExitStatus::from(exit_status.code().unwrap()))
     }
 
-    pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
-        let cmd = cmd.expand()?;
-
+    pub fn execute_command(&mut self, cmd: &Command) -> Result<ExitStatus> {
         match cmd {
-            CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
-                self.execute_builtin(cmd).map(|r| vec![r])
-            }
-
-            CommandType::Single(cmd) => {
-                if !self.has_command(cmd.cmd_name()) {
-                    writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
-                    return Ok(vec![ExitStatus::from(127)]);
-                }
-
-                let mut command = self.build_command(&cmd, None, true)?;
-                let output = command.output()?;
-                self.writer.write_all(&output.stdout)?;
-                let code = output.status.code().unwrap_or_default();
-
-                Ok(vec![ExitStatus::from(code)])
-            }
-
-            CommandType::Pipeline(cmds) => {
-                if let Some(cmd) = cmds.iter().find(|cmd| {
-                    !self.has_command(cmd.cmd_name()) && !self.has_builtin(cmd.cmd_name())
-                }) {
-                    writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
-                    return Ok(vec![ExitStatus::from(127)]);
-                }
-
-                let mut prev_result: Option<ChildStdout> = None;
-                let mut statuses = Vec::with_capacity(cmds.len());
-
-                for (i, cmd) in cmds.iter().enumerate() {
-                    let is_final = i == cmds.len() - 1;
-                    let mut command = self.build_command(cmd, Some(prev_result), is_final)?;
-
-                    let mut child = command.spawn()?;
-
-                    prev_result = child.stdout.take();
-
-                    let output = child.wait_with_output()?;
-                    self.writer.write_all(&output.stdout)?;
-
-                    statuses.push(ExitStatus::from(output.status.code().unwrap_or_default()));
-                }
-
-                Ok(statuses)
-            }
+            Command::Simple(cmd) => self.execute_simple_command(cmd),
+            Command::Compound(compound) => todo!(),
+            Command::FunctionDefinition(def) => todo!(),
         }
     }
+
+    pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
+        if let Command::Simple(cmd) = &pipeline.first {
+            let status = self.execute_simple_command(cmd)?;
+            return Ok(vec![status]);
+        }
+        todo!()
+    }
+
+    pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
+        self.execute_pipeline(&logical_expr.first)
+    }
+
+    pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
+        let list = &cmd.list;
+
+        let exit_status = self.execute_logical_expr(&list.first)?;
+
+        Ok(exit_status)
+    }
+
+    // pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
+    //     let cmd = cmd.expand()?;
+
+    //     match cmd {
+    //         CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
+    //             self.execute_builtin(cmd).map(|r| vec![r])
+    //         }
+
+    //         CommandType::Single(cmd) => {
+    //             if !self.has_command(cmd.cmd_name()) {
+    //                 writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
+    //                 return Ok(vec![ExitStatus::from(127)]);
+    //             }
+
+    //             let mut command = self.build_command(&cmd, None, true)?;
+    //             let output = command.output()?;
+    //             self.writer.write_all(&output.stdout)?;
+    //             let code = output.status.code().unwrap_or_default();
+
+    //             Ok(vec![ExitStatus::from(code)])
+    //         }
+
+    //         CommandType::Pipeline(cmds) => {
+    //             if let Some(cmd) = cmds.iter().find(|cmd| {
+    //                 !self.has_command(cmd.cmd_name()) && !self.has_builtin(cmd.cmd_name())
+    //             }) {
+    //                 writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
+    //                 return Ok(vec![ExitStatus::from(127)]);
+    //             }
+
+    //             let mut prev_result: Option<ChildStdout> = None;
+    //             let mut statuses = Vec::with_capacity(cmds.len());
+
+    //             for (i, cmd) in cmds.iter().enumerate() {
+    //                 let is_final = i == cmds.len() - 1;
+    //                 let mut command = self.build_command(cmd, Some(prev_result), is_final)?;
+
+    //                 let mut child = command.spawn()?;
+
+    //                 prev_result = child.stdout.take();
+
+    //                 let output = child.wait_with_output()?;
+    //                 self.writer.write_all(&output.stdout)?;
+
+    //                 statuses.push(ExitStatus::from(output.status.code().unwrap_or_default()));
+    //             }
+
+    //             Ok(statuses)
+    //         }
+    //     }
+    // }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        ast.commands
+        // ast.commands
+        //     .into_iter()
+        //     .fold(Ok(vec![]), |_, c| self.execute(c))
+        ast.program
             .into_iter()
-            .fold(Ok(vec![]), |_, c| self.execute(c))
+            .fold(Ok(vec![]), |_, c| self.execute(&c))
     }
 }
 
