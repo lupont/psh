@@ -9,32 +9,6 @@ pub struct SyntaxTree {
 }
 
 pub trait Parser: Iterator<Item = SemanticToken> {
-    fn parse(&mut self) -> Option<SyntaxTree>;
-
-    fn swallow_whitespace(&mut self);
-    fn parse_separator(&mut self) -> Option<Separator>;
-
-    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
-    fn parse_redirection(&mut self) -> Option<Redirection>;
-    fn parse_word(&mut self) -> Option<Word>;
-
-    fn parse_complete_command(&mut self) -> Option<CompleteCommand>;
-    fn parse_list(&mut self) -> Option<List>;
-    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
-
-    fn parse_pipeline(&mut self) -> Option<Pipeline>;
-
-    fn parse_command(&mut self) -> Option<Command> {
-        self.parse_simple_command().map(Command::Simple)
-    }
-
-    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
-}
-
-impl<T> Parser for Peekable<T>
-where
-    T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
-{
     fn parse(&mut self) -> Option<SyntaxTree> {
         let mut complete_commands = Vec::new();
 
@@ -61,6 +35,32 @@ where
         Some(CompleteCommand { list, separator })
     }
 
+    fn parse_list(&mut self) -> Option<List>;
+    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
+    fn parse_pipeline(&mut self) -> Option<Pipeline>;
+
+    fn parse_command(&mut self) -> Option<Command> {
+        self.parse_function_definition()
+            .map(Command::FunctionDefinition)
+            .or_else(|| self.parse_compound_command().map(Command::CompoundCommand))
+            .or_else(|| self.parse_simple_command().map(Command::Simple))
+    }
+    fn parse_function_definition(&mut self) -> Option<FunctionDefinition>;
+    fn parse_compound_command(&mut self) -> Option<CompoundCommand>;
+    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
+
+    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
+    fn parse_redirection(&mut self) -> Option<Redirection>;
+    fn parse_word(&mut self) -> Option<Word>;
+    fn parse_separator(&mut self) -> Option<Separator>;
+
+    fn swallow_whitespace(&mut self);
+}
+
+impl<T> Parser for Peekable<T>
+where
+    T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
+{
     fn parse_list(&mut self) -> Option<List> {
         self.swallow_whitespace();
 
@@ -151,6 +151,14 @@ where
             first,
             rest,
         })
+    }
+
+    fn parse_function_definition(&mut self) -> Option<FunctionDefinition> {
+        None
+    }
+
+    fn parse_compound_command(&mut self) -> Option<CompoundCommand> {
+        None
     }
 
     fn parse_simple_command(&mut self) -> Option<SimpleCommand> {
