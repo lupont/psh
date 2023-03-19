@@ -5,18 +5,20 @@ use super::semtok::{Keyword, SemanticToken};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
-    commands: Vec<Command>,
+    program: Vec<CompleteCommand>,
 }
 
 pub trait Parser: Iterator<Item = SemanticToken> {
     fn parse(&mut self) -> Option<SyntaxTree>;
 
     fn swallow_whitespace(&mut self);
+    fn parse_separator(&mut self) -> Option<Separator>;
 
     fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
     fn parse_redirection(&mut self) -> Option<Redirection>;
     fn parse_word(&mut self) -> Option<Word>;
 
+    fn parse_complete_command(&mut self) -> Option<CompleteCommand>;
     fn parse_list(&mut self) -> Option<List>;
     fn parse_and_or_list(&mut self) -> Option<AndOrList>;
 
@@ -34,34 +36,53 @@ where
     T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
 {
     fn parse(&mut self) -> Option<SyntaxTree> {
-        todo!()
+        let mut complete_commands = Vec::new();
+
+        while let Some(thing) = self.parse_complete_command() {
+            complete_commands.push(thing);
+            self.swallow_whitespace();
+        }
+
+        Some(SyntaxTree { program: complete_commands })
+    }
+
+    fn parse_complete_command(&mut self) -> Option<CompleteCommand> {
+        let list = match self.parse_list() {
+            Some(list) => list,
+            None => return None,
+        };
+
+        self.swallow_whitespace();
+
+        let separator = self.parse_separator();
+
+        Some(CompleteCommand { list, separator })
     }
 
     fn parse_list(&mut self) -> Option<List> {
+        self.swallow_whitespace();
+
         let first = match self.parse_and_or_list() {
             Some(list) => list,
             None => return None,
         };
 
-        let mut rest = Vec::new();
-
         self.swallow_whitespace();
 
-        while let Some(thing) = self
-            .consume_if(|t| {
-                t == &SemanticToken::SyncSeparator || t == &SemanticToken::AsyncSeparator
-            })
-            .map(|t| match t {
-                SemanticToken::SyncSeparator => Separator::Sync,
-                SemanticToken::AsyncSeparator => Separator::Async,
-                _ => unreachable!(),
-            })
-            .and_then(|separator| {
-                self.swallow_whitespace();
-                self.parse_and_or_list().map(|a| (separator, a))
-            })
-        {
+        let mut rest = Vec::new();
+        let mut initial = self.clone();
+
+        while let Some(thing) = self.parse_separator().and_then(|separator| {
+            self.swallow_whitespace();
+            self.parse_and_or_list()
+                .map(|a| (separator, a))
+                .or_else(|| {
+                    *self = initial.clone();
+                    None
+                })
+        }) {
             rest.push(thing);
+            initial = self.clone();
         }
 
         Some(List { first, rest })
@@ -189,6 +210,17 @@ where
         })
     }
 
+    fn parse_separator(&mut self) -> Option<Separator> {
+        self.swallow_whitespace();
+        self.consume_single(SemanticToken::SyncSeparator)
+            .or_else(|| self.consume_single(SemanticToken::AsyncSeparator))
+            .map(|t| match t {
+                SemanticToken::SyncSeparator => Separator::Sync,
+                SemanticToken::AsyncSeparator => Separator::Async,
+                _ => unreachable!(),
+            })
+    }
+
     fn swallow_whitespace(&mut self) {
         while let Some(SemanticToken::Whitespace(_)) = self.peek() {
             self.next();
@@ -197,6 +229,8 @@ where
 
     fn parse_redirection(&mut self) -> Option<Redirection> {
         let initial = self.clone();
+
+        self.swallow_whitespace();
 
         let fd = match self.peek() {
             Some(SemanticToken::Word(s)) => {
@@ -245,7 +279,14 @@ where
 
                 self.swallow_whitespace();
 
-                let target = match self.consume_if(|t| matches!(t, SemanticToken::Word(_))) {
+                let mut target = if let Some(SemanticToken::AsyncSeparator) = self.peek() {
+                    self.next();
+                    "&".to_string()
+                } else {
+                    "".to_string()
+                };
+
+                let target_rest = match self.consume_if(|t| matches!(t, SemanticToken::Word(_))) {
                     Some(SemanticToken::Word(s)) => s,
                     Some(_) => unreachable!(),
                     None => {
@@ -253,6 +294,8 @@ where
                         return None;
                     }
                 };
+
+                target.push_str(&target_rest);
 
                 Some(Redirection::Output {
                     file_descriptor: fd,
@@ -290,6 +333,12 @@ where
         }
         None
     }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct CompleteCommand {
+    list: List,
+    separator: Option<Separator>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -776,6 +825,169 @@ mod tests {
                     },
                 ),
             ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_complete_command() {
+        let mut tokens = parse("echo foo");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo"),
+                            words: vec![Word::new("foo")],
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: None,
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo ;");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo"),
+                            words: vec![Word::new("foo")],
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: Some(Separator::Sync),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo&");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo"),
+                            words: vec![Word::new("foo")],
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+            },
+            separator: Some(Separator::Async),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo& true ;");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo"),
+                            words: vec![Word::new("foo")],
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: vec![(
+                    Separator::Async,
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("true"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                        },
+                        rest: Vec::new(),
+                    },
+                )],
+            },
+            separator: Some(Separator::Sync),
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+
+        let mut tokens = parse("echo foo;true&");
+        let actual = tokens.parse_complete_command();
+
+        let expected = CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        negate: false,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo"),
+                            words: vec![Word::new("foo")],
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: vec![(
+                    Separator::Sync,
+                    AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("true"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            }),
+                            rest: Vec::new(),
+                        },
+                        rest: Vec::new(),
+                    },
+                )],
+            },
+            separator: Some(Separator::Async),
         };
 
         assert_eq!(Some(expected), actual);
