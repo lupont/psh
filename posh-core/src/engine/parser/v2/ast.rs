@@ -43,7 +43,9 @@ where
             self.swallow_whitespace();
         }
 
-        Some(SyntaxTree { program: complete_commands })
+        Some(SyntaxTree {
+            program: complete_commands,
+        })
     }
 
     fn parse_complete_command(&mut self) -> Option<CompleteCommand> {
@@ -991,6 +993,83 @@ mod tests {
         };
 
         assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn ast() {
+        let mut tokens = parse("2>&1 echo foo | rev && exit || die; sleep 3s &");
+        let ast = tokens.parse();
+
+        let expected = SyntaxTree {
+            program: vec![CompleteCommand {
+                list: List {
+                    first: AndOrList {
+                        first: Pipeline {
+                            negate: false,
+                            first: Command::Simple(SimpleCommand {
+                                name: Word::new("echo"),
+                                words: vec![Word::new("foo")],
+                                redirections: vec![Redirection::new_output("2", "&1", false)],
+                                assignments: Vec::new(),
+                            }),
+                            rest: vec![Command::Simple(SimpleCommand {
+                                name: Word::new("rev"),
+                                words: Vec::new(),
+                                redirections: Vec::new(),
+                                assignments: Vec::new(),
+                            })],
+                        },
+                        rest: vec![
+                            (
+                                LogicalOp::And,
+                                Pipeline {
+                                    negate: false,
+                                    first: Command::Simple(SimpleCommand {
+                                        name: Word::new("exit"),
+                                        words: Vec::new(),
+                                        redirections: Vec::new(),
+                                        assignments: Vec::new(),
+                                    }),
+                                    rest: Vec::new(),
+                                },
+                            ),
+                            (
+                                LogicalOp::Or,
+                                Pipeline {
+                                    negate: false,
+                                    first: Command::Simple(SimpleCommand {
+                                        name: Word::new("die"),
+                                        words: Vec::new(),
+                                        redirections: Vec::new(),
+                                        assignments: Vec::new(),
+                                    }),
+                                    rest: Vec::new(),
+                                },
+                            ),
+                        ],
+                    },
+                    rest: vec![(
+                        Separator::Sync,
+                        AndOrList {
+                            first: Pipeline {
+                                negate: false,
+                                first: Command::Simple(SimpleCommand {
+                                    name: Word::new("sleep"),
+                                    words: vec![Word::new("3s")],
+                                    redirections: Vec::new(),
+                                    assignments: Vec::new(),
+                                }),
+                                rest: Vec::new(),
+                            },
+                            rest: Vec::new(),
+                        },
+                    )],
+                },
+                separator: Some(Separator::Async),
+            }],
+        };
+        assert_eq!(Some(expected), ast);
         assert!(tokens.next().is_none());
     }
 }
