@@ -1,15 +1,35 @@
 use std::{iter::Peekable, ops::RangeInclusive};
 
 use super::consumer::Consumer;
-use super::semtok::{Keyword, SemanticToken};
+use super::semtok::{Keyword, SemanticToken, SemanticTokenizer};
+use super::tok::Tokenizer;
+
+use crate::Result;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
     program: Vec<CompleteCommand>,
 }
 
-pub trait Parser: Iterator<Item = SemanticToken> {
-    fn parse(&mut self) -> Option<SyntaxTree> {
+pub fn parse<A>(input: A) -> Result<SyntaxTree>
+where
+    A: AsRef<str>,
+{
+    input
+        .as_ref()
+        .chars()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .parse()
+}
+
+pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
+    fn parse(&mut self) -> Result<SyntaxTree> {
         let mut complete_commands = Vec::new();
 
         while let Some(thing) = self.parse_complete_command() {
@@ -17,7 +37,7 @@ pub trait Parser: Iterator<Item = SemanticToken> {
             self.swallow_whitespace();
         }
 
-        Some(SyntaxTree {
+        Ok(SyntaxTree {
             program: complete_commands,
         })
     }
@@ -62,8 +82,6 @@ where
     T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
 {
     fn parse_list(&mut self) -> Option<List> {
-        self.swallow_whitespace();
-
         let first = match self.parse_and_or_list() {
             Some(list) => list,
             None => return None,
@@ -1077,7 +1095,7 @@ mod tests {
                 separator: Some(Separator::Async),
             }],
         };
-        assert_eq!(Some(expected), ast);
+        assert_eq!(expected, ast.unwrap());
         assert!(tokens.next().is_none());
     }
 }
