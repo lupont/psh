@@ -12,6 +12,7 @@ pub enum Error {
     HistoryOutOfBounds,
     UnknownCommand(String),
     Unimplemented(String),
+    SyntaxError(String),
 }
 
 impl fmt::Display for Error {
@@ -27,6 +28,7 @@ impl fmt::Display for Error {
                 Self::HistoryOutOfBounds => "Tried to read beyond the history bounds.".to_string(),
                 Self::UnknownCommand(cmd) => format!("Unknown command: {}", cmd),
                 Self::Unimplemented(s) => s.to_string(),
+                Self::SyntaxError(s) => format!("syntax error: {s}"),
             }
         )
     }
