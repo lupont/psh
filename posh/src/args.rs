@@ -7,12 +7,16 @@ pub struct Args {
     #[arg(
         long,
         requires("command"),
+        help("Only tokenize the command specified by --command")
+    )]
+    pub tokenize: bool,
+
+    #[arg(
+        long,
+        requires("command"),
         help("Only lex the command specified by --command")
     )]
     pub lex: bool,
-
-    #[arg(long, requires("lex"), help("Include whitespace when lexing"))]
-    pub include_space: bool,
 
     #[arg(
         long,

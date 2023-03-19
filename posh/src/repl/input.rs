@@ -6,8 +6,10 @@ use crossterm::execute;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
-use posh_core::path::home_dir;
-use posh_core::{lex, Engine, Result, Token};
+use posh_core::engine::parser::{parse, SyntaxTree};
+use posh_core::{Engine, Result};
+
+use self::syntax_highlighting::Highlighter;
 
 use super::RawMode;
 use crate::config::{Colors, ABBREVIATIONS};
@@ -76,6 +78,8 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     };
 
     while !state.about_to_exit {
+        print(engine, &state)?;
+
         execute!(engine.writer, event::EnableBracketedPaste)?;
 
         let event = event::read()?;
@@ -263,8 +267,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             _ => {}
         }
 
-        print(engine, &state)?;
-
         if state.about_to_exit {
             break;
         }
@@ -295,279 +297,33 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     }
 }
 
-fn should_highlight_command(prev_token: Option<&Token>) -> bool {
-    if prev_token.is_none() {
-        return true;
-    }
-
-    if let Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _, _)) = prev_token {
-        return true;
-    }
-
-    if let Some(token @ Token::String(_)) = prev_token {
-        if token.try_get_assignment().is_some() {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn should_highlight_assignment(prev_token: Option<&Token>) -> bool {
-    let mut should_highlight_assignment = matches!(
-        prev_token,
-        Some(Token::Pipe | Token::Semicolon | Token::RedirectOutput(_, _, _, _)) | None
-    );
-
-    if let Some(token @ Token::String(_)) = prev_token {
-        if token.try_get_assignment().is_some() {
-            should_highlight_assignment = true;
-        }
-    }
-
-    should_highlight_assignment
-}
-
-pub fn has_abbreviation(cmd: impl AsRef<str>) -> bool {
-    let cmd = cmd.as_ref();
-    ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
-}
-
-// FIXME: highlighting does not work in command substitutions,
-//        since we are not aware of them because we're using
-//        tokens to highlight instead of the AST
 fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
-    // Perhaps it would be preferable to use the AST to highlight.
-    // Using the tokens is kind of hacky (e.g. since it highlights
-    // commands based on what the previous token was)
-    let tokens = lex(&state.line, true);
-
-    let mut prev_non_space_token = None;
-
     let (start_x, start_y) = state.start_pos;
     let (x, y) = state.pos()?;
 
     queue!(
         engine.writer,
         cursor::MoveTo(start_x, start_y),
-        terminal::Clear(terminal::ClearType::UntilNewLine)
+        terminal::Clear(terminal::ClearType::UntilNewLine),
+        style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
 
-    for token in &tokens {
-        match token {
-            Token::Space => queue!(engine.writer, style::Print(" "))?,
-
-            str_token @ (Token::String(s)
-            | Token::SingleQuotedString(s, _)
-            | Token::DoubleQuotedString(s, _)) => {
-                match prev_non_space_token {
-                    // If this is the first token, or if it's directly after any
-                    // command separator, it should be highlighted as a command.
-                    token if should_highlight_command(token) => {
-                        let color = if engine.has_builtin(s) {
-                            Colors::VALID_BUILTIN
-                        } else if engine.has_command(s) {
-                            Colors::VALID_CMD
-                        } else if has_abbreviation(s) && state.highlight_abbreviations {
-                            Colors::VALID_ABBR
-                        } else if s.starts_with("~/") {
-                            // FIXME: This block is a hack to make syntax highlighting work.
-                            //        The has_command() function expects expanded lines, but
-                            //        since we don't have a CommandType available here, we
-                            //        have to mock the "expansion".
-                            let expanded_s = s.replacen('~', &home_dir(), 1);
-                            if engine.has_command(expanded_s) {
-                                Colors::VALID_CMD
-                            } else {
-                                Colors::INVALID_CMD
-                            }
-                        } else {
-                            Colors::INVALID_CMD
-                        };
-                        queue!(engine.writer, style::SetForegroundColor(color))?;
-                    }
-
-                    _ => match str_token {
-                        Token::String(s) => queue!(
-                            engine.writer,
-                            style::SetForegroundColor(if s.starts_with('-') {
-                                Colors::FLAG
-                            } else {
-                                Colors::STRING
-                            })
-                        )?,
-
-                        Token::SingleQuotedString(_, finished) => queue!(
-                            engine.writer,
-                            style::SetForegroundColor(if *finished {
-                                Colors::SINGLE_QUOTED_STRING
-                            } else {
-                                Colors::INCOMPLETE
-                            })
-                        )?,
-
-                        Token::DoubleQuotedString(_, finished) => queue!(
-                            engine.writer,
-                            style::SetForegroundColor(if *finished {
-                                Colors::DOUBLE_QUOTED_STRING
-                            } else {
-                                Colors::INCOMPLETE
-                            })
-                        )?,
-
-                        _ => unreachable!(),
-                    },
-                }
-
-                match str_token {
-                    token @ Token::String(s) => {
-                        let highlight_assignment =
-                            should_highlight_assignment(prev_non_space_token);
-
-                        match token.try_get_assignment() {
-                            Some((a, None)) if highlight_assignment => {
-                                queue!(
-                                    engine.writer,
-                                    style::SetForegroundColor(Colors::STRING),
-                                    style::Print(a),
-                                    style::SetForegroundColor(Colors::ASSIGNMENT),
-                                    style::Print('=')
-                                )?;
-                            }
-                            Some((a, Some(b))) if highlight_assignment => {
-                                queue!(
-                                    engine.writer,
-                                    style::SetForegroundColor(Colors::STRING),
-                                    style::Print(a),
-                                    style::SetForegroundColor(Colors::ASSIGNMENT),
-                                    style::Print('='),
-                                    style::SetForegroundColor(Colors::STRING),
-                                    style::Print(b),
-                                )?;
-                            }
-                            _ => queue!(engine.writer, style::Print(s))?,
-                        }
-                    }
-
-                    Token::SingleQuotedString(_, true) => {
-                        queue!(engine.writer, style::Print(format!("'{s}'")))?
-                    }
-
-                    Token::DoubleQuotedString(_, true) => {
-                        queue!(engine.writer, style::Print(format!("\"{s}\"")))?
-                    }
-
-                    Token::SingleQuotedString(_, false) => {
-                        queue!(engine.writer, style::Print(format!("'{s}")))?
-                    }
-
-                    Token::DoubleQuotedString(_, false) => {
-                        queue!(engine.writer, style::Print(format!("\"{s}")))?
-                    }
-
-                    _ => unreachable!(),
-                }
-            }
-
-            Token::Pipe => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::PIPE),
-                style::Print("|")
-            )?,
-
-            Token::Semicolon => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::SEMICOLON),
-                style::Print(";")
-            )?,
-
-            Token::RedirectOutput(None, to, Some(space), false) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!(">{space}{to}"))
-            )?,
-
-            Token::RedirectOutput(None, to, Some(space), true) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!(">>{space}{to}"))
-            )?,
-
-            Token::RedirectOutput(None, to, None, false) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!(">{to}"))
-            )?,
-
-            Token::RedirectOutput(None, to, None, true) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!(">>{to}"))
-            )?,
-
-            Token::RedirectOutput(Some(from), to, None, false) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!("{from}>{to}"))
-            )?,
-
-            Token::RedirectOutput(Some(from), to, None, true) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!("{from}>>{to}"))
-            )?,
-
-            Token::RedirectOutput(Some(from), to, Some(space), false) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!("{from}>{space}{to}"))
-            )?,
-
-            Token::RedirectOutput(Some(from), to, Some(space), true) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_OUTPUT),
-                style::Print(format!("{from}>>{space}{to}"))
-            )?,
-
-            Token::RedirectInput(to) => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::REDIRECT_INPUT),
-                style::Print(format!("<{to}"))
-            )?,
-
-            Token::And => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::NYI),
-                style::Print("&&")
-            )?,
-
-            Token::Or => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::NYI),
-                style::Print("||")
-            )?,
-
-            Token::Ampersand => queue!(
-                engine.writer,
-                style::SetForegroundColor(Colors::NYI),
-                style::Print("&")
-            )?,
-        }
-
-        if !matches!(&token, &Token::Space) {
-            prev_non_space_token = Some(token);
-        }
-    }
+    let ast = parse(&state.line, true)?;
+    ast.write_highlighted(engine)?;
+    engine.writer.flush()?;
 
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
 
-    queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
-
-    engine.writer.flush()?;
+    execute!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
 
     Ok(())
+}
+
+pub fn has_abbreviation(cmd: impl AsRef<str>) -> bool {
+    let cmd = cmd.as_ref();
+    ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
 }
 
 fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(String, isize)> {
@@ -579,4 +335,285 @@ fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(S
         }
     }
     None
+}
+
+mod syntax_highlighting {
+    use posh_core::ast::AndOrList;
+    use posh_core::ast::CmdPrefix;
+    use posh_core::ast::CmdSuffix;
+    use posh_core::ast::Command;
+    use posh_core::ast::CompleteCommand;
+    use posh_core::ast::List;
+    use posh_core::ast::LogicalOp;
+    use posh_core::ast::Pipeline;
+    use posh_core::ast::Redirection;
+    use posh_core::ast::Separator;
+    use posh_core::ast::SimpleCommand;
+    use posh_core::ast::VariableAssignment;
+    use posh_core::ast::Word;
+
+    use self::Colors;
+    use super::*;
+
+    use crossterm::style::{Print, ResetColor, SetForegroundColor};
+
+    pub trait Highlighter {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()>;
+    }
+
+    impl Highlighter for SyntaxTree {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            for cmd in &self.program {
+                cmd.write_highlighted(engine)?;
+            }
+
+            queue!(
+                engine.writer,
+                SetForegroundColor(Colors::UNPARSED),
+                Print(&self.unparsed),
+                ResetColor
+            )?;
+
+            engine.writer.flush()?;
+
+            Ok(())
+        }
+    }
+
+    impl Highlighter for CompleteCommand {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            self.list.write_highlighted(engine)?;
+
+            if let Some(separator) = &self.separator {
+                separator.write_highlighted(engine)?;
+            }
+
+            if let Some((ws, comment)) = &self.comment {
+                queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::COMMENT_COLOR),
+                    Print(ws),
+                    Print("#"),
+                    Print(comment),
+                    ResetColor
+                )?;
+            }
+            Ok(())
+        }
+    }
+
+    impl Highlighter for List {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            self.first.write_highlighted(engine)?;
+
+            for (sep, and_or_list) in &self.rest {
+                sep.write_highlighted(engine)?;
+                and_or_list.write_highlighted(engine)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl Highlighter for AndOrList {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            self.first.write_highlighted(engine)?;
+
+            for (op, pipeline) in &self.rest {
+                op.write_highlighted(engine)?;
+                pipeline.write_highlighted(engine)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl Highlighter for Pipeline {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            if let Some(ws) = &self.bang {
+                queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::BANG_COLOR),
+                    Print(format!("{ws}!")),
+                    ResetColor
+                )?;
+            }
+
+            self.first.write_highlighted(engine)?;
+
+            for (ws, cmd) in &self.rest {
+                queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::PIPE_COLOR),
+                    Print(format!("{ws}|")),
+                    ResetColor
+                )?;
+                cmd.write_highlighted(engine)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl Highlighter for Command {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            match self {
+                Command::Simple(cmd) => cmd.write_highlighted(engine),
+                Command::Compound(_) => todo!(),
+                Command::FunctionDefinition(_) => todo!(),
+            }
+        }
+    }
+
+    impl Highlighter for SimpleCommand {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            let cmd_color = match &self.name {
+                Some(Word { name, .. })
+                    if engine.has_command(name)
+                        || engine.has_builtin(name)
+                        || super::has_abbreviation(name) =>
+                {
+                    Colors::VALID_CMD_COLOR
+                }
+                _ => Colors::INVALID_CMD_COLOR,
+            };
+
+            for prefix in &self.prefixes {
+                prefix.write_highlighted(engine)?;
+            }
+
+            if let Some(name) = &self.name {
+                queue!(
+                    engine.writer,
+                    SetForegroundColor(cmd_color),
+                    Print(name.to_string()),
+                    ResetColor
+                )?;
+            }
+
+            for suffix in &self.suffixes {
+                suffix.write_highlighted(engine)?;
+            }
+
+            Ok(())
+        }
+    }
+
+    impl Highlighter for CmdPrefix {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            match self {
+                Self::Redirection(r) => r.write_highlighted(engine),
+                Self::Assignment(a) => a.write_highlighted(engine),
+            }
+        }
+    }
+
+    impl Highlighter for CmdSuffix {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            match self {
+                Self::Word(w) => Ok(queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::TRAILING_WORD_COLOR),
+                    Print(w.to_string()),
+                    ResetColor
+                )?),
+                Self::Redirection(r) => r.write_highlighted(engine),
+            }
+        }
+    }
+
+    impl Highlighter for Redirection {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            match self {
+                Redirection::Input {
+                    file_descriptor,
+                    target,
+                } => Ok(queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
+                    Print(file_descriptor.to_string()),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
+                    Print("<"),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
+                    Print(target.to_string()),
+                    ResetColor,
+                )?),
+                Redirection::Output {
+                    file_descriptor,
+                    append,
+                    target,
+                } => Ok(queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
+                    Print(file_descriptor.to_string()),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
+                    Print(if *append { ">>" } else { ">" }),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
+                    Print(target.to_string()),
+                    ResetColor,
+                )?),
+                Redirection::HereDocument {
+                    file_descriptor,
+                    delimiter,
+                } => Ok(queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
+                    Print(file_descriptor.to_string()),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
+                    Print("<<"),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
+                    Print(delimiter.to_string()),
+                    ResetColor,
+                )?),
+            }
+        }
+    }
+
+    impl Highlighter for VariableAssignment {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            Ok(queue!(
+                engine.writer,
+                SetForegroundColor(Colors::ASSIGNMENT_LHS_COLOR),
+                Print(self.lhs.to_string()),
+                SetForegroundColor(Colors::ASSIGNMENT_OP_COLOR),
+                Print("="),
+                SetForegroundColor(Colors::ASSIGNMENT_RHS_COLOR),
+                Print(match &self.rhs {
+                    Some(rhs) => rhs.to_string(),
+                    None => "".to_string(),
+                }),
+                ResetColor,
+            )?)
+        }
+    }
+
+    impl Highlighter for Separator {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            Ok(match self {
+                Separator::Sync(ws) => queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::SEPARATOR_COLOR),
+                    Print(format!("{ws};")),
+                    ResetColor
+                ),
+                Separator::Async(ws) => queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::SEPARATOR_COLOR),
+                    Print(format!("{ws}&")),
+                    ResetColor
+                ),
+            }?)
+        }
+    }
+
+    impl Highlighter for LogicalOp {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            Ok(queue!(
+                engine.writer,
+                SetForegroundColor(Colors::LOGICAL_OP_COLOR),
+                Print(self.to_string()),
+                ResetColor
+            )?)
+        }
+    }
 }

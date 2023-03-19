@@ -59,6 +59,13 @@ pub fn compress_tilde(s: String) -> String {
     s.replacen(&home, "~", 1)
 }
 
+pub fn is_portable_filename(input: impl AsRef<str>) -> bool {
+    input
+        .as_ref()
+        .chars()
+        .all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

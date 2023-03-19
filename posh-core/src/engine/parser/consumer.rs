@@ -51,11 +51,12 @@ where
 
         let mut iter = literal.into_iter();
         for c in iter.by_ref() {
-            if let Some(i) = self.consume_single(c) {
-                v.push(i);
-            } else {
-                *self = initial;
-                return None;
+            match self.consume_single(c) {
+                Some(i) => v.push(i),
+                None => {
+                    *self = initial;
+                    return None;
+                }
             }
         }
 
@@ -71,14 +72,9 @@ mod tests {
     fn test_consume_if() {
         let mut input = vec![1, 2, 3].into_iter().peekable();
 
-        let consumed = input.consume_if(|&d| d < 3);
-        assert_eq!(Some(1), consumed);
-
-        let consumed = input.consume_if(|&d| d < 3);
-        assert_eq!(Some(2), consumed);
-
-        let consumed = input.consume_if(|&d| d < 3);
-        assert_eq!(None, consumed);
+        assert_eq!(Some(1), input.consume_if(|&d| d < 3));
+        assert_eq!(Some(2), input.consume_if(|&d| d < 3));
+        assert_eq!(None, input.consume_if(|&d| d < 3));
     }
 
     #[test]
