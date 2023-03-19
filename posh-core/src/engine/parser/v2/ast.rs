@@ -14,6 +14,8 @@ pub trait Parser: Iterator<Item = SemanticToken> {
     fn parse_word(&mut self) -> Option<Word>;
 
     fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
+    fn parse_pipeline(&mut self) -> Option<Pipeline>;
+    fn parse_command(&mut self) -> Option<Command>;
 
     fn swallow_whitespace(&mut self);
 
@@ -28,68 +30,103 @@ where
         todo!()
     }
 
+    fn parse_command(&mut self) -> Option<Command> {
+        self.parse_simple_command()
+            .map(Command::Simple)
+            .or_else(|| self.parse_pipeline().map(Command::Pipeline))
+    }
+
+    fn parse_pipeline(&mut self) -> Option<Pipeline> {
+        let initial = self.clone();
+
+        let negate = self
+            .consume_single(SemanticToken::Keyword(super::semtok::Keyword::Not))
+            .is_some();
+        self.swallow_whitespace();
+
+        let first = match self.parse_command() {
+            Some(cmd) => cmd,
+            None => {
+                *self = initial;
+                return None;
+            }
+        };
+
+        self.swallow_whitespace();
+
+        let mut rest = Vec::new();
+
+        while let Some(cmd) = self.consume_single(SemanticToken::Pipe).and_then(|_| {
+            self.swallow_whitespace();
+            self.parse_command()
+        }) {
+            rest.push(cmd);
+        }
+
+        Some(Pipeline {
+            negate,
+            first: Box::new(first),
+            rest,
+        })
+    }
+
     fn parse_simple_command(&mut self) -> Option<SimpleCommand> {
         let initial = self.clone();
 
         let mut redirections = Vec::new();
-        let mut variable_assignments = Vec::new();
-        let mut words = Vec::<Word>::new();
+        let mut assignments = Vec::new();
+        let mut words = Vec::new();
 
         enum Valid {
+            A(VariableAssignment),
             R(Redirection),
-            V(VariableAssignment),
+            W(Word),
         }
 
         while let Some(thing) = self
             .parse_variable_assignment()
-            .map(Valid::V)
+            .map(Valid::A)
             .or_else(|| self.parse_redirection().map(Valid::R))
         {
             match thing {
+                Valid::A(v) => assignments.push(v),
                 Valid::R(r) => redirections.push(r),
-                Valid::V(v) => variable_assignments.push(v),
+                Valid::W(_) => unreachable!(),
             }
             self.swallow_whitespace();
         }
 
         self.swallow_whitespace();
 
-        match self.parse_word() {
+        let name = match self.parse_word() {
+            Some(word) => word,
             None => {
                 *self = initial;
-                None
+                return None;
             }
+        };
 
-            Some(word) => {
-                let name = word;
+        self.swallow_whitespace();
 
-                enum Valid {
-                    R(Redirection),
-                    W(Word),
-                }
-
-                self.swallow_whitespace();
-
-                while let Some(thing) = self
-                    .parse_redirection()
-                    .map(Valid::R)
-                    .or_else(|| self.parse_word().map(Valid::W))
-                {
-                    match thing {
-                        Valid::R(redirection) => redirections.push(redirection),
-                        Valid::W(word) => words.push(word),
-                    }
-                    self.swallow_whitespace();
-                }
-
-                Some(SimpleCommand {
-                    redirections,
-                    assignments: variable_assignments,
-                    name,
-                    words,
-                })
+        while let Some(thing) = self
+            .parse_redirection()
+            .map(Valid::R)
+            .or_else(|| self.parse_word().map(Valid::W))
+        {
+            match thing {
+                Valid::R(r) => redirections.push(r),
+                Valid::W(w) => words.push(w),
+                Valid::A(_) => unreachable!(),
             }
+            self.swallow_whitespace();
         }
+
+        Some(SimpleCommand {
+            redirections,
+            assignments,
+            name,
+            words,
+        })
     }
 
     fn swallow_whitespace(&mut self) {
@@ -188,13 +225,10 @@ where
                 let var_assg =
                     VariableAssignment::new(lhs, if rhs.is_empty() { None } else { Some(rhs) });
                 self.next();
-                Some(var_assg)
-            } else {
-                None
+                return Some(var_assg);
             }
-        } else {
-            None
         }
+        None
     }
 }
 
@@ -232,6 +266,30 @@ pub enum Redirection {
         file_descriptor: Word,
         delimiter: Word,
     },
+}
+
+impl Redirection {
+    pub fn new_output(fd: &str, target: &str, append: bool) -> Self {
+        Self::Output {
+            file_descriptor: Word::new(fd),
+            append,
+            target: Word::new(target),
+        }
+    }
+
+    pub fn new_input(fd: &str, target: &str) -> Self {
+        Self::Input {
+            file_descriptor: Word::new(fd),
+            target: Word::new(target),
+        }
+    }
+
+    pub fn new_here_doc(fd: &str, delimiter: &str) -> Self {
+        Self::HereDocument {
+            file_descriptor: Word::new(fd),
+            delimiter: Word::new(delimiter),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -313,6 +371,8 @@ pub enum Expansion {
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompoundCommand {
     subshell: bool,
+    //  true: (cmd)
+    //  false: { cmd; }
     first: Box<Command>,
     rest: Vec<Command>,
 }
@@ -438,12 +498,12 @@ mod tests {
 
     #[test]
     fn parse_redirect_input_and_here_document() {
-        for item in vec!["2<\"foo.txt\"", "2< \"foo.txt\""] {
+        for item in vec![r#"2<"foo.txt""#, r#"2< "foo.txt""#] {
             let mut tokens = parse(item);
             let actual = tokens.parse_redirection();
             let expected = Redirection::Input {
                 file_descriptor: Word::new("2"),
-                target: Word::new("\"foo.txt\""),
+                target: Word::new(r#""foo.txt""#),
             };
             assert_eq!(Some(expected), actual);
         }
@@ -453,54 +513,64 @@ mod tests {
             let actual = tokens.parse_redirection();
             let expected = Redirection::HereDocument {
                 file_descriptor: Word::new("2"),
-                delimiter: Word::new("\"EOF\""),
+                delimiter: Word::new(r#""EOF""#),
             };
             assert_eq!(Some(expected), actual);
         }
     }
 
-    fn output_redirection(fd: &str, append: bool, target: &str) -> Redirection {
-        Redirection::Output {
-            file_descriptor: Word::new(fd),
-            append,
-            target: Word::new(target),
-        }
-    }
-
-    fn input_redirection(fd: &str, target: &str) -> Redirection {
-        Redirection::Input {
-            file_descriptor: Word::new(fd),
-            target: Word::new(target),
-        }
-    }
-
-    fn here_doc(fd: &str, delimiter: &str) -> Redirection {
-        Redirection::HereDocument {
-            file_descriptor: Word::new(fd),
-            delimiter: Word::new(delimiter),
-        }
-    }
-
     #[test]
     fn parse_simple_command() {
-        let mut tokens = parse("foo='bar baz' 3>foo bar=yo echo 4</dev/null foo 2>> stderr.log bar baz");
+        let mut tokens =
+            parse("foo='bar baz' 3>foo bar=yo echo 4</dev/null foo 2>> stderr.log bar baz");
         let actual = tokens.parse_simple_command();
 
         let expected = SimpleCommand {
             redirections: vec![
-                output_redirection("3", false, "foo"),
-                input_redirection("4", "/dev/null"),
-                output_redirection("2", true, "stderr.log"),
+                Redirection::new_output("3", "foo", false),
+                Redirection::new_input("4", "/dev/null"),
+                Redirection::new_output("2", "stderr.log", true),
             ],
             assignments: vec![
                 VariableAssignment::new("foo", Some("'bar baz'")),
                 VariableAssignment::new("bar", Some("yo")),
             ],
             name: Word::new("echo"),
-            words: vec![
-                Word::new("foo"),
-                Word::new("bar"),
-                Word::new("baz"),
+            words: vec![Word::new("foo"), Word::new("bar"), Word::new("baz")],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_simple_pipeline() {
+        let mut tokens = parse("echo foo 2>/dev/null|rev 2< file | cat");
+        let actual = tokens.parse_pipeline();
+
+        let expected = Pipeline {
+            negate: false,
+
+            first: Box::new(Command::Simple(SimpleCommand {
+                redirections: vec![Redirection::new_output("2", "/dev/null", false)],
+                assignments: Vec::new(),
+                name: Word::new("echo"),
+                words: vec![Word::new("foo")],
+            })),
+
+            rest: vec![
+                Command::Simple(SimpleCommand {
+                    redirections: vec![Redirection::new_input("2", "file")],
+                    assignments: Vec::new(),
+                    name: Word::new("rev"),
+                    words: Vec::new(),
+                }),
+                Command::Simple(SimpleCommand {
+                    redirections: Vec::new(),
+                    assignments: Vec::new(),
+                    name: Word::new("cat"),
+                    words: Vec::new(),
+                }),
             ],
         };
 
