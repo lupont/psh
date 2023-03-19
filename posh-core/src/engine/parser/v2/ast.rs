@@ -1,7 +1,7 @@
 use std::{iter::Peekable, ops::RangeInclusive};
 
 use super::consumer::Consumer;
-use super::semtok::SemanticToken;
+use super::semtok::{Keyword, SemanticToken};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
@@ -13,9 +13,23 @@ pub trait Parser: Iterator<Item = SemanticToken> {
     fn parse_redirection(&mut self) -> Option<Redirection>;
     fn parse_word(&mut self) -> Option<Word>;
 
+    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
+
     fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
     fn parse_pipeline(&mut self) -> Option<Pipeline>;
-    fn parse_command(&mut self) -> Option<Command>;
+
+    fn parse_command(&mut self) -> Option<Command> {
+        self.parse_pipeline()
+            .map(Command::Pipeline)
+            .or_else(|| self.parse_simple_command().map(Command::Simple))
+    }
+
+    // NOTE: I really dislike this, but this is the simplest way
+    //       I could think of to avoid stack overflows when
+    //       parsing a command in a pipeline
+    fn parse_command_except_pipeline(&mut self) -> Option<Command> {
+        self.parse_simple_command().map(Command::Simple)
+    }
 
     fn swallow_whitespace(&mut self);
 
@@ -30,21 +44,43 @@ where
         todo!()
     }
 
-    fn parse_command(&mut self) -> Option<Command> {
-        self.parse_simple_command()
-            .map(Command::Simple)
-            .or_else(|| self.parse_pipeline().map(Command::Pipeline))
+    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
+        let first = match self.parse_command() {
+            Some(cmd) => cmd,
+            None => return None,
+        };
+
+        let mut rest = Vec::new();
+
+        self.swallow_whitespace();
+
+        while let Some(thing) = self
+            .consume_if(|t| t == &SemanticToken::And || t == &SemanticToken::Or)
+            .map(|t| match t {
+                SemanticToken::And => LogicalOp::And,
+                SemanticToken::Or => LogicalOp::Or,
+                _ => unreachable!(),
+            })
+            .and_then(|op| {
+                self.swallow_whitespace();
+                self.parse_command().map(|c| (op, c))
+            })
+        {
+            rest.push(thing);
+        }
+
+        Some(AndOrList { first, rest })
     }
 
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
         let initial = self.clone();
 
         let negate = self
-            .consume_single(SemanticToken::Keyword(super::semtok::Keyword::Not))
+            .consume_single(SemanticToken::Keyword(Keyword::Not))
             .is_some();
         self.swallow_whitespace();
 
-        let first = match self.parse_command() {
+        let first = match self.parse_command_except_pipeline() {
             Some(cmd) => cmd,
             None => {
                 *self = initial;
@@ -58,9 +94,16 @@ where
 
         while let Some(cmd) = self.consume_single(SemanticToken::Pipe).and_then(|_| {
             self.swallow_whitespace();
-            self.parse_command()
+            self.parse_command_except_pipeline()
         }) {
             rest.push(cmd);
+        }
+
+        // NOTE: not exactly on-spec, but without this, a simple command
+        //       gets parsed as a pipeline
+        if rest.is_empty() {
+            *self = initial;
+            return None;
         }
 
         Some(Pipeline {
@@ -243,10 +286,10 @@ pub enum Command {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
-    redirections: Vec<Redirection>,
-    assignments: Vec<VariableAssignment>,
     name: Word,
     words: Vec<Word>,
+    redirections: Vec<Redirection>,
+    assignments: Vec<VariableAssignment>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -370,9 +413,9 @@ pub enum Expansion {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompoundCommand {
+    //  true: (cmd; cmd)
+    //  false: { cmd; cmd; }
     subshell: bool,
-    //  true: (cmd)
-    //  false: { cmd; }
     first: Box<Command>,
     rest: Vec<Command>,
 }
@@ -399,7 +442,7 @@ pub struct List {
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
     first: Command,
-    rest: Vec<(Op, Command)>,
+    rest: Vec<(LogicalOp, Command)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -409,7 +452,7 @@ pub enum Separator {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Op {
+pub enum LogicalOp {
     And,
     Or,
 }
@@ -526,6 +569,8 @@ mod tests {
         let actual = tokens.parse_simple_command();
 
         let expected = SimpleCommand {
+            name: Word::new("echo"),
+            words: vec![Word::new("foo"), Word::new("bar"), Word::new("baz")],
             redirections: vec![
                 Redirection::new_output("3", "foo", false),
                 Redirection::new_input("4", "/dev/null"),
@@ -535,8 +580,6 @@ mod tests {
                 VariableAssignment::new("foo", Some("'bar baz'")),
                 VariableAssignment::new("bar", Some("yo")),
             ],
-            name: Word::new("echo"),
-            words: vec![Word::new("foo"), Word::new("bar"), Word::new("baz")],
         };
 
         assert_eq!(Some(expected), actual);
@@ -552,25 +595,72 @@ mod tests {
             negate: false,
 
             first: Box::new(Command::Simple(SimpleCommand {
-                redirections: vec![Redirection::new_output("2", "/dev/null", false)],
-                assignments: Vec::new(),
                 name: Word::new("echo"),
                 words: vec![Word::new("foo")],
+                redirections: vec![Redirection::new_output("2", "/dev/null", false)],
+                assignments: Vec::new(),
             })),
 
             rest: vec![
                 Command::Simple(SimpleCommand {
-                    redirections: vec![Redirection::new_input("2", "file")],
-                    assignments: Vec::new(),
                     name: Word::new("rev"),
                     words: Vec::new(),
+                    redirections: vec![Redirection::new_input("2", "file")],
+                    assignments: Vec::new(),
                 }),
                 Command::Simple(SimpleCommand {
-                    redirections: Vec::new(),
-                    assignments: Vec::new(),
                     name: Word::new("cat"),
                     words: Vec::new(),
+                    redirections: Vec::new(),
+                    assignments: Vec::new(),
                 }),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
+    #[test]
+    fn parse_simple_and_or_list() {
+        let mut tokens = parse("foo && bar | rev || baz");
+        let actual = tokens.parse_and_or_list();
+
+        let expected = AndOrList {
+            first: Command::Simple(SimpleCommand {
+                name: Word::new("foo"),
+                words: Vec::new(),
+                redirections: Vec::new(),
+                assignments: Vec::new(),
+            }),
+            rest: vec![
+                (
+                    LogicalOp::And,
+                    Command::Pipeline(Pipeline {
+                        negate: false,
+                        first: Box::new(Command::Simple(SimpleCommand {
+                            name: Word::new("bar"),
+                            words: Vec::new(),
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        })),
+                        rest: vec![Command::Simple(SimpleCommand {
+                            name: Word::new("rev"),
+                            words: Vec::new(),
+                            redirections: Vec::new(),
+                            assignments: Vec::new(),
+                        })],
+                    }),
+                ),
+                (
+                    LogicalOp::Or,
+                    Command::Simple(SimpleCommand {
+                        name: Word::new("baz"),
+                        words: Vec::new(),
+                        redirections: Vec::new(),
+                        assignments: Vec::new(),
+                    }),
+                ),
             ],
         };
 
