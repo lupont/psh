@@ -208,7 +208,7 @@ fn parse_simple_pipeline() {
     let actual = tokens.parse_pipeline();
 
     let expected = Pipeline {
-        negate: false,
+        bang: None,
 
         first: Command::Simple(SimpleCommand {
             name: Word::new("echo", ""),
@@ -262,14 +262,14 @@ fn parse_simple_and_or_list() {
                 prefixes: Vec::new(),
                 suffixes: Vec::new(),
             }),
-            negate: false,
+            bang: None,
             rest: Vec::new(),
         },
         rest: vec![
             (
                 LogicalOp::And(" ".to_string()),
                 Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("bar", " "),
                         prefixes: Vec::new(),
@@ -293,7 +293,7 @@ fn parse_simple_and_or_list() {
                         prefixes: Vec::new(),
                         suffixes: Vec::new(),
                     }),
-                    negate: false,
+                    bang: None,
                     rest: Vec::new(),
                 },
             ),
@@ -318,7 +318,7 @@ fn parse_simple_list() {
                     suffixes: Vec::new(),
                 }),
                 rest: Vec::new(),
-                negate: false,
+                bang: None,
             },
             rest: vec![
                 (
@@ -330,7 +330,7 @@ fn parse_simple_list() {
                             suffixes: Vec::new(),
                         }),
                         rest: Vec::new(),
-                        negate: false,
+                        bang: None,
                     },
                 ),
                 (
@@ -342,7 +342,7 @@ fn parse_simple_list() {
                             suffixes: Vec::new(),
                         }),
                         rest: Vec::new(),
-                        negate: false,
+                        bang: None,
                     },
                 ),
             ],
@@ -358,7 +358,7 @@ fn parse_simple_list() {
                             suffixes: Vec::new(),
                         }),
                         rest: Vec::new(),
-                        negate: false,
+                        bang: None,
                     },
                     rest: Vec::new(),
                 },
@@ -367,7 +367,7 @@ fn parse_simple_list() {
                 Separator::Sync("".to_string()),
                 AndOrList {
                     first: Pipeline {
-                        negate: false,
+                        bang: None,
                         first: Command::Simple(SimpleCommand {
                             name: Word::new("quux", " "),
                             prefixes: Vec::new(),
@@ -401,7 +401,7 @@ fn parse_complete_command() {
         list: List {
             first: AndOrList {
                 first: Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("echo", ""),
                         prefixes: Vec::new(),
@@ -426,7 +426,7 @@ fn parse_complete_command() {
         list: List {
             first: AndOrList {
                 first: Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("echo", ""),
                         prefixes: Vec::new(),
@@ -451,7 +451,7 @@ fn parse_complete_command() {
         list: List {
             first: AndOrList {
                 first: Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("echo", ""),
                         prefixes: Vec::new(),
@@ -476,7 +476,7 @@ fn parse_complete_command() {
         list: List {
             first: AndOrList {
                 first: Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("echo", ""),
                         prefixes: Vec::new(),
@@ -490,7 +490,7 @@ fn parse_complete_command() {
                 Separator::Async("".to_string()),
                 AndOrList {
                     first: Pipeline {
-                        negate: false,
+                        bang: None,
                         first: Command::Simple(SimpleCommand {
                             name: Word::new("true", " "),
                             prefixes: Vec::new(),
@@ -515,7 +515,7 @@ fn parse_complete_command() {
         list: List {
             first: AndOrList {
                 first: Pipeline {
-                    negate: false,
+                    bang: None,
                     first: Command::Simple(SimpleCommand {
                         name: Word::new("echo", ""),
                         prefixes: Vec::new(),
@@ -529,7 +529,7 @@ fn parse_complete_command() {
                 Separator::Sync("".to_string()),
                 AndOrList {
                     first: Pipeline {
-                        negate: false,
+                        bang: None,
                         first: Command::Simple(SimpleCommand {
                             name: Word::new("true", ""),
                             prefixes: Vec::new(),
@@ -550,7 +550,7 @@ fn parse_complete_command() {
 
 #[test]
 fn ast() {
-    let mut tokens = parse("2>&1 echo foo | rev&& exit ||die; sleep 3s  &");
+    let mut tokens = parse(" ! 2>&1 echo foo | rev&& exit ||die; sleep 3s  &");
     let ast = tokens.parse();
 
     let expected = SyntaxTree {
@@ -558,12 +558,12 @@ fn ast() {
             list: List {
                 first: AndOrList {
                     first: Pipeline {
-                        negate: false,
+                        bang: Some(" ".to_string()),
                         first: Command::Simple(SimpleCommand {
                             name: Word::new("echo", " "),
                             prefixes: vec![SimpleCommandMeta::Redirection(
                                 Redirection::new_output(
-                                    Word::new("2", ""),
+                                    Word::new("2", " "),
                                     Word::new("&1", ""),
                                     false,
                                 ),
@@ -583,7 +583,7 @@ fn ast() {
                         (
                             LogicalOp::And("".to_string()),
                             Pipeline {
-                                negate: false,
+                                bang: None,
                                 first: Command::Simple(SimpleCommand {
                                     name: Word::new("exit", " "),
                                     prefixes: Vec::new(),
@@ -595,7 +595,7 @@ fn ast() {
                         (
                             LogicalOp::Or(" ".to_string()),
                             Pipeline {
-                                negate: false,
+                                bang: None,
                                 first: Command::Simple(SimpleCommand {
                                     name: Word::new("die", ""),
                                     prefixes: Vec::new(),
@@ -610,7 +610,7 @@ fn ast() {
                     Separator::Sync("".to_string()),
                     AndOrList {
                         first: Pipeline {
-                            negate: false,
+                            bang: None,
                             first: Command::Simple(SimpleCommand {
                                 name: Word::new("sleep", " "),
                                 prefixes: Vec::new(),
@@ -710,7 +710,7 @@ fn parse_redirection_fd() {
 
 #[test]
 fn syntax_tree_back_to_string() {
-    let input = "   foo='bar  baz'\\ quux  echo yo hello	2< file && true|cat> foo; hello";
+    let input = "   foo='bar  baz'\\ quux  echo yo hello	2< file &&  !   true|cat> foo; hello";
     let mut tokens = parse(input);
     let actual = tokens.parse().unwrap();
 

@@ -89,6 +89,7 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
     fn parse_separator(&mut self) -> Option<Separator>;
     fn parse_logical_op(&mut self) -> Option<LogicalOp>;
     fn parse_pipe(&mut self) -> Option<String>;
+    fn parse_bang(&mut self) -> Option<String>;
 
     fn swallow_whitespace(&mut self) -> LeadingWhitespace;
 }
@@ -124,9 +125,10 @@ where
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
         let initial = self.clone();
 
-        let negate = self
-            .consume_single(SemanticToken::Keyword(Keyword::Bang))
-            .is_some();
+        // let negate = self
+        //     .consume_single(SemanticToken::Keyword(Keyword::Bang))
+        //     .is_some();
+        let bang = self.parse_bang();
 
         let first = match self.parse_command() {
             Some(cmd) => cmd,
@@ -146,7 +148,7 @@ where
         }
 
         Some(Pipeline {
-            negate,
+            bang,
             first,
             rest,
         })
@@ -245,6 +247,17 @@ where
         let initial = self.clone();
         let ws = self.swallow_whitespace();
         self.consume_single(SemanticToken::Pipe)
+            .map(|_| ws)
+            .or_else(|| {
+                *self = initial;
+                None
+            })
+    }
+
+    fn parse_bang(&mut self) -> Option<String> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+        self.consume_single(SemanticToken::Keyword(Keyword::Bang))
             .map(|_| ws)
             .or_else(|| {
                 *self = initial;
@@ -426,7 +439,7 @@ pub struct AndOrList {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pipeline {
-    pub negate: bool,
+    pub bang: Option<String>,
     pub first: Command,
     pub rest: Vec<(String, Command)>,
 }

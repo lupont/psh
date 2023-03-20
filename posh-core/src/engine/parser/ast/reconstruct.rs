@@ -62,13 +62,13 @@ impl ToString for Pipeline {
         let mut pipeline = self.first.to_string();
 
         for (ws, cmd) in &self.rest {
-            pipeline.push_str(ws);
-            pipeline.push('|');
-            pipeline.push_str(&cmd.to_string());
+            let part = format!("{}|{}", ws, &cmd.to_string());
+            pipeline.push_str(&part);
         }
 
-        if self.negate {
-            pipeline.insert(0, '!');
+        if let Some(ws) = &self.bang {
+            let bang = format!("{ws}!");
+            pipeline.insert_str(0, &bang);
         }
 
         pipeline
@@ -88,13 +88,13 @@ impl ToString for Command {
 impl ToString for SimpleCommand {
     fn to_string(&self) -> String {
         let mut s = String::new();
-        for prefix in &self.prefixes {
-            s += &prefix.to_string();
-        }
+        self.prefixes
+            .iter()
+            .for_each(|m| s.push_str(&m.to_string()));
         s += &self.name.to_string();
-        for suffix in &self.suffixes {
-            s += &suffix.to_string();
-        }
+        self.suffixes
+            .iter()
+            .for_each(|m| s.push_str(&m.to_string()));
         s
     }
 }
@@ -153,11 +153,7 @@ impl ToString for Redirection {
             } => format!(
                 "{}>{}{}",
                 file_descriptor.to_string(),
-                if *append {
-                    ">".to_string()
-                } else {
-                    "".to_string()
-                },
+                if *append { ">" } else { "" }.to_string(),
                 target.to_string()
             ),
             Redirection::HereDocument {
