@@ -11,10 +11,7 @@ use super::tok::Tokenizer;
 
 use crate::Result;
 
-pub fn parse<A>(input: A) -> Result<SyntaxTree>
-where
-    A: AsRef<str>,
-{
+pub fn parse(input: impl AsRef<str>) -> Result<SyntaxTree> {
     input
         .as_ref()
         .chars()
@@ -32,8 +29,8 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
     fn parse(&mut self) -> Result<SyntaxTree> {
         let mut complete_commands = Vec::new();
 
-        while let Some(thing) = self.parse_complete_command() {
-            complete_commands.push(thing);
+        while let Some(cmd) = self.parse_complete_command() {
+            complete_commands.push(cmd);
         }
 
         Ok(SyntaxTree {
@@ -84,6 +81,7 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
 
     fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
     fn parse_redirection(&mut self) -> Option<Redirection>;
+
     fn parse_word(&mut self, allow_ampersand: bool) -> Option<Word>;
     fn parse_redirection_fd(&mut self) -> Option<Word>;
     fn parse_separator(&mut self) -> Option<Separator>;
@@ -123,15 +121,16 @@ where
 
         let comment = self.parse_comment();
 
-        Some(List { first, rest, comment })
+        Some(List {
+            first,
+            rest,
+            comment,
+        })
     }
 
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
         let initial = self.clone();
 
-        // let negate = self
-        //     .consume_single(SemanticToken::Keyword(Keyword::Bang))
-        //     .is_some();
         let bang = self.parse_bang();
 
         let first = match self.parse_command() {
@@ -151,11 +150,7 @@ where
             rest.push((ws, cmd));
         }
 
-        Some(Pipeline {
-            bang,
-            first,
-            rest,
-        })
+        Some(Pipeline { bang, first, rest })
     }
 
     fn parse_function_definition(&mut self) -> Option<FunctionDefinition> {
@@ -582,6 +577,11 @@ impl Word {
         // TODO: do quote removal
         input
     }
+
+    // TODO: expanding should probably result in multiple `Word`s
+    // fn expand(self) -> Vec<Self> {
+    //     vec![self]
+    // }
 
     fn expand(input: &str) -> &str {
         // TODO: expand
