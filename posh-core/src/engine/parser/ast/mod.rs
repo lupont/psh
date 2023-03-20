@@ -91,6 +91,8 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
     fn parse_pipe(&mut self) -> Option<String>;
     fn parse_bang(&mut self) -> Option<String>;
 
+    fn parse_comment(&mut self) -> Option<(String, String)>;
+
     fn swallow_whitespace(&mut self) -> LeadingWhitespace;
 }
 
@@ -119,7 +121,9 @@ where
             initial = self.clone();
         }
 
-        Some(List { first, rest })
+        let comment = self.parse_comment();
+
+        Some(List { first, rest, comment })
     }
 
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
@@ -263,6 +267,18 @@ where
                 *self = initial;
                 None
             })
+    }
+
+    fn parse_comment(&mut self) -> Option<(String, String)> {
+        let initial = self.clone();
+        let ws = self.swallow_whitespace();
+
+        if let Some(SemanticToken::Comment(comment)) = self.next() {
+            Some((ws, comment))
+        } else {
+            *self = initial;
+            None
+        }
     }
 
     fn swallow_whitespace(&mut self) -> LeadingWhitespace {
@@ -420,6 +436,8 @@ pub struct CompleteCommand {
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub first: AndOrList,
+
+    pub comment: Option<(String, String)>,
 
     // As noted semantically by having it be the first part of
     // the tuple, each `Separator` here ends the previous

@@ -386,6 +386,7 @@ fn parse_simple_list() {
                 },
             ),
         ],
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -412,6 +413,7 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
+            comment: None,
         },
         separator: None,
     };
@@ -437,6 +439,7 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
+            comment: None,
         },
         separator: Some(Separator::Sync(" ".to_string())),
     };
@@ -462,6 +465,7 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
+            comment: None,
         },
         separator: Some(Separator::Async("".to_string())),
     };
@@ -501,6 +505,7 @@ fn parse_complete_command() {
                     rest: Vec::new(),
                 },
             )],
+            comment: None,
         },
         separator: Some(Separator::Sync(" ".to_string())),
     };
@@ -540,6 +545,7 @@ fn parse_complete_command() {
                     rest: Vec::new(),
                 },
             )],
+            comment: None,
         },
         separator: Some(Separator::Async("".to_string())),
     };
@@ -621,6 +627,7 @@ fn ast() {
                         rest: Vec::new(),
                     },
                 )],
+                comment: None,
             },
             separator: Some(Separator::Async("  ".to_string())),
         }],
@@ -715,4 +722,37 @@ fn syntax_tree_back_to_string() {
     let actual = tokens.parse().unwrap();
 
     assert_eq!(input.to_string(), actual.to_string());
+}
+
+#[test]
+fn parse_with_comment() {
+    let mut tokens = parse("echo foo bar #this is a comment ");
+    let actual = tokens.parse().unwrap();
+
+    let expected = SyntaxTree {
+        program: vec![CompleteCommand {
+            list: List {
+                first: AndOrList {
+                    first: Pipeline {
+                        bang: None,
+                        first: Command::Simple(SimpleCommand {
+                            name: Word::new("echo", ""),
+                            prefixes: Vec::new(),
+                            suffixes: vec![
+                                SimpleCommandMeta::Word(Word::new("foo", " ")),
+                                SimpleCommandMeta::Word(Word::new("bar", " ")),
+                            ],
+                        }),
+                        rest: Vec::new(),
+                    },
+                    rest: Vec::new(),
+                },
+                rest: Vec::new(),
+                comment: Some((" ".to_string(), "this is a comment ".to_string())),
+            },
+            separator: None,
+        }],
+    };
+
+    assert_eq!(actual, expected);
 }

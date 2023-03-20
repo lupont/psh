@@ -17,6 +17,7 @@ pub enum SemanticToken {
     RedirectOutput,
     LParen,
     RParen,
+    Comment(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +50,7 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
     fn parse_redirect_output(&mut self) -> Option<SemanticToken>;
     fn parse_lparen(&mut self) -> Option<SemanticToken>;
     fn parse_rparen(&mut self) -> Option<SemanticToken>;
+    fn parse_comment(&mut self) -> Option<SemanticToken>;
     fn parse_whitespace(&mut self) -> Option<SemanticToken>;
     fn parse_word(&mut self) -> Option<SemanticToken>;
     fn parse_keyword(&mut self) -> Option<SemanticToken>;
@@ -65,6 +67,7 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
             .or_else(|| self.parse_pipe())
             .or_else(|| self.parse_redirect_input())
             .or_else(|| self.parse_redirect_output())
+            .or_else(|| self.parse_comment())
             .or_else(|| self.parse_keyword())
             .or_else(|| self.parse_word())
     }
@@ -117,6 +120,20 @@ where
     fn parse_rparen(&mut self) -> Option<SemanticToken> {
         self.consume_single(Token::RParen)
             .map(|_| SemanticToken::RParen)
+    }
+
+    fn parse_comment(&mut self) -> Option<SemanticToken> {
+        if self.consume_single(Token::Pound).is_some() {
+            if let Some(tokens) = self.consume_until(|t| matches!(t, Token::Whitespace('\n'))) {
+                let comment = tokens
+                    .iter()
+                    .map(|t| t.to_str())
+                    .collect::<Vec<_>>()
+                    .join("");
+                return Some(SemanticToken::Comment(comment));
+            }
+        }
+        None
     }
 
     fn parse_whitespace(&mut self) -> Option<SemanticToken> {
@@ -454,5 +471,13 @@ mod tests {
         let expected = SemanticToken::Word(r#""foo bar \"baz \\ quux\"""#.to_string());
 
         assert_eq!(Some(expected), parsed);
+    }
+
+    #[test]
+    fn parse_comment() {
+        let mut input = "#this is a comment".chars().peekable();
+        let mut tokens = input.tokenize().into_iter().peekable();
+        let parsed = tokens.parse();
+        assert_eq!(Some(SemanticToken::Comment("this is a comment".to_string())), parsed);
     }
 }

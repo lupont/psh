@@ -153,7 +153,7 @@ impl ToString for Redirection {
             } => format!(
                 "{}>{}{}",
                 file_descriptor.to_string(),
-                if *append { ">" } else { "" }.to_string(),
+                if *append { ">" } else { "" },
                 target.to_string()
             ),
             Redirection::HereDocument {
