@@ -20,7 +20,7 @@ pub struct Engine<W: Write> {
 }
 
 impl<W: Write> Engine<W> {
-    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
+    fn _cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
         let path = match dir {
             Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
 
@@ -49,7 +49,7 @@ impl<W: Write> Engine<W> {
         Ok(ExitStatus::from(0))
     }
 
-    fn exit(&self, code: i32) -> ! {
+    fn _exit(&self, code: i32) -> ! {
         std::process::exit(code)
     }
 
@@ -59,7 +59,7 @@ impl<W: Write> Engine<W> {
         has("cd") || has("exit")
     }
 
-    pub fn execute_builtin(&mut self, cmd: CompleteCommand) -> Result<ExitStatus> {
+    pub fn execute_builtin(&mut self, _cmd: CompleteCommand) -> Result<ExitStatus> {
         todo!()
         // let command = cmd.cmd_name();
         // let args = cmd.args();
@@ -166,29 +166,32 @@ impl<W: Write> Engine<W> {
     // }
 
     pub fn execute_simple_command(&mut self, cmd: &SimpleCommand) -> Result<ExitStatus> {
-        let mut command = process::Command::new(cmd.name());
-
-        let mut child = command.args(cmd.args()).spawn()?;
-        let exit_status = child.wait()?;
-        // self.writer.write_all(&output.stdout)?;
-        // let code = output.status.code().unwrap_or_default();
-        Ok(ExitStatus::from(exit_status.code().unwrap()))
+        if let Some(name) = cmd.name() {
+            let mut command = process::Command::new(name);
+            let mut child = command.args(cmd.args()).spawn()?;
+            let exit_status = child.wait()?;
+            Ok(ExitStatus::from(exit_status.code().unwrap()))
+        } else {
+            // FIXME: figure out if this case is correct
+            Ok(ExitStatus::from(0))
+        }
     }
 
     pub fn execute_command(&mut self, cmd: &Command) -> Result<ExitStatus> {
         match cmd {
             Command::Simple(cmd) => self.execute_simple_command(cmd),
-            Command::Compound(compound) => todo!(),
-            Command::FunctionDefinition(def) => todo!(),
+            Command::Compound(_compound) => todo!(),
+            Command::FunctionDefinition(_def) => todo!(),
         }
     }
 
     pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
-        if let Command::Simple(cmd) = &pipeline.first {
-            let status = self.execute_simple_command(cmd)?;
-            return Ok(vec![status]);
+        if pipeline.rest.is_empty() {
+            let status = self.execute_command(&pipeline.first)?;
+            Ok(vec![status])
+        } else {
+            todo!()
         }
-        todo!()
     }
 
     pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
@@ -197,68 +200,11 @@ impl<W: Write> Engine<W> {
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
         let list = &cmd.list;
-
         let exit_status = self.execute_logical_expr(&list.first)?;
-
         Ok(exit_status)
     }
 
-    // pub fn execute(&mut self, cmd: CommandType) -> Result<Vec<ExitStatus>> {
-    //     let cmd = cmd.expand()?;
-
-    //     match cmd {
-    //         CommandType::Single(cmd) if self.has_builtin(cmd.cmd_name()) => {
-    //             self.execute_builtin(cmd).map(|r| vec![r])
-    //         }
-
-    //         CommandType::Single(cmd) => {
-    //             if !self.has_command(cmd.cmd_name()) {
-    //                 writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
-    //                 return Ok(vec![ExitStatus::from(127)]);
-    //             }
-
-    //             let mut command = self.build_command(&cmd, None, true)?;
-    //             let output = command.output()?;
-    //             self.writer.write_all(&output.stdout)?;
-    //             let code = output.status.code().unwrap_or_default();
-
-    //             Ok(vec![ExitStatus::from(code)])
-    //         }
-
-    //         CommandType::Pipeline(cmds) => {
-    //             if let Some(cmd) = cmds.iter().find(|cmd| {
-    //                 !self.has_command(cmd.cmd_name()) && !self.has_builtin(cmd.cmd_name())
-    //             }) {
-    //                 writeln!(self.writer, "Unknown command: {}", cmd.cmd_name())?;
-    //                 return Ok(vec![ExitStatus::from(127)]);
-    //             }
-
-    //             let mut prev_result: Option<ChildStdout> = None;
-    //             let mut statuses = Vec::with_capacity(cmds.len());
-
-    //             for (i, cmd) in cmds.iter().enumerate() {
-    //                 let is_final = i == cmds.len() - 1;
-    //                 let mut command = self.build_command(cmd, Some(prev_result), is_final)?;
-
-    //                 let mut child = command.spawn()?;
-
-    //                 prev_result = child.stdout.take();
-
-    //                 let output = child.wait_with_output()?;
-    //                 self.writer.write_all(&output.stdout)?;
-
-    //                 statuses.push(ExitStatus::from(output.status.code().unwrap_or_default()));
-    //             }
-
-    //             Ok(statuses)
-    //         }
-    //     }
-    // }
-
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        // ast.commands
-        //     .into_iter()
-        //     .fold(Ok(vec![]), |_, c| self.execute(c))
         ast.program
             .into_iter()
             .fold(Ok(vec![]), |_, c| self.execute(&c))

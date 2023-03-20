@@ -122,8 +122,23 @@ fn parse_simple_command() {
     let actual = tokens.parse_simple_command();
 
     let expected = SimpleCommand {
-        name: Word::new("echo", ""),
+        name: Some(Word::new("echo", "")),
         prefixes: Vec::new(),
+        suffixes: Vec::new(),
+    };
+
+    assert_eq!(Some(expected), actual);
+    assert!(tokens.next().is_none());
+
+    let mut tokens = parse("foo=bar");
+    let actual = tokens.parse_simple_command();
+
+    let expected = SimpleCommand {
+        name: None,
+        prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
+            Word::new("foo", ""),
+            Some(Word::new("bar", "")),
+        ))],
         suffixes: Vec::new(),
     };
 
@@ -134,7 +149,7 @@ fn parse_simple_command() {
     let actual = tokens.parse_simple_command();
 
     let expected = SimpleCommand {
-        name: Word::new("echo", "   "),
+        name: Some(Word::new("echo", "   ")),
         prefixes: Vec::new(),
         suffixes: vec![
             SimpleCommandMeta::Word(Word::new("foo", " ")),
@@ -151,7 +166,7 @@ fn parse_simple_command() {
     let actual = tokens.parse_simple_command();
 
     let expected = SimpleCommand {
-        name: Word::new("echo", " "),
+        name: Some(Word::new("echo", " ")),
         prefixes: vec![
             SimpleCommandMeta::Assignment(VariableAssignment::new(
                 Word::new("foo", ""),
@@ -190,7 +205,7 @@ fn parse_simple_command() {
     let actual = tokens.parse_simple_command();
 
     let expected = SimpleCommand {
-        name: Word::new("echo", " "),
+        name: Some(Word::new("echo", " ")),
         prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
             Word::new("foo", ""),
             Some(Word::new("bar", "")),
@@ -211,7 +226,7 @@ fn parse_simple_pipeline() {
         bang: None,
 
         first: Command::Simple(SimpleCommand {
-            name: Word::new("echo", ""),
+            name: Some(Word::new("echo", "")),
             prefixes: Vec::new(),
             suffixes: vec![
                 SimpleCommandMeta::Word(Word::new("foo", " ")),
@@ -227,7 +242,7 @@ fn parse_simple_pipeline() {
             (
                 "".to_string(),
                 Command::Simple(SimpleCommand {
-                    name: Word::new("rev", ""),
+                    name: Some(Word::new("rev", "")),
                     prefixes: Vec::new(),
                     suffixes: vec![SimpleCommandMeta::Redirection(Redirection::new_input(
                         Word::new("2", " "),
@@ -238,7 +253,7 @@ fn parse_simple_pipeline() {
             (
                 " ".to_string(),
                 Command::Simple(SimpleCommand {
-                    name: Word::new("cat", " "),
+                    name: Some(Word::new("cat", " ")),
                     prefixes: Vec::new(),
                     suffixes: Vec::new(),
                 }),
@@ -258,7 +273,7 @@ fn parse_simple_and_or_list() {
     let expected = AndOrList {
         first: Pipeline {
             first: Command::Simple(SimpleCommand {
-                name: Word::new("foo", ""),
+                name: Some(Word::new("foo", "")),
                 prefixes: Vec::new(),
                 suffixes: Vec::new(),
             }),
@@ -271,14 +286,14 @@ fn parse_simple_and_or_list() {
                 Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("bar", " "),
+                        name: Some(Word::new("bar", " ")),
                         prefixes: Vec::new(),
                         suffixes: Vec::new(),
                     }),
                     rest: vec![(
                         " ".to_string(),
                         Command::Simple(SimpleCommand {
-                            name: Word::new("rev", " "),
+                            name: Some(Word::new("rev", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -289,7 +304,7 @@ fn parse_simple_and_or_list() {
                 LogicalOp::Or(" ".to_string()),
                 Pipeline {
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("baz", " "),
+                        name: Some(Word::new("baz", " ")),
                         prefixes: Vec::new(),
                         suffixes: Vec::new(),
                     }),
@@ -313,7 +328,7 @@ fn parse_simple_list() {
         first: AndOrList {
             first: Pipeline {
                 first: Command::Simple(SimpleCommand {
-                    name: Word::new("true", ""),
+                    name: Some(Word::new("true", "")),
                     prefixes: Vec::new(),
                     suffixes: Vec::new(),
                 }),
@@ -325,7 +340,7 @@ fn parse_simple_list() {
                     LogicalOp::And(" ".to_string()),
                     Pipeline {
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("foo", " "),
+                            name: Some(Word::new("foo", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -337,7 +352,7 @@ fn parse_simple_list() {
                     LogicalOp::Or(" ".to_string()),
                     Pipeline {
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("bar", " "),
+                            name: Some(Word::new("bar", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -353,7 +368,7 @@ fn parse_simple_list() {
                 AndOrList {
                     first: Pipeline {
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("baz", " "),
+                            name: Some(Word::new("baz", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -369,14 +384,14 @@ fn parse_simple_list() {
                     first: Pipeline {
                         bang: None,
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("quux", " "),
+                            name: Some(Word::new("quux", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
                         rest: vec![(
                             " ".to_string(),
                             Command::Simple(SimpleCommand {
-                                name: Word::new("rev", " "),
+                                name: Some(Word::new("rev", " ")),
                                 prefixes: Vec::new(),
                                 suffixes: Vec::new(),
                             }),
@@ -386,7 +401,6 @@ fn parse_simple_list() {
                 },
             ),
         ],
-        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -404,7 +418,7 @@ fn parse_complete_command() {
                 first: Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("echo", ""),
+                        name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
                         suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
                     }),
@@ -413,9 +427,9 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
-            comment: None,
         },
         separator: None,
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -430,7 +444,7 @@ fn parse_complete_command() {
                 first: Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("echo", ""),
+                        name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
                         suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
                     }),
@@ -439,9 +453,9 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
-            comment: None,
         },
         separator: Some(Separator::Sync(" ".to_string())),
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -456,7 +470,7 @@ fn parse_complete_command() {
                 first: Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("echo", ""),
+                        name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
                         suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
                     }),
@@ -465,9 +479,9 @@ fn parse_complete_command() {
                 rest: Vec::new(),
             },
             rest: Vec::new(),
-            comment: None,
         },
         separator: Some(Separator::Async("".to_string())),
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -482,7 +496,7 @@ fn parse_complete_command() {
                 first: Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("echo", ""),
+                        name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
                         suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
                     }),
@@ -496,7 +510,7 @@ fn parse_complete_command() {
                     first: Pipeline {
                         bang: None,
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("true", " "),
+                            name: Some(Word::new("true", " ")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -505,9 +519,9 @@ fn parse_complete_command() {
                     rest: Vec::new(),
                 },
             )],
-            comment: None,
         },
         separator: Some(Separator::Sync(" ".to_string())),
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -522,7 +536,7 @@ fn parse_complete_command() {
                 first: Pipeline {
                     bang: None,
                     first: Command::Simple(SimpleCommand {
-                        name: Word::new("echo", ""),
+                        name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
                         suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
                     }),
@@ -536,7 +550,7 @@ fn parse_complete_command() {
                     first: Pipeline {
                         bang: None,
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("true", ""),
+                            name: Some(Word::new("true", "")),
                             prefixes: Vec::new(),
                             suffixes: Vec::new(),
                         }),
@@ -545,9 +559,9 @@ fn parse_complete_command() {
                     rest: Vec::new(),
                 },
             )],
-            comment: None,
         },
         separator: Some(Separator::Async("".to_string())),
+        comment: None,
     };
 
     assert_eq!(Some(expected), actual);
@@ -566,7 +580,7 @@ fn ast() {
                     first: Pipeline {
                         bang: Some(" ".to_string()),
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("echo", " "),
+                            name: Some(Word::new("echo", " ")),
                             prefixes: vec![SimpleCommandMeta::Redirection(
                                 Redirection::new_output(
                                     Word::new("2", " "),
@@ -579,7 +593,7 @@ fn ast() {
                         rest: vec![(
                             " ".to_string(),
                             Command::Simple(SimpleCommand {
-                                name: Word::new("rev", " "),
+                                name: Some(Word::new("rev", " ")),
                                 prefixes: Vec::new(),
                                 suffixes: Vec::new(),
                             }),
@@ -591,7 +605,7 @@ fn ast() {
                             Pipeline {
                                 bang: None,
                                 first: Command::Simple(SimpleCommand {
-                                    name: Word::new("exit", " "),
+                                    name: Some(Word::new("exit", " ")),
                                     prefixes: Vec::new(),
                                     suffixes: Vec::new(),
                                 }),
@@ -603,7 +617,7 @@ fn ast() {
                             Pipeline {
                                 bang: None,
                                 first: Command::Simple(SimpleCommand {
-                                    name: Word::new("die", ""),
+                                    name: Some(Word::new("die", "")),
                                     prefixes: Vec::new(),
                                     suffixes: Vec::new(),
                                 }),
@@ -618,7 +632,7 @@ fn ast() {
                         first: Pipeline {
                             bang: None,
                             first: Command::Simple(SimpleCommand {
-                                name: Word::new("sleep", " "),
+                                name: Some(Word::new("sleep", " ")),
                                 prefixes: Vec::new(),
                                 suffixes: vec![SimpleCommandMeta::Word(Word::new("3s", " "))],
                             }),
@@ -627,10 +641,11 @@ fn ast() {
                         rest: Vec::new(),
                     },
                 )],
-                comment: None,
             },
             separator: Some(Separator::Async("  ".to_string())),
+            comment: None,
         }],
+        unparsed: "".to_string(),
     };
     assert_eq!(expected, ast.unwrap());
     assert!(tokens.next().is_none());
@@ -736,7 +751,7 @@ fn parse_with_comment() {
                     first: Pipeline {
                         bang: None,
                         first: Command::Simple(SimpleCommand {
-                            name: Word::new("echo", ""),
+                            name: Some(Word::new("echo", "")),
                             prefixes: Vec::new(),
                             suffixes: vec![
                                 SimpleCommandMeta::Word(Word::new("foo", " ")),
@@ -748,10 +763,11 @@ fn parse_with_comment() {
                     rest: Vec::new(),
                 },
                 rest: Vec::new(),
-                comment: Some((" ".to_string(), "this is a comment ".to_string())),
             },
             separator: None,
+            comment: Some((" ".to_string(), "this is a comment ".to_string())),
         }],
+        unparsed: "".to_string(),
     };
 
     assert_eq!(actual, expected);

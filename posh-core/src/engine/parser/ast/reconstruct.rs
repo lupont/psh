@@ -88,10 +88,15 @@ impl ToString for Command {
 impl ToString for SimpleCommand {
     fn to_string(&self) -> String {
         let mut s = String::new();
+
         self.prefixes
             .iter()
             .for_each(|m| s.push_str(&m.to_string()));
-        s += &self.name.to_string();
+
+        if let Some(name) = &self.name {
+            s += &name.to_string();
+        }
+
         self.suffixes
             .iter()
             .for_each(|m| s.push_str(&m.to_string()));

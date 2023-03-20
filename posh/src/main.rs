@@ -3,8 +3,8 @@ mod config;
 mod repl;
 
 use clap::Parser;
+use posh_core::engine::parser::{lex, parse, tokenize};
 use posh_core::Engine;
-use posh_core::engine::parser::{tokenize, lex, parse};
 
 fn main() {
     let args = args::Args::parse();

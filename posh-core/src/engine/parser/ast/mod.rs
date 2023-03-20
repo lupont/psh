@@ -25,7 +25,7 @@ pub fn parse(input: impl AsRef<str>) -> Result<SyntaxTree> {
         .parse()
 }
 
-pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
+pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse(&mut self) -> Result<SyntaxTree> {
         let mut complete_commands = Vec::new();
 
@@ -33,8 +33,14 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
             complete_commands.push(cmd);
         }
 
+        let mut unparsed = String::new();
+        for token in self.by_ref() {
+            unparsed.push_str(&token.to_string());
+        }
+
         Ok(SyntaxTree {
             program: complete_commands,
+            unparsed,
         })
     }
 
@@ -46,27 +52,17 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
 
         let separator = self.parse_separator();
 
-        Some(CompleteCommand { list, separator })
+        let comment = self.parse_comment();
+
+        Some(CompleteCommand {
+            list,
+            separator,
+            comment,
+        })
     }
 
     fn parse_list(&mut self) -> Option<List>;
-    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
-        let first = match self.parse_pipeline() {
-            Some(pipeline) => pipeline,
-            None => return None,
-        };
-
-        let mut rest = Vec::new();
-
-        while let Some(thing) = self.parse_logical_op().and_then(|op| {
-            // FIXME: this currently allows a list to end with a && or ||
-            self.parse_pipeline().map(|c| (op, c))
-        }) {
-            rest.push(thing);
-        }
-
-        Some(AndOrList { first, rest })
-    }
+    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
     fn parse_pipeline(&mut self) -> Option<Pipeline>;
 
     fn parse_command(&mut self) -> Option<Command> {
@@ -107,29 +103,54 @@ where
         let mut rest = Vec::new();
         let mut initial = self.clone();
 
-        while let Some(thing) = self.parse_separator().and_then(|separator| {
-            self.parse_and_or_list()
-                .map(|a| (separator, a))
-                .or_else(|| {
-                    *self = initial.clone();
-                    None
-                })
-        }) {
+        while let Some(thing) = self
+            .parse_separator()
+            .and_then(|separator| {
+                self.parse_and_or_list().map(|a| (separator, a))
+                // .or_else(|| {
+                //     *self = initial.clone();
+                //     None
+                // })
+            })
+            .or_else(|| {
+                *self = initial.clone();
+                None
+            })
+        {
             rest.push(thing);
             initial = self.clone();
         }
 
-        let comment = self.parse_comment();
+        Some(List { first, rest })
+    }
 
-        Some(List {
-            first,
-            rest,
-            comment,
-        })
+    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
+        let first = match self.parse_pipeline() {
+            Some(pipeline) => pipeline,
+            None => return None,
+        };
+
+        let mut rest = Vec::new();
+
+        let mut initial = self.clone();
+
+        while let Some(thing) = self
+            .parse_logical_op()
+            .and_then(|op| self.parse_pipeline().map(|c| (op, c)))
+            .or_else(|| {
+                *self = initial.clone();
+                None
+            })
+        {
+            rest.push(thing);
+            initial = self.clone();
+        }
+
+        Some(AndOrList { first, rest })
     }
 
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
-        let initial = self.clone();
+        let mut initial = self.clone();
 
         let bang = self.parse_bang();
 
@@ -143,11 +164,18 @@ where
 
         let mut rest = Vec::new();
 
+        initial = self.clone();
+
         while let Some((ws, cmd)) = self
             .parse_pipe()
             .and_then(|ws| self.parse_command().map(|cmd| (ws, cmd)))
+            .or_else(|| {
+                *self = initial;
+                None
+            })
         {
             rest.push((ws, cmd));
+            initial = self.clone();
         }
 
         Some(Pipeline { bang, first, rest })
@@ -179,15 +207,7 @@ where
             }
         }
 
-        // FIXME: we need to support variable assignments without command execution,
-        //        e.g. just ^foo=bar$
-        let name = match self.parse_word(false) {
-            Some(word) => word,
-            None => {
-                *self = initial;
-                return None;
-            }
-        };
+        let name = self.parse_word(false);
 
         while let Some(thing) = self
             .parse_redirection()
@@ -201,11 +221,16 @@ where
             }
         }
 
-        Some(SimpleCommand {
-            name,
-            prefixes,
-            suffixes,
-        })
+        if name.is_none() && prefixes.is_empty() && suffixes.is_empty() {
+            *self = initial;
+            None
+        } else {
+            Some(SimpleCommand {
+                name,
+                prefixes,
+                suffixes,
+            })
+        }
     }
 
     fn parse_separator(&mut self) -> Option<Separator> {
@@ -418,19 +443,19 @@ where
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
     pub program: Vec<CompleteCommand>,
+    pub unparsed: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompleteCommand {
     pub list: List,
     pub separator: Option<Separator>,
+    pub comment: Option<(String, String)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub first: AndOrList,
-
-    pub comment: Option<(String, String)>,
 
     // As noted semantically by having it be the first part of
     // the tuple, each `Separator` here ends the previous
@@ -464,14 +489,18 @@ pub enum Command {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
-    pub name: Word,
+    pub name: Option<Word>,
     pub prefixes: Vec<SimpleCommandMeta>,
     pub suffixes: Vec<SimpleCommandMeta>,
 }
 
 impl SimpleCommand {
-    pub fn name(&self) -> &String {
-        &self.name.name
+    pub fn name(&self) -> Option<&String> {
+        if let Some(word) = &self.name {
+            Some(&word.name)
+        } else {
+            None
+        }
     }
 
     pub fn args(&self) -> impl Iterator<Item = &String> {

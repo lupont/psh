@@ -31,6 +31,26 @@ pub enum SemanticToken {
     Comment(String),
 }
 
+impl ToString for SemanticToken {
+    fn to_string(&self) -> String {
+        match self {
+            SemanticToken::Word(word) => word.to_string(),
+            SemanticToken::Keyword(keyword) => keyword.to_string(),
+            SemanticToken::Whitespace(ws) => ws.to_string(),
+            SemanticToken::And => "&&".to_string(),
+            SemanticToken::Or => "||".to_string(),
+            SemanticToken::SyncSeparator => ";".to_string(),
+            SemanticToken::AsyncSeparator => "&".to_string(),
+            SemanticToken::Pipe => "|".to_string(),
+            SemanticToken::RedirectInput => "<".to_string(),
+            SemanticToken::RedirectOutput => ">".to_string(),
+            SemanticToken::LParen => "(".to_string(),
+            SemanticToken::RParen => ")".to_string(),
+            SemanticToken::Comment(comment) => format!("#{comment}"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Keyword {
     Bang,
@@ -49,6 +69,30 @@ pub enum Keyword {
     Then,
     Until,
     While,
+}
+
+impl ToString for Keyword {
+    fn to_string(&self) -> String {
+        match self {
+            Keyword::Bang => "!",
+            Keyword::LBrace => "{",
+            Keyword::RBrace => "}",
+            Keyword::Case => "case",
+            Keyword::Do => "do",
+            Keyword::Done => "done",
+            Keyword::Elif => "elif",
+            Keyword::Else => "else",
+            Keyword::Esac => "esac",
+            Keyword::Fi => "fi",
+            Keyword::For => "for",
+            Keyword::If => "if",
+            Keyword::In => "in",
+            Keyword::Then => "then",
+            Keyword::Until => "until",
+            Keyword::While => "while",
+        }
+        .to_string()
+    }
 }
 
 pub trait SemanticTokenizer: Iterator<Item = Token> {
@@ -135,14 +179,18 @@ where
 
     fn parse_comment(&mut self) -> Option<SemanticToken> {
         if self.consume_single(Token::Pound).is_some() {
-            if let Some(tokens) = self.consume_until(|t| matches!(t, Token::Whitespace('\n'))) {
-                let comment = tokens
+            let comment = if let Some(tokens) =
+                self.consume_until(|t| matches!(t, Token::Whitespace('\n')))
+            {
+                tokens
                     .iter()
                     .map(|t| t.to_str())
                     .collect::<Vec<_>>()
-                    .join("");
-                return Some(SemanticToken::Comment(comment));
-            }
+                    .join("")
+            } else {
+                "".to_string()
+            };
+            return Some(SemanticToken::Comment(comment));
         }
         None
     }
@@ -160,26 +208,23 @@ where
             return None;
         }
 
-        let initial = self.clone();
         let mut word = String::new();
 
         let quote = self.next().unwrap();
         word.push_str(&quote.to_str());
 
-        match self.consume_until(|t| t == &Token::SingleQuote) {
-            Some(tokens) => {
-                for token in tokens {
-                    word.push_str(&token.to_str());
+        while let Some(token) = self.peek() {
+            match token {
+                Token::SingleQuote => {
+                    let quote = self.next().unwrap();
+                    word.push_str(&quote.to_str());
+                    break;
                 }
 
-                let quote = self.next().unwrap();
-                word.push_str(&quote.to_str());
-            }
-
-            None => {
-                // syntax error, unterminated single quote
-                *self = initial;
-                return None;
+                _ => {
+                    let inner = self.next().unwrap();
+                    word.push_str(&inner.to_str());
+                }
             }
         }
 

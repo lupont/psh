@@ -78,6 +78,8 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
     };
 
     while !state.about_to_exit {
+        print(engine, &state)?;
+
         execute!(engine.writer, event::EnableBracketedPaste)?;
 
         let event = event::read()?;
@@ -265,8 +267,6 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             _ => {}
         }
 
-        print(engine, &state)?;
-
         if state.about_to_exit {
             break;
         }
@@ -310,18 +310,16 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
 
     let ast = parse(&state.line)?;
     ast.write_highlighted(&mut engine.writer)?;
+    engine.writer.flush()?;
 
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
 
-    queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
-
-    engine.writer.flush()?;
+    execute!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
 
     Ok(())
 }
-
 
 pub fn has_abbreviation(cmd: impl AsRef<str>) -> bool {
     let cmd = cmd.as_ref();
@@ -352,9 +350,10 @@ mod syntax_highlighting {
     use posh_core::ast::SimpleCommandMeta;
     use posh_core::ast::VariableAssignment;
 
+    use self::Colors;
     use super::*;
 
-    use crossterm::style::{Color, Print, ResetColor, SetForegroundColor};
+    use crossterm::style::{Print, ResetColor, SetForegroundColor};
 
     pub trait Highlighter {
         fn write_highlighted(&self, writer: &mut impl Write) -> Result<()>;
@@ -366,6 +365,10 @@ mod syntax_highlighting {
                 cmd.write_highlighted(writer)?;
             }
 
+            queue!(writer, Print(&self.unparsed))?;
+
+            writer.flush()?;
+
             Ok(())
         }
     }
@@ -376,7 +379,17 @@ mod syntax_highlighting {
             if let Some(sep) = &self.separator {
                 sep.write_highlighted(writer)?;
             }
-            writer.flush()?;
+
+            if let Some((ws, comment)) = &self.comment {
+                queue!(
+                    writer,
+                    SetForegroundColor(Colors::COMMENT_COLOR),
+                    Print(ws),
+                    Print("#"),
+                    Print(comment),
+                    ResetColor
+                )?;
+            }
             Ok(())
         }
     }
@@ -384,6 +397,7 @@ mod syntax_highlighting {
     impl Highlighter for List {
         fn write_highlighted(&self, writer: &mut impl Write) -> Result<()> {
             self.first.write_highlighted(writer)?;
+
             for (sep, and_or_list) in &self.rest {
                 sep.write_highlighted(writer)?;
                 and_or_list.write_highlighted(writer)?;
@@ -410,7 +424,7 @@ mod syntax_highlighting {
             if let Some(ws) = &self.bang {
                 queue!(
                     writer,
-                    SetForegroundColor(Color::Magenta),
+                    SetForegroundColor(Colors::BANG_COLOR),
                     Print(format!("{ws}!")),
                     ResetColor
                 )?;
@@ -421,7 +435,7 @@ mod syntax_highlighting {
             for (ws, cmd) in &self.rest {
                 queue!(
                     writer,
-                    SetForegroundColor(Color::Magenta),
+                    SetForegroundColor(Colors::PIPE_COLOR),
                     Print(format!("{ws}|")),
                     ResetColor
                 )?;
@@ -444,18 +458,26 @@ mod syntax_highlighting {
 
     impl Highlighter for SimpleCommand {
         fn write_highlighted(&self, writer: &mut impl Write) -> Result<()> {
+            // FIXME: use INVALID_CMD_COLOR if invalid
+            let cmd_color = Colors::VALID_CMD_COLOR;
+
             for prefix in &self.prefixes {
                 prefix.write_highlighted(writer)?;
             }
-            queue!(
-                writer,
-                SetForegroundColor(Color::Yellow),
-                Print(self.name.to_string()),
-                ResetColor
-            )?;
+
+            if let Some(name) = &self.name {
+                queue!(
+                    writer,
+                    SetForegroundColor(cmd_color),
+                    Print(name.to_string()),
+                    ResetColor
+                )?;
+            }
+
             for suffix in &self.suffixes {
                 suffix.write_highlighted(writer)?;
             }
+
             Ok(())
         }
     }
@@ -465,7 +487,7 @@ mod syntax_highlighting {
             match self {
                 Self::Word(w) => Ok(queue!(
                     writer,
-                    SetForegroundColor(Color::Grey),
+                    SetForegroundColor(Colors::TRAILING_WORD_COLOR),
                     Print(w.to_string()),
                     ResetColor
                 )?),
@@ -483,11 +505,11 @@ mod syntax_highlighting {
                     target,
                 } => Ok(queue!(
                     writer,
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
                     Print(file_descriptor.to_string()),
-                    SetForegroundColor(Color::Yellow),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
                     Print("<"),
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
                     Print(target.to_string()),
                     ResetColor,
                 )?),
@@ -497,11 +519,11 @@ mod syntax_highlighting {
                     target,
                 } => Ok(queue!(
                     writer,
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
                     Print(file_descriptor.to_string()),
-                    SetForegroundColor(Color::Yellow),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
                     Print(if *append { ">>" } else { ">" }),
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
                     Print(target.to_string()),
                     ResetColor,
                 )?),
@@ -510,11 +532,11 @@ mod syntax_highlighting {
                     delimiter,
                 } => Ok(queue!(
                     writer,
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
                     Print(file_descriptor.to_string()),
-                    SetForegroundColor(Color::Yellow),
+                    SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
                     Print("<<"),
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
                     Print(delimiter.to_string()),
                     ResetColor,
                 )?),
@@ -526,11 +548,11 @@ mod syntax_highlighting {
         fn write_highlighted(&self, writer: &mut impl Write) -> Result<()> {
             Ok(queue!(
                 writer,
-                SetForegroundColor(Color::Red),
+                SetForegroundColor(Colors::ASSIGNMENT_LHS_COLOR),
                 Print(self.lhs.to_string()),
-                SetForegroundColor(Color::Green),
+                SetForegroundColor(Colors::ASSIGNMENT_OP_COLOR),
                 Print("="),
-                SetForegroundColor(Color::Blue),
+                SetForegroundColor(Colors::ASSIGNMENT_RHS_COLOR),
                 Print(match &self.rhs {
                     Some(rhs) => rhs.to_string(),
                     None => "".to_string(),
@@ -545,13 +567,13 @@ mod syntax_highlighting {
             Ok(match self {
                 Separator::Sync(ws) => queue!(
                     writer,
-                    SetForegroundColor(Color::DarkMagenta),
+                    SetForegroundColor(Colors::SEPARATOR_COLOR),
                     Print(format!("{ws};")),
                     ResetColor
                 ),
                 Separator::Async(ws) => queue!(
                     writer,
-                    SetForegroundColor(Color::DarkMagenta),
+                    SetForegroundColor(Colors::SEPARATOR_COLOR),
                     Print(format!("{ws}&")),
                     ResetColor
                 ),
@@ -563,7 +585,7 @@ mod syntax_highlighting {
         fn write_highlighted(&self, writer: &mut impl Write) -> Result<()> {
             Ok(queue!(
                 writer,
-                SetForegroundColor(Color::Red),
+                SetForegroundColor(Colors::LOGICAL_OP_COLOR),
                 Print(self.to_string()),
                 ResetColor
             )?)
