@@ -4,6 +4,10 @@ use std::str::Chars;
 
 use super::consumer::Consumer;
 
+pub fn tokenize(input: impl AsRef<str>) -> Vec<Token> {
+    input.as_ref().chars().peekable().tokenize()
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Word(String),

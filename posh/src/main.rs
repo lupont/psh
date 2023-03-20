@@ -3,13 +3,22 @@ mod config;
 mod repl;
 
 use clap::Parser;
-use posh_core::{lex, parse, Engine};
+use posh_core::Engine;
+use posh_core::engine::parser::{tokenize, lex, parse};
 
 fn main() {
     let args = args::Args::parse();
 
-    if args.lex {
-        let tokens = lex(args.command.unwrap(), args.include_space);
+    if args.tokenize {
+        let tokens = tokenize(args.command.unwrap());
+
+        for token in tokens {
+            println!("{:?}", token);
+        }
+
+        std::process::exit(0);
+    } else if args.lex {
+        let tokens = lex(args.command.unwrap());
 
         for token in tokens {
             println!("{:?}", token);

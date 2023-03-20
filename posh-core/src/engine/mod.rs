@@ -3,9 +3,9 @@ pub mod parser;
 
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
-use std::process::{self, Stdio};
+use std::process;
 
-use crate::{path, Error, Result};
+use crate::{path, Result};
 
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{

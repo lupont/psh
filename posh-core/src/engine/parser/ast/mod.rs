@@ -172,7 +172,6 @@ where
             .map(SimpleCommandMeta::Assignment)
             .or_else(|| self.parse_redirection().map(SimpleCommandMeta::Redirection))
         {
-            println!("prefix: {:?}", thing);
             match thing {
                 a @ SimpleCommandMeta::Assignment(_) => prefixes.push(a),
                 r @ SimpleCommandMeta::Redirection(_) => prefixes.push(r),
@@ -185,7 +184,6 @@ where
         let name = match self.parse_word(false) {
             Some(word) => word,
             None => {
-                println!("NONE");
                 *self = initial;
                 return None;
             }

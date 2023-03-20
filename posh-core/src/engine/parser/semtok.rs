@@ -1,7 +1,18 @@
 use std::iter::Peekable;
 
 use super::consumer::Consumer;
-use super::tok::Token;
+use super::tok::{Token, Tokenizer};
+
+pub fn lex(input: impl AsRef<str>) -> Vec<SemanticToken> {
+    input
+        .as_ref()
+        .chars()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .tokenize()
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticToken {
@@ -278,8 +289,6 @@ where
                     if let Some(s) = self.parse_double_quoted_string() {
                         word.push_str(&s);
                     } else {
-                        println!("outer");
-                        eprintln!("outer");
                         *self = initial;
                         return None;
                     }
@@ -478,6 +487,9 @@ mod tests {
         let mut input = "#this is a comment".chars().peekable();
         let mut tokens = input.tokenize().into_iter().peekable();
         let parsed = tokens.parse();
-        assert_eq!(Some(SemanticToken::Comment("this is a comment".to_string())), parsed);
+        assert_eq!(
+            Some(SemanticToken::Comment("this is a comment".to_string())),
+            parsed
+        );
     }
 }
