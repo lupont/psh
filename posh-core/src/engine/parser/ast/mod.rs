@@ -11,11 +11,6 @@ use super::tok::Tokenizer;
 
 use crate::Result;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct SyntaxTree {
-    pub program: Vec<CompleteCommand>,
-}
-
 pub fn parse<A>(input: A) -> Result<SyntaxTree>
 where
     A: AsRef<str>,
@@ -58,7 +53,23 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
     }
 
     fn parse_list(&mut self) -> Option<List>;
-    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
+    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
+        let first = match self.parse_pipeline() {
+            Some(pipeline) => pipeline,
+            None => return None,
+        };
+
+        let mut rest = Vec::new();
+
+        while let Some(thing) = self.parse_logical_op().and_then(|op| {
+            // FIXME: this currently allows a list to end with a && or ||
+            self.parse_pipeline().map(|c| (op, c))
+        }) {
+            rest.push(thing);
+        }
+
+        Some(AndOrList { first, rest })
+    }
     fn parse_pipeline(&mut self) -> Option<Pipeline>;
 
     fn parse_command(&mut self) -> Option<Command> {
@@ -79,7 +90,7 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug {
     fn parse_logical_op(&mut self) -> Option<LogicalOp>;
     fn parse_pipe(&mut self) -> Option<String>;
 
-    fn swallow_whitespace(&mut self) -> String;
+    fn swallow_whitespace(&mut self) -> LeadingWhitespace;
 }
 
 impl<T> Parser for Peekable<T>
@@ -108,24 +119,6 @@ where
         }
 
         Some(List { first, rest })
-    }
-
-    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
-        let first = match self.parse_pipeline() {
-            Some(pipeline) => pipeline,
-            None => return None,
-        };
-
-        let mut rest = Vec::new();
-
-        while let Some(thing) = self.parse_logical_op().and_then(|op| {
-            // FIXME: this currently allows a list to end with a && or ||
-            self.parse_pipeline().map(|c| (op, c))
-        }) {
-            rest.push(thing);
-        }
-
-        Some(AndOrList { first, rest })
     }
 
     fn parse_pipeline(&mut self) -> Option<Pipeline> {
@@ -259,8 +252,8 @@ where
             })
     }
 
-    fn swallow_whitespace(&mut self) -> String {
-        let mut s = String::new();
+    fn swallow_whitespace(&mut self) -> LeadingWhitespace {
+        let mut s = LeadingWhitespace::new();
         while let Some(SemanticToken::Whitespace(c)) = self.peek() {
             s.push(*c);
             self.next();
@@ -326,6 +319,8 @@ where
         }
     }
 
+    // allow_ampersand should almost always be `false`. the one case
+    // it needs to be `true` is when parsing redirection targets
     fn parse_word(&mut self, allow_ampersand: bool) -> Option<Word> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
@@ -357,10 +352,10 @@ where
 
         match self.peek() {
             Some(SemanticToken::RedirectOutput | SemanticToken::RedirectInput) => {
-                return Some(Word::new("", ws));
+                Some(Word::new("", ws))
             }
 
-            Some(SemanticToken::Word(word)) if word.len() == 1 => match word.chars().nth(0) {
+            Some(SemanticToken::Word(word)) if word.len() == 1 => match word.chars().next() {
                 Some('0'..='9') => {
                     let word = Word::new(word, ws);
                     self.next();
@@ -399,6 +394,11 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct SyntaxTree {
+    pub program: Vec<CompleteCommand>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct CompleteCommand {
     pub list: List,
     pub separator: Option<Separator>,
@@ -407,29 +407,28 @@ pub struct CompleteCommand {
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub first: AndOrList,
+
+    // As noted semantically by having it be the first part of
+    // the tuple, each `Separator` here ends the previous
+    // `AndOrList`.
     pub rest: Vec<(Separator, AndOrList)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
     pub first: Pipeline,
+
+    // As noted semantically by having it be the first part of
+    // the tuple, each `LogicalOp` here operates on the previous
+    // `Pipeline` and it's tuple partner.
     pub rest: Vec<(LogicalOp, Pipeline)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pipeline {
-    negate: bool,
+    pub negate: bool,
     pub first: Command,
-    rest: Vec<(String, Command)>,
-}
-
-impl Pipeline {
-    pub fn all(&self) -> &[Command] {
-        todo!()
-        // let mut copy = &self.rest[..];
-        // copy.insert(0, self.first);
-        // copy
-    }
+    pub rest: Vec<(String, Command)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -441,9 +440,9 @@ pub enum Command {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
-    name: Word,
-    prefixes: Vec<SimpleCommandMeta>,
-    suffixes: Vec<SimpleCommandMeta>,
+    pub name: Word,
+    pub prefixes: Vec<SimpleCommandMeta>,
+    pub suffixes: Vec<SimpleCommandMeta>,
 }
 
 impl SimpleCommand {
@@ -451,7 +450,7 @@ impl SimpleCommand {
         &self.name.name
     }
 
-    pub fn args<'a>(&'a self) -> impl Iterator<Item = &'a String> {
+    pub fn args(&self) -> impl Iterator<Item = &String> {
         self.suffixes
             .iter()
             .filter_map(|m| match m {
@@ -514,8 +513,8 @@ impl Redirection {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VariableAssignment {
-    lhs: Word,
-    rhs: Option<Word>,
+    pub lhs: Word,
+    pub rhs: Option<Word>,
 }
 
 impl VariableAssignment {
@@ -524,23 +523,26 @@ impl VariableAssignment {
     }
 }
 
+pub type LeadingWhitespace = String;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Word {
-    raw: String,
-    name: String,
-    whitespace: String,
-    expansions: Vec<Expansion>,
+    pub raw: String,
+    pub name: String,
+    pub whitespace: LeadingWhitespace,
+    pub expansions: Vec<Expansion>,
 }
 
 impl Word {
-    pub fn new(input: &str, whitespace: impl ToString) -> Self {
+    pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
         let quote_removed = Self::do_quote_removal(input);
         let expanded = Self::expand(quote_removed);
 
+        // FIXME: get rid of .to_string() twice, probably requires API change
         Self {
             raw: input.to_string(),
             name: expanded.to_string(),
-            whitespace: whitespace.to_string(),
+            whitespace: whitespace.into(),
             expansions: Default::default(),
         }
     }
@@ -593,25 +595,25 @@ pub enum Expansion {
 pub struct CompoundCommand {
     //  true: (cmd; cmd)
     //  false: { cmd; cmd; }
-    subshell: bool,
-    first: Box<Command>,
-    rest: Vec<Command>,
+    pub subshell: bool,
+    pub first: Box<Command>,
+    pub rest: Vec<Command>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionDefinition {
-    name: String,
-    commands: CompoundCommand,
+    pub name: String,
+    pub commands: CompoundCommand,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Separator {
-    Sync(String),
-    Async(String),
+    Sync(LeadingWhitespace),
+    Async(LeadingWhitespace),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum LogicalOp {
-    And(String),
-    Or(String),
+    And(LeadingWhitespace),
+    Or(LeadingWhitespace),
 }

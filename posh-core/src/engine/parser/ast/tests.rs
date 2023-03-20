@@ -85,7 +85,7 @@ fn parse_redirect_output() {
 
 #[test]
 fn parse_redirect_input_and_here_document() {
-    for (item, ws) in vec![r#"  2<"foo.txt""#, r#"  2< "foo.txt""#]
+    for (item, &ws) in vec![r#"  2<"foo.txt""#, r#"  2< "foo.txt""#]
         .iter()
         .zip(["", " "].iter())
     {
@@ -95,7 +95,7 @@ fn parse_redirect_input_and_here_document() {
         assert_eq!(Some(expected), actual);
     }
 
-    for (item, ws) in vec![r#" 2<<"EOF""#, r#" 2<< "EOF""#]
+    for (item, &ws) in vec![r#" 2<<"EOF""#, r#" 2<< "EOF""#]
         .iter()
         .zip(["", " "].iter())
     {
@@ -105,7 +105,7 @@ fn parse_redirect_input_and_here_document() {
         assert_eq!(Some(expected), actual);
     }
 
-    for (item, ws) in vec![r#"<<"EOF""#, r#"<< "EOF""#]
+    for (item, &ws) in vec![r#"<<"EOF""#, r#"<< "EOF""#]
         .iter()
         .zip(["", " "].iter())
     {
