@@ -387,6 +387,12 @@ where
                 self.next();
                 Some(word)
             }
+            Some(SemanticToken::Reserved(word)) => {
+                s.push_str(&word.to_string());
+                let word = Word::new(&s, ws);
+                self.next();
+                Some(word)
+            }
             _ => {
                 *self = initial;
                 None

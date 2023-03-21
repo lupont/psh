@@ -130,6 +130,22 @@ fn parse_simple_command() {
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
 
+    for item in &["{", "}", "!"] {
+        let mut tokens = parse(&format!("echo {item}"));
+        let actual = tokens.parse_simple_command();
+
+        let expected = SimpleCommand {
+            name: Some(Word::new("echo", "")),
+            prefixes: Vec::new(),
+            suffixes: vec![
+                SimpleCommandMeta::Word(Word::new(item, " ")),
+            ],
+        };
+
+        assert_eq!(Some(expected), actual);
+        assert!(tokens.next().is_none());
+    }
+
     let mut tokens = parse("foo=bar");
     let actual = tokens.parse_simple_command();
 

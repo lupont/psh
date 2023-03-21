@@ -413,27 +413,27 @@ where
     }
 
     fn parse_reserved_word(&mut self) -> Option<SemanticToken> {
-        let mut consume_reserveed_word = |s: &str, reserved_word| {
+        let mut consume_reserved_word = |s: &str, reserved_word| {
             self.consume_single(Token::Word(s.to_string()))
                 .map(|_| SemanticToken::Reserved(reserved_word))
         };
 
-        consume_reserveed_word("!", ReservedWord::Bang)
-            .or_else(|| consume_reserveed_word("{", ReservedWord::LBrace))
-            .or_else(|| consume_reserveed_word("}", ReservedWord::RBrace))
-            .or_else(|| consume_reserveed_word("case", ReservedWord::Case))
-            .or_else(|| consume_reserveed_word("do", ReservedWord::Do))
-            .or_else(|| consume_reserveed_word("done", ReservedWord::Done))
-            .or_else(|| consume_reserveed_word("elif", ReservedWord::Elif))
-            .or_else(|| consume_reserveed_word("else", ReservedWord::Else))
-            .or_else(|| consume_reserveed_word("esac", ReservedWord::Esac))
-            .or_else(|| consume_reserveed_word("fi", ReservedWord::Fi))
-            .or_else(|| consume_reserveed_word("for", ReservedWord::For))
-            .or_else(|| consume_reserveed_word("if", ReservedWord::If))
-            .or_else(|| consume_reserveed_word("in", ReservedWord::In))
-            .or_else(|| consume_reserveed_word("then", ReservedWord::Then))
-            .or_else(|| consume_reserveed_word("until", ReservedWord::Until))
-            .or_else(|| consume_reserveed_word("while", ReservedWord::While))
+        consume_reserved_word("!", ReservedWord::Bang)
+            .or_else(|| consume_reserved_word("{", ReservedWord::LBrace))
+            .or_else(|| consume_reserved_word("}", ReservedWord::RBrace))
+            .or_else(|| consume_reserved_word("case", ReservedWord::Case))
+            .or_else(|| consume_reserved_word("do", ReservedWord::Do))
+            .or_else(|| consume_reserved_word("done", ReservedWord::Done))
+            .or_else(|| consume_reserved_word("elif", ReservedWord::Elif))
+            .or_else(|| consume_reserved_word("else", ReservedWord::Else))
+            .or_else(|| consume_reserved_word("esac", ReservedWord::Esac))
+            .or_else(|| consume_reserved_word("fi", ReservedWord::Fi))
+            .or_else(|| consume_reserved_word("for", ReservedWord::For))
+            .or_else(|| consume_reserved_word("if", ReservedWord::If))
+            .or_else(|| consume_reserved_word("in", ReservedWord::In))
+            .or_else(|| consume_reserved_word("then", ReservedWord::Then))
+            .or_else(|| consume_reserved_word("until", ReservedWord::Until))
+            .or_else(|| consume_reserved_word("while", ReservedWord::While))
     }
 }
 
