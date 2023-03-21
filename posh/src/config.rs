@@ -17,11 +17,11 @@ impl Colors {
     pub const REDIRECTION_TARGET_COLOR: Color = Color::White;
 
     pub const ASSIGNMENT_LHS_COLOR: Color = Color::White;
-    pub const ASSIGNMENT_OP_COLOR: Color = Color::Yellow;
+    pub const ASSIGNMENT_OP_COLOR: Color = Color::Blue;
     pub const ASSIGNMENT_RHS_COLOR: Color = Color::White;
 
-    pub const SEPARATOR_COLOR: Color = Color::DarkMagenta;
-    pub const LOGICAL_OP_COLOR: Color = Color::Green;
+    pub const SEPARATOR_COLOR: Color = Color::DarkBlue;
+    pub const LOGICAL_OP_COLOR: Color = Color::DarkBlue;
 
     // pub const VALID_ABBR: Color = Color::Yellow;
     // pub const VALID_CMD: Color = Color::Yellow;
