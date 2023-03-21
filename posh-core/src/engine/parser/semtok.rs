@@ -317,15 +317,15 @@ where
                     is_escaped = false;
                 }
 
-                Token::Equals => {
-                    word.push('=');
-                    self.next();
-                }
-
                 Token::Backslash => {
                     word.push('\\');
                     self.next();
                     is_escaped ^= true;
+                }
+
+                Token::Equals => {
+                    word.push('=');
+                    self.next();
                 }
 
                 Token::Dollar => {
@@ -350,15 +350,11 @@ where
                     word.push(')');
                     self.next();
 
-                    match nested_level.pop() {
-                        Some(SubExprType::Arithmetic) => {
-                            if let Some(Token::RParen) = self.peek() {
-                                word.push(')');
-                                self.next();
-                            }
+                    if let Some(SubExprType::Arithmetic) = nested_level.pop() {
+                        if let Some(Token::RParen) = self.peek() {
+                            word.push(')');
+                            self.next();
                         }
-                        Some(SubExprType::CmdSub) => {}
-                        None => unreachable!(),
                     }
                 }
 
@@ -388,6 +384,11 @@ where
 
                 Token::Word(s) => {
                     word.push_str(s);
+                    self.next();
+                }
+
+                token if !nested_level.is_empty() => {
+                    word.push_str(&token.to_str());
                     self.next();
                 }
 
@@ -592,6 +593,22 @@ mod tests {
         ];
 
         assert_eq!(expected, semantic_tokens);
+    }
+
+    #[test]
+    fn tokenize_with_cmd_substitution() {
+        let input = "echo $(b $(c $(( d ))) ) separate".chars().peekable().tokenize();
+        let tokens = input.into_iter().peekable().tokenize();
+
+        let expected = vec![
+            Word("echo".to_string()),
+            Whitespace(' '),
+            Word("$(b $(c $(( d ))) )".to_string()),
+            Whitespace(' '),
+            Word("separate".to_string()),
+        ];
+
+        assert_eq!(expected, tokens);
     }
 
     #[test]
