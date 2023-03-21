@@ -425,10 +425,10 @@ where
         let initial = self.clone();
 
         if let Some(Word {
-            name, whitespace, ..
+            whitespace, raw, ..
         }) = self.parse_word(false)
         {
-            if let Some((lhs, rhs)) = name.split_once('=') {
+            if let Some((lhs, rhs)) = raw.split_once('=') {
                 if is_name(lhs) {
                     let var_assg = VariableAssignment::new(
                         lhs,
@@ -625,7 +625,22 @@ impl Word {
     }
 
     fn do_quote_removal(input: &str) -> String {
-        input.to_string()
+        let mut s = String::new();
+        let mut is_escaped = false;
+        let mut is_in_single_quote = false;
+        let mut is_in_double_quote = false;
+
+        for c in input.chars() {
+            if !(matches!(c, '\\' | '"' | '\'') && !is_escaped) || is_in_single_quote {
+                s.push(c);
+            }
+
+            is_escaped = c == '\\';
+            is_in_single_quote = c == '\'' && !is_in_single_quote;
+            is_in_double_quote = c == '"' && !is_in_double_quote;
+        }
+
+        s
     }
 
     fn expand(input: &str) -> String {
