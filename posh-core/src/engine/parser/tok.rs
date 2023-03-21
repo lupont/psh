@@ -24,8 +24,6 @@ pub enum Token {
     RAngle,
     LParen,
     RParen,
-    LBrace,
-    RBrace,
     Backtick,
     Backslash,
 }
@@ -47,8 +45,6 @@ impl Token {
             Token::RAngle => Cow::Borrowed(">"),
             Token::LParen => Cow::Borrowed("("),
             Token::RParen => Cow::Borrowed(")"),
-            Token::LBrace => Cow::Borrowed("{"),
-            Token::RBrace => Cow::Borrowed("}"),
             Token::Backtick => Cow::Borrowed("`"),
             Token::Backslash => Cow::Borrowed("\\"),
         }
@@ -68,8 +64,6 @@ pub trait Tokenizer: Iterator<Item = char> {
     fn parse_rangle(&mut self) -> Option<Token>;
     fn parse_lparen(&mut self) -> Option<Token>;
     fn parse_rparen(&mut self) -> Option<Token>;
-    fn parse_lbrace(&mut self) -> Option<Token>;
-    fn parse_rbrace(&mut self) -> Option<Token>;
     fn parse_backtick(&mut self) -> Option<Token>;
     fn parse_backslash(&mut self) -> Option<Token>;
     fn parse_whitespace(&mut self) -> Option<Token>;
@@ -88,8 +82,6 @@ pub trait Tokenizer: Iterator<Item = char> {
             .or_else(|| self.parse_rangle())
             .or_else(|| self.parse_lparen())
             .or_else(|| self.parse_rparen())
-            .or_else(|| self.parse_lbrace())
-            .or_else(|| self.parse_rbrace())
             .or_else(|| self.parse_backtick())
             .or_else(|| self.parse_backslash())
             .or_else(|| self.parse_whitespace())
@@ -156,14 +148,6 @@ impl Tokenizer for Peekable<Chars<'_>> {
         self.consume_single(')').map(|_| Token::RParen)
     }
 
-    fn parse_lbrace(&mut self) -> Option<Token> {
-        self.consume_single('{').map(|_| Token::LBrace)
-    }
-
-    fn parse_rbrace(&mut self) -> Option<Token> {
-        self.consume_single('}').map(|_| Token::RBrace)
-    }
-
     fn parse_backtick(&mut self) -> Option<Token> {
         self.consume_single('`').map(|_| Token::Backtick)
     }
@@ -198,8 +182,6 @@ fn is_separator(c: char) -> bool {
                 | '|'
                 | '('
                 | ')'
-                | '{'
-                | '}'
                 | '\\'
         )
 }
@@ -240,12 +222,6 @@ mod tests {
 
         let mut input = ")".chars().peekable();
         assert_eq!(Some(RParen), input.parse());
-
-        let mut input = "{".chars().peekable();
-        assert_eq!(Some(LBrace), input.parse());
-
-        let mut input = "}".chars().peekable();
-        assert_eq!(Some(RBrace), input.parse());
 
         let mut input = "\\".chars().peekable();
         assert_eq!(Some(Backslash), input.parse());

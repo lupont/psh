@@ -595,6 +595,20 @@ mod tests {
     }
 
     #[test]
+    fn tokenize_with_trailing_reserved_word() {
+        let input = "echo {".chars().peekable().tokenize();
+        let tokens = input.into_iter().peekable().tokenize();
+
+        let expected = vec![
+            Word("echo".to_string()),
+            Whitespace(' '),
+            Reserved(ReservedWord::LBrace),
+        ];
+
+        assert_eq!(expected, tokens);
+    }
+
+    #[test]
     fn parse_double_quoted_string() {
         let mut input = r#""foo bar \"baz \\ quux\"""#.chars().peekable();
         let mut tokens = input.tokenize().into_iter().peekable();
