@@ -17,7 +17,7 @@ pub fn lex(input: impl AsRef<str>) -> Vec<SemanticToken> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SemanticToken {
     Word(String),
-    Keyword(Keyword),
+    Reserved(ReservedWord),
     Whitespace(char),
     And,
     Or,
@@ -35,7 +35,7 @@ impl ToString for SemanticToken {
     fn to_string(&self) -> String {
         match self {
             SemanticToken::Word(word) => word.to_string(),
-            SemanticToken::Keyword(keyword) => keyword.to_string(),
+            SemanticToken::Reserved(reserved_word) => reserved_word.to_string(),
             SemanticToken::Whitespace(ws) => ws.to_string(),
             SemanticToken::And => "&&".to_string(),
             SemanticToken::Or => "||".to_string(),
@@ -52,7 +52,7 @@ impl ToString for SemanticToken {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Keyword {
+pub enum ReservedWord {
     Bang,
     LBrace,
     RBrace,
@@ -71,25 +71,25 @@ pub enum Keyword {
     While,
 }
 
-impl ToString for Keyword {
+impl ToString for ReservedWord {
     fn to_string(&self) -> String {
         match self {
-            Keyword::Bang => "!",
-            Keyword::LBrace => "{",
-            Keyword::RBrace => "}",
-            Keyword::Case => "case",
-            Keyword::Do => "do",
-            Keyword::Done => "done",
-            Keyword::Elif => "elif",
-            Keyword::Else => "else",
-            Keyword::Esac => "esac",
-            Keyword::Fi => "fi",
-            Keyword::For => "for",
-            Keyword::If => "if",
-            Keyword::In => "in",
-            Keyword::Then => "then",
-            Keyword::Until => "until",
-            Keyword::While => "while",
+            ReservedWord::Bang => "!",
+            ReservedWord::LBrace => "{",
+            ReservedWord::RBrace => "}",
+            ReservedWord::Case => "case",
+            ReservedWord::Do => "do",
+            ReservedWord::Done => "done",
+            ReservedWord::Elif => "elif",
+            ReservedWord::Else => "else",
+            ReservedWord::Esac => "esac",
+            ReservedWord::Fi => "fi",
+            ReservedWord::For => "for",
+            ReservedWord::If => "if",
+            ReservedWord::In => "in",
+            ReservedWord::Then => "then",
+            ReservedWord::Until => "until",
+            ReservedWord::While => "while",
         }
         .to_string()
     }
@@ -108,7 +108,7 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
     fn parse_comment(&mut self) -> Option<SemanticToken>;
     fn parse_whitespace(&mut self) -> Option<SemanticToken>;
     fn parse_word(&mut self) -> Option<SemanticToken>;
-    fn parse_keyword(&mut self) -> Option<SemanticToken>;
+    fn parse_reserved_word(&mut self) -> Option<SemanticToken>;
 
     fn parse_single_quoted_string(&mut self) -> Option<String>;
     fn parse_double_quoted_string(&mut self) -> Option<String>;
@@ -123,7 +123,7 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
             .or_else(|| self.parse_redirect_input())
             .or_else(|| self.parse_redirect_output())
             .or_else(|| self.parse_comment())
-            .or_else(|| self.parse_keyword())
+            .or_else(|| self.parse_reserved_word())
             .or_else(|| self.parse_word())
     }
 
@@ -371,28 +371,28 @@ where
             .map(|_| SemanticToken::Or)
     }
 
-    fn parse_keyword(&mut self) -> Option<SemanticToken> {
-        let mut consume_keyword = |s: &str, keyword| {
+    fn parse_reserved_word(&mut self) -> Option<SemanticToken> {
+        let mut consume_reserveed_word = |s: &str, reserved_word| {
             self.consume_single(Token::Word(s.to_string()))
-                .map(|_| SemanticToken::Keyword(keyword))
+                .map(|_| SemanticToken::Reserved(reserved_word))
         };
 
-        consume_keyword("!", Keyword::Bang)
-            .or_else(|| consume_keyword("{", Keyword::LBrace))
-            .or_else(|| consume_keyword("}", Keyword::RBrace))
-            .or_else(|| consume_keyword("case", Keyword::Case))
-            .or_else(|| consume_keyword("do", Keyword::Do))
-            .or_else(|| consume_keyword("done", Keyword::Done))
-            .or_else(|| consume_keyword("elif", Keyword::Elif))
-            .or_else(|| consume_keyword("else", Keyword::Else))
-            .or_else(|| consume_keyword("esac", Keyword::Esac))
-            .or_else(|| consume_keyword("fi", Keyword::Fi))
-            .or_else(|| consume_keyword("for", Keyword::For))
-            .or_else(|| consume_keyword("if", Keyword::If))
-            .or_else(|| consume_keyword("in", Keyword::In))
-            .or_else(|| consume_keyword("then", Keyword::Then))
-            .or_else(|| consume_keyword("until", Keyword::Until))
-            .or_else(|| consume_keyword("while", Keyword::While))
+        consume_reserveed_word("!", ReservedWord::Bang)
+            .or_else(|| consume_reserveed_word("{", ReservedWord::LBrace))
+            .or_else(|| consume_reserveed_word("}", ReservedWord::RBrace))
+            .or_else(|| consume_reserveed_word("case", ReservedWord::Case))
+            .or_else(|| consume_reserveed_word("do", ReservedWord::Do))
+            .or_else(|| consume_reserveed_word("done", ReservedWord::Done))
+            .or_else(|| consume_reserveed_word("elif", ReservedWord::Elif))
+            .or_else(|| consume_reserveed_word("else", ReservedWord::Else))
+            .or_else(|| consume_reserveed_word("esac", ReservedWord::Esac))
+            .or_else(|| consume_reserveed_word("fi", ReservedWord::Fi))
+            .or_else(|| consume_reserveed_word("for", ReservedWord::For))
+            .or_else(|| consume_reserveed_word("if", ReservedWord::If))
+            .or_else(|| consume_reserveed_word("in", ReservedWord::In))
+            .or_else(|| consume_reserveed_word("then", ReservedWord::Then))
+            .or_else(|| consume_reserveed_word("until", ReservedWord::Until))
+            .or_else(|| consume_reserveed_word("while", ReservedWord::While))
     }
 }
 
@@ -421,31 +421,48 @@ mod tests {
     }
 
     #[test]
-    fn parse_keyword() {
-        let test_data = vec![
-            ("!", super::Keyword::Bang),
-            ("{", super::Keyword::LBrace),
-            ("}", super::Keyword::RBrace),
-            ("case", super::Keyword::Case),
-            ("do", super::Keyword::Do),
-            ("done", super::Keyword::Done),
-            ("elif", super::Keyword::Elif),
-            ("else", super::Keyword::Else),
-            ("esac", super::Keyword::Esac),
-            ("fi", super::Keyword::Fi),
-            ("for", super::Keyword::For),
-            ("if", super::Keyword::If),
-            ("in", super::Keyword::In),
-            ("then", super::Keyword::Then),
-            ("until", super::Keyword::Until),
-            ("while", super::Keyword::While),
+    fn parse_reserved_word() {
+        let all_reserved_words = vec![
+            ("!", super::ReservedWord::Bang),
+            ("{", super::ReservedWord::LBrace),
+            ("}", super::ReservedWord::RBrace),
+            ("case", super::ReservedWord::Case),
+            ("do", super::ReservedWord::Do),
+            ("done", super::ReservedWord::Done),
+            ("elif", super::ReservedWord::Elif),
+            ("else", super::ReservedWord::Else),
+            ("esac", super::ReservedWord::Esac),
+            ("fi", super::ReservedWord::Fi),
+            ("for", super::ReservedWord::For),
+            ("if", super::ReservedWord::If),
+            ("in", super::ReservedWord::In),
+            ("then", super::ReservedWord::Then),
+            ("until", super::ReservedWord::Until),
+            ("while", super::ReservedWord::While),
         ];
 
-        for (literal, keyword) in test_data {
-            let mut input = vec![Token::Word(literal.to_string())]
+        for (literal, reserved_word) in all_reserved_words {
+            let unquoted_reserved_word = literal.to_string();
+            let mut input = vec![Token::Word(unquoted_reserved_word)]
                 .into_iter()
                 .peekable();
-            assert_eq!(Some(Keyword(keyword)), input.parse());
+            assert_eq!(Some(Reserved(reserved_word)), input.parse());
+
+            let single_quoted_reserved_word = format!("'{literal}'");
+            let mut input = vec![Token::Word(single_quoted_reserved_word)]
+                .into_iter()
+                .peekable();
+            let parsed = input.parse();
+            assert!(!matches!(parsed, Some(Reserved(_))));
+            assert!(matches!(parsed, Some(Word(_))));
+
+            let double_quoted_reserved_word = format!(r#""{literal}""#);
+            let mut input = vec![Token::Word(double_quoted_reserved_word)]
+                .into_iter()
+                .peekable();
+            let parsed = input.parse();
+            assert!(!matches!(parsed, Some(Reserved(_))));
+            assert!(matches!(parsed, Some(Word(_))));
         }
     }
 

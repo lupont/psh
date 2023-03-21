@@ -6,7 +6,7 @@ mod tests;
 use std::{iter::Peekable, ops::RangeInclusive};
 
 use super::consumer::Consumer;
-use super::semtok::{Keyword, SemanticToken, SemanticTokenizer};
+use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use super::tok::Tokenizer;
 
 use crate::Result;
@@ -279,7 +279,7 @@ where
     fn parse_bang(&mut self) -> Option<String> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
-        self.consume_single(SemanticToken::Keyword(Keyword::Bang))
+        self.consume_single(SemanticToken::Reserved(ReservedWord::Bang))
             .map(|_| ws)
             .or_else(|| {
                 *self = initial;
