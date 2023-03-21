@@ -302,9 +302,21 @@ where
         let mut word = String::new();
 
         let mut is_escaped = false;
+        let mut nested_level = Vec::new();
+
+        enum SubExprType {
+            CmdSub,
+            Arithmetic,
+        }
 
         while let Some(token) = self.peek() {
             match token {
+                t if is_escaped => {
+                    word.push_str(&t.to_str());
+                    self.next();
+                    is_escaped = false;
+                }
+
                 Token::Equals => {
                     word.push('=');
                     self.next();
@@ -319,6 +331,35 @@ where
                 Token::Dollar => {
                     word.push('$');
                     self.next();
+
+                    if let Some(Token::LParen) = self.peek() {
+                        self.next();
+                        word.push('(');
+
+                        if let Some(Token::LParen) = self.peek() {
+                            self.next();
+                            word.push('(');
+                            nested_level.push(SubExprType::Arithmetic);
+                        } else {
+                            nested_level.push(SubExprType::CmdSub);
+                        }
+                    }
+                }
+
+                Token::RParen => {
+                    word.push(')');
+                    self.next();
+
+                    match nested_level.pop() {
+                        Some(SubExprType::Arithmetic) => {
+                            if let Some(Token::RParen) = self.peek() {
+                                word.push(')');
+                                self.next();
+                            }
+                        }
+                        Some(SubExprType::CmdSub) => {}
+                        None => unreachable!(),
+                    }
                 }
 
                 Token::SingleQuote => {
@@ -339,7 +380,7 @@ where
                     }
                 }
 
-                Token::Whitespace(c) if is_escaped => {
+                Token::Whitespace(c) if is_escaped || !nested_level.is_empty() => {
                     word.push(*c);
                     self.next();
                     is_escaped = false;
@@ -504,6 +545,26 @@ mod tests {
             input.parse()
         );
         assert!(input.next().is_none());
+
+        let input = "$(echo foo)".chars().peekable().tokenize();
+        let actual = input.into_iter().peekable().parse();
+        let expected = Word("$(echo foo)".to_string());
+        assert_eq!(Some(expected), actual);
+
+        let input = r#"$(echo "$(echo foo\ bar $(( 1))))' 2'"#.chars().peekable().tokenize();
+        let actual = input.into_iter().peekable().parse();
+        let expected = Word(r#"$(echo "$(echo foo\ bar $(( 1))))' 2'"#.to_string());
+        assert_eq!(Some(expected), actual);
+
+        let input = r#"$(echo '))  a')"#.chars().peekable().tokenize();
+        let actual = input.into_iter().peekable().parse();
+        let expected = Word(r#"$(echo '))  a')"#.to_string());
+        assert_eq!(Some(expected), actual);
+
+        let input = r#"$(echo \$\(\-\a)"#.chars().peekable().tokenize();
+        let actual = input.into_iter().peekable().parse();
+        let expected = Word(r#"$(echo \$\(\-\a)"#.to_string());
+        assert_eq!(Some(expected), actual);
     }
 
     #[test]
@@ -538,9 +599,13 @@ mod tests {
         let mut input = r#""foo bar \"baz \\ quux\"""#.chars().peekable();
         let mut tokens = input.tokenize().into_iter().peekable();
         let parsed = tokens.parse();
-
         let expected = SemanticToken::Word(r#""foo bar \"baz \\ quux\"""#.to_string());
+        assert_eq!(Some(expected), parsed);
 
+        let mut input = r#""$(echo "foo" $(("1")))""#.chars().peekable();
+        let mut tokens = input.tokenize().into_iter().peekable();
+        let parsed = tokens.parse();
+        let expected = SemanticToken::Word(r#""$(echo "foo" $(("1")))""#.to_string());
         assert_eq!(Some(expected), parsed);
     }
 
