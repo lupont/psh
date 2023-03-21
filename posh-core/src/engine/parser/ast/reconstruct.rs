@@ -172,8 +172,9 @@ impl ToString for Redirection {
 impl ToString for VariableAssignment {
     fn to_string(&self) -> String {
         format!(
-            "{}={}",
-            self.lhs.to_string(),
+            "{}{}={}",
+            self.whitespace,
+            self.lhs,
             match &self.rhs {
                 Some(rhs) => rhs.to_string(),
                 None => "".to_string(),

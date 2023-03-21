@@ -429,20 +429,32 @@ where
         }) = self.parse_word(false)
         {
             if let Some((lhs, rhs)) = name.split_once('=') {
-                let var_assg = VariableAssignment::new(
-                    Word::new(lhs, whitespace),
-                    if rhs.is_empty() {
-                        None
-                    } else {
-                        Some(Word::new(rhs, ""))
-                    },
-                );
-                return Some(var_assg);
+                if is_name(lhs) {
+                    let var_assg = VariableAssignment::new(
+                        lhs,
+                        if rhs.is_empty() {
+                            None
+                        } else {
+                            Some(Word::new(rhs, ""))
+                        },
+                        whitespace,
+                    );
+                    return Some(var_assg);
+                }
             }
         }
 
         *self = initial;
         None
+    }
+}
+
+fn is_name(input: impl AsRef<str>) -> bool {
+    let mut input = input.as_ref().chars().peekable();
+    match input.peek() {
+        Some('0'..='9') => false,
+        None => false,
+        _ => input.all(|c| c == '_' || matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z')),
     }
 }
 
@@ -572,13 +584,18 @@ impl Redirection {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VariableAssignment {
-    pub lhs: Word,
+    pub lhs: String,
     pub rhs: Option<Word>,
+    pub whitespace: LeadingWhitespace,
 }
 
 impl VariableAssignment {
-    pub fn new(lhs: Word, rhs: Option<Word>) -> Self {
-        Self { lhs, rhs }
+    pub fn new(lhs: &str, rhs: Option<Word>, whitespace: impl Into<LeadingWhitespace>) -> Self {
+        Self {
+            lhs: lhs.to_string(),
+            rhs,
+            whitespace: whitespace.into(),
+        }
     }
 }
 
@@ -594,32 +611,32 @@ pub struct Word {
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
+        let raw = input.to_string();
         let quote_removed = Self::do_quote_removal(input);
-        let expanded = Self::expand(quote_removed);
+        let expanded = Self::expand(&quote_removed);
 
         // FIXME: get rid of .to_string() twice, probably requires API change
         Self {
-            raw: input.to_string(),
+            raw,
             name: expanded.to_string(),
             whitespace: whitespace.into(),
             expansions: Default::default(),
         }
     }
 
-    fn do_quote_removal(input: &str) -> &str {
-        // TODO: do quote removal
-        input
+    fn do_quote_removal(input: &str) -> String {
+        input.to_string()
+    }
+
+    fn expand(input: &str) -> String {
+        // TODO: expand
+        input.to_string()
     }
 
     // TODO: expanding should probably result in multiple `Word`s
     // fn expand(self) -> Vec<Self> {
     //     vec![self]
     // }
-
-    fn expand(input: &str) -> &str {
-        // TODO: expand
-        input
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

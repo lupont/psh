@@ -16,27 +16,54 @@ fn parse(input: &str) -> Peekable<impl Iterator<Item = SemanticToken> + Clone + 
 
 #[test]
 fn parse_variable_assignment() {
+    let mut tokens = parse("foo=bar");
+    let actual = tokens.parse_variable_assignment();
+    let expected =
+        VariableAssignment::new("foo", Some(Word::new("bar", "")), "");
+    assert_eq!(Some(expected), actual);
+
     let mut tokens = parse("  foo='bar baz'");
     let actual = tokens.parse_variable_assignment();
     let expected =
-        VariableAssignment::new(Word::new("foo", "  "), Some(Word::new("'bar baz'", "")));
+        VariableAssignment::new("foo", Some(Word::new("'bar baz'", "")), "  ");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse(" foo=bar\\ baz");
     let actual = tokens.parse_variable_assignment();
-    let expected = VariableAssignment::new(Word::new("foo", " "), Some(Word::new("bar\\ baz", "")));
+    let expected = VariableAssignment::new("foo", Some(Word::new("bar\\ baz", "")), " ");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse(r#"foo="bar baz""#);
     let actual = tokens.parse_variable_assignment();
     let expected =
-        VariableAssignment::new(Word::new("foo", ""), Some(Word::new("\"bar baz\"", "")));
+        VariableAssignment::new("foo", Some(Word::new("\"bar baz\"", "")), "");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse("foo=");
     let actual = tokens.parse_variable_assignment();
-    let expected = VariableAssignment::new(Word::new("foo", ""), None);
+    let expected = VariableAssignment::new("foo", None, "");
     assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse("  foo=");
+    let actual = tokens.parse_variable_assignment();
+    let expected = VariableAssignment::new("foo", None, "  ");
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse("'foo'=");
+    let actual = tokens.parse_variable_assignment();
+    assert!(actual.is_none());
+
+    let mut tokens = parse("'foo=bar'");
+    let actual = tokens.parse_variable_assignment();
+    assert!(actual.is_none());
+
+    let mut tokens = parse(r#""foo"="#);
+    let actual = tokens.parse_variable_assignment();
+    assert!(actual.is_none());
+
+    let mut tokens = parse(r#""foo=bar""#);
+    let actual = tokens.parse_variable_assignment();
+    assert!(actual.is_none());
 }
 
 #[test]
@@ -152,8 +179,9 @@ fn parse_simple_command() {
     let expected = SimpleCommand {
         name: None,
         prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
-            Word::new("foo", ""),
+            "foo",
             Some(Word::new("bar", "")),
+            "",
         ))],
         suffixes: Vec::new(),
     };
@@ -185,8 +213,9 @@ fn parse_simple_command() {
         name: Some(Word::new("echo", " ")),
         prefixes: vec![
             SimpleCommandMeta::Assignment(VariableAssignment::new(
-                Word::new("foo", ""),
+                "foo",
                 Some(Word::new("'bar baz'", "")),
+                ""
             )),
             SimpleCommandMeta::Redirection(Redirection::new_output(
                 Word::new("3", " "),
@@ -194,8 +223,9 @@ fn parse_simple_command() {
                 false,
             )),
             SimpleCommandMeta::Assignment(VariableAssignment::new(
-                Word::new("bar", " "),
+                "bar",
                 Some(Word::new("yo", "")),
+                " ",
             )),
         ],
         suffixes: vec![
@@ -223,8 +253,9 @@ fn parse_simple_command() {
     let expected = SimpleCommand {
         name: Some(Word::new("echo", " ")),
         prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
-            Word::new("foo", ""),
+            "foo",
             Some(Word::new("bar", "")),
+            "",
         ))],
         suffixes: vec![SimpleCommandMeta::Word(Word::new("bar=baz", " "))],
     };
@@ -754,6 +785,12 @@ fn syntax_tree_back_to_string() {
 
     assert_eq!(input.to_string(), actual.to_string());
 }
+
+// #[test]
+// fn foo() {
+//     let input = "foo='bar baz'";
+//     let ast = parse(input).parse().unwrap();
+// }
 
 #[test]
 fn parse_with_comment() {
