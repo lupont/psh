@@ -444,6 +444,11 @@ mod tests {
     use super::SemanticToken::*;
     use super::*;
 
+    fn test_tokenize(input: &str, expected: Vec<SemanticToken>) {
+        let tokens = lex(input);
+        assert_eq!(expected, tokens);
+    }
+
     #[test]
     fn parse_basic() {
         let mut input = vec![Token::Pipe, Token::Pipe].into_iter().peekable();
@@ -509,6 +514,32 @@ mod tests {
     }
 
     #[test]
+    fn parse_double_quoted_string() {
+        let mut input = r#""foo bar \"baz \\ quux\"""#.chars().peekable();
+        let mut tokens = input.tokenize().into_iter().peekable();
+        let parsed = tokens.parse();
+        let expected = SemanticToken::Word(r#""foo bar \"baz \\ quux\"""#.to_string());
+        assert_eq!(Some(expected), parsed);
+
+        let mut input = r#""$(echo "foo" $(("1")))""#.chars().peekable();
+        let mut tokens = input.tokenize().into_iter().peekable();
+        let parsed = tokens.parse();
+        let expected = SemanticToken::Word(r#""$(echo "foo" $(("1")))""#.to_string());
+        assert_eq!(Some(expected), parsed);
+    }
+
+    #[test]
+    fn parse_comment() {
+        let mut input = "#this is a comment".chars().peekable();
+        let mut tokens = input.tokenize().into_iter().peekable();
+        let parsed = tokens.parse();
+        assert_eq!(
+            Some(SemanticToken::Comment("this is a comment".to_string())),
+            parsed
+        );
+    }
+
+    #[test]
     fn parse_word() {
         let mut input = vec![Token::Word("foo".to_string())].into_iter().peekable();
 
@@ -570,84 +601,50 @@ mod tests {
 
     #[test]
     fn tokenize_basic() {
-        let mut input = r#"foo="bar" <file echo $bar 2>> /dev/null"#.chars().peekable();
-        let tokens = input.tokenize();
-
-        let semantic_tokens = tokens.into_iter().peekable().tokenize();
-
-        let expected = vec![
-            Word(r#"foo="bar""#.to_string()),
-            Whitespace(' '),
-            RedirectInput,
-            Word("file".to_string()),
-            Whitespace(' '),
-            Word("echo".to_string()),
-            Whitespace(' '),
-            Word("$bar".to_string()),
-            Whitespace(' '),
-            Word("2".to_string()),
-            RedirectOutput,
-            RedirectOutput,
-            Whitespace(' '),
-            Word("/dev/null".to_string()),
-        ];
-
-        assert_eq!(expected, semantic_tokens);
+        test_tokenize(
+            r#"foo="bar" <file echo $bar 2>> /dev/null"#,
+            vec![
+                Word(r#"foo="bar""#.to_string()),
+                Whitespace(' '),
+                RedirectInput,
+                Word("file".to_string()),
+                Whitespace(' '),
+                Word("echo".to_string()),
+                Whitespace(' '),
+                Word("$bar".to_string()),
+                Whitespace(' '),
+                Word("2".to_string()),
+                RedirectOutput,
+                RedirectOutput,
+                Whitespace(' '),
+                Word("/dev/null".to_string()),
+            ],
+        );
     }
 
     #[test]
     fn tokenize_with_cmd_substitution() {
-        let input = "echo $(b $(c $(( d ))) ) separate".chars().peekable().tokenize();
-        let tokens = input.into_iter().peekable().tokenize();
-
-        let expected = vec![
-            Word("echo".to_string()),
-            Whitespace(' '),
-            Word("$(b $(c $(( d ))) )".to_string()),
-            Whitespace(' '),
-            Word("separate".to_string()),
-        ];
-
-        assert_eq!(expected, tokens);
+        test_tokenize(
+            "echo $(b $(c $(( d ))) ) separate",
+            vec![
+                Word("echo".to_string()),
+                Whitespace(' '),
+                Word("$(b $(c $(( d ))) )".to_string()),
+                Whitespace(' '),
+                Word("separate".to_string()),
+            ],
+        );
     }
 
     #[test]
     fn tokenize_with_trailing_reserved_word() {
-        let input = "echo {".chars().peekable().tokenize();
-        let tokens = input.into_iter().peekable().tokenize();
-
-        let expected = vec![
-            Word("echo".to_string()),
-            Whitespace(' '),
-            Reserved(ReservedWord::LBrace),
-        ];
-
-        assert_eq!(expected, tokens);
-    }
-
-    #[test]
-    fn parse_double_quoted_string() {
-        let mut input = r#""foo bar \"baz \\ quux\"""#.chars().peekable();
-        let mut tokens = input.tokenize().into_iter().peekable();
-        let parsed = tokens.parse();
-        let expected = SemanticToken::Word(r#""foo bar \"baz \\ quux\"""#.to_string());
-        assert_eq!(Some(expected), parsed);
-
-        let mut input = r#""$(echo "foo" $(("1")))""#.chars().peekable();
-        let mut tokens = input.tokenize().into_iter().peekable();
-        let parsed = tokens.parse();
-        let expected = SemanticToken::Word(r#""$(echo "foo" $(("1")))""#.to_string());
-        assert_eq!(Some(expected), parsed);
-    }
-
-    #[test]
-    fn parse_comment() {
-        let mut input = "#this is a comment".chars().peekable();
-        let mut tokens = input.tokenize().into_iter().peekable();
-        let parsed = tokens.parse();
-        assert_eq!(
-            Some(SemanticToken::Comment("this is a comment".to_string())),
-            parsed
+        test_tokenize(
+            "echo {",
+            vec![
+                Word("echo".to_string()),
+                Whitespace(' '),
+                Reserved(ReservedWord::LBrace),
+            ],
         );
     }
 }
