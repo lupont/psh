@@ -365,7 +365,7 @@ mod syntax_highlighting {
                 cmd.write_highlighted(writer)?;
             }
 
-            queue!(writer, Print(&self.unparsed))?;
+            queue!(writer, SetForegroundColor(Colors::UNPARSED), Print(&self.unparsed), ResetColor)?;
 
             writer.flush()?;
 
