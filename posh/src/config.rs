@@ -11,6 +11,7 @@ impl Colors {
     pub const PIPE_COLOR: Color = Color::Magenta;
 
     pub const VALID_CMD_COLOR: Color = Color::Yellow;
+    pub const INVALID_CMD_COLOR: Color = Color::Red;
 
     pub const TRAILING_WORD_COLOR: Color = Color::Grey;
 
