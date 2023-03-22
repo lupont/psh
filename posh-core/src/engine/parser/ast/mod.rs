@@ -641,19 +641,45 @@ impl Word {
     }
 
     fn do_quote_removal(input: &str) -> String {
+        #[derive(PartialEq, Clone, Copy)]
+        enum State {
+            InSingleQuote,
+            InDoubleQuote,
+            None,
+        }
+
         let mut s = String::new();
+        let mut state = State::None;
         let mut is_escaped = false;
-        let mut is_in_single_quote = false;
-        let mut is_in_double_quote = false;
 
         for c in input.chars() {
-            if !(matches!(c, '\\' | '"' | '\'') && !is_escaped) || is_in_single_quote {
-                s.push(c);
-            }
+            match (c, state) {
+                ('\'', State::InSingleQuote) => {
+                    state = State::None;
+                }
+                ('\'', State::None) => {
+                    state = State::InSingleQuote;
+                }
+                (c, State::InSingleQuote) => s.push(c),
 
-            is_escaped = c == '\\';
-            is_in_single_quote = c == '\'' && !is_in_single_quote;
-            is_in_double_quote = c == '"' && !is_in_double_quote;
+                ('"', State::InDoubleQuote) if !is_escaped => {
+                    state = State::None;
+                }
+                ('"', State::None) => {
+                    state = State::InDoubleQuote;
+                }
+
+                (c, State::InDoubleQuote) if !is_escaped => {
+                    s.push(c);
+                }
+
+                ('\\', _) if !is_escaped => is_escaped = true,
+
+                (c, _) => {
+                    s.push(c);
+                    is_escaped = false;
+                }
+            }
         }
 
         s
