@@ -9,7 +9,8 @@ use super::Pipeline;
 use super::Redirection;
 use super::Separator;
 use super::SimpleCommand;
-use super::SimpleCommandMeta;
+use super::CmdPrefix;
+use super::CmdSuffix;
 use super::SyntaxTree;
 use super::VariableAssignment;
 use super::Word;
@@ -104,12 +105,20 @@ impl ToString for SimpleCommand {
     }
 }
 
-impl ToString for SimpleCommandMeta {
+impl ToString for CmdPrefix {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Redirection(r) => r.to_string(),
+            Self::Assignment(a) => a.to_string(),
+        }
+    }
+}
+
+impl ToString for CmdSuffix {
     fn to_string(&self) -> String {
         match self {
             Self::Word(w) => w.to_string(),
             Self::Redirection(r) => r.to_string(),
-            Self::Assignment(a) => a.to_string(),
         }
     }
 }

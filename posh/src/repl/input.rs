@@ -347,8 +347,9 @@ mod syntax_highlighting {
     use posh_core::ast::Redirection;
     use posh_core::ast::Separator;
     use posh_core::ast::SimpleCommand;
-    use posh_core::ast::SimpleCommandMeta;
     use posh_core::ast::VariableAssignment;
+    use posh_core::ast::CmdPrefix;
+    use posh_core::ast::CmdSuffix;
     use posh_core::ast::Word;
 
     use self::Colors;
@@ -494,7 +495,16 @@ mod syntax_highlighting {
         }
     }
 
-    impl Highlighter for SimpleCommandMeta {
+    impl Highlighter for CmdPrefix {
+        fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
+            match self {
+                Self::Redirection(r) => r.write_highlighted(engine),
+                Self::Assignment(a) => a.write_highlighted(engine),
+            }
+        }
+    }
+
+    impl Highlighter for CmdSuffix {
         fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
             match self {
                 Self::Word(w) => Ok(queue!(
@@ -504,7 +514,6 @@ mod syntax_highlighting {
                     ResetColor
                 )?),
                 Self::Redirection(r) => r.write_highlighted(engine),
-                Self::Assignment(a) => a.write_highlighted(engine),
             }
         }
     }

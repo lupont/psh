@@ -213,13 +213,12 @@ where
 
         while let Some(thing) = self
             .parse_variable_assignment()
-            .map(SimpleCommandMeta::Assignment)
-            .or_else(|| self.parse_redirection().map(SimpleCommandMeta::Redirection))
+            .map(CmdPrefix::Assignment)
+            .or_else(|| self.parse_redirection().map(CmdPrefix::Redirection))
         {
             match thing {
-                a @ SimpleCommandMeta::Assignment(_) => prefixes.push(a),
-                r @ SimpleCommandMeta::Redirection(_) => prefixes.push(r),
-                SimpleCommandMeta::Word(_) => unreachable!(),
+                a @ CmdPrefix::Assignment(_) => prefixes.push(a),
+                r @ CmdPrefix::Redirection(_) => prefixes.push(r),
             }
         }
 
@@ -227,13 +226,12 @@ where
 
         while let Some(thing) = self
             .parse_redirection()
-            .map(SimpleCommandMeta::Redirection)
-            .or_else(|| self.parse_word(false).map(SimpleCommandMeta::Word))
+            .map(CmdSuffix::Redirection)
+            .or_else(|| self.parse_word(false).map(CmdSuffix::Word))
         {
             match thing {
-                r @ SimpleCommandMeta::Redirection(_) => suffixes.push(r),
-                w @ SimpleCommandMeta::Word(_) => suffixes.push(w),
-                SimpleCommandMeta::Assignment(_) => unreachable!(),
+                r @ CmdSuffix::Redirection(_) => suffixes.push(r),
+                w @ CmdSuffix::Word(_) => suffixes.push(w),
             }
         }
 
@@ -536,8 +534,8 @@ pub enum Command {
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
     pub name: Option<Word>,
-    pub prefixes: Vec<SimpleCommandMeta>,
-    pub suffixes: Vec<SimpleCommandMeta>,
+    pub prefixes: Vec<CmdPrefix>,
+    pub suffixes: Vec<CmdSuffix>,
 }
 
 impl SimpleCommand {
@@ -553,7 +551,7 @@ impl SimpleCommand {
         self.suffixes
             .iter()
             .filter_map(|m| match m {
-                SimpleCommandMeta::Word(w) => Some(w),
+                CmdSuffix::Word(w) => Some(w),
                 _ => None,
             })
             .map(|w| &w.name)
@@ -561,10 +559,15 @@ impl SimpleCommand {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum SimpleCommandMeta {
-    Word(Word),
+pub enum CmdPrefix {
     Redirection(Redirection),
     Assignment(VariableAssignment),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CmdSuffix {
+    Redirection(Redirection),
+    Word(Word),
 }
 
 #[derive(Debug, PartialEq, Eq)]

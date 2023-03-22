@@ -161,7 +161,7 @@ fn parse_simple_command() {
         let expected = SimpleCommand {
             name: Some(Word::new("echo", "")),
             prefixes: Vec::new(),
-            suffixes: vec![SimpleCommandMeta::Word(Word::new(item, " "))],
+            suffixes: vec![CmdSuffix::Word(Word::new(item, " "))],
         };
 
         assert_eq!(Some(expected), actual);
@@ -173,7 +173,7 @@ fn parse_simple_command() {
 
     let expected = SimpleCommand {
         name: None,
-        prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
+        prefixes: vec![CmdPrefix::Assignment(VariableAssignment::new(
             "foo",
             Some(Word::new("bar", "")),
             "",
@@ -191,9 +191,9 @@ fn parse_simple_command() {
         name: Some(Word::new("echo", "   ")),
         prefixes: Vec::new(),
         suffixes: vec![
-            SimpleCommandMeta::Word(Word::new("foo", " ")),
-            SimpleCommandMeta::Word(Word::new("bar", " ")),
-            SimpleCommandMeta::Word(Word::new("baz", " ")),
+            CmdSuffix::Word(Word::new("foo", " ")),
+            CmdSuffix::Word(Word::new("bar", " ")),
+            CmdSuffix::Word(Word::new("baz", " ")),
         ],
     };
 
@@ -207,35 +207,35 @@ fn parse_simple_command() {
     let expected = SimpleCommand {
         name: Some(Word::new("echo", " ")),
         prefixes: vec![
-            SimpleCommandMeta::Assignment(VariableAssignment::new(
+            CmdPrefix::Assignment(VariableAssignment::new(
                 "foo",
                 Some(Word::new("'bar baz'", "")),
                 "",
             )),
-            SimpleCommandMeta::Redirection(Redirection::new_output(
+            CmdPrefix::Redirection(Redirection::new_output(
                 Word::new("3", " "),
                 Word::new("foo", ""),
                 false,
             )),
-            SimpleCommandMeta::Assignment(VariableAssignment::new(
+            CmdPrefix::Assignment(VariableAssignment::new(
                 "bar",
                 Some(Word::new("yo", "")),
                 " ",
             )),
         ],
         suffixes: vec![
-            SimpleCommandMeta::Redirection(Redirection::new_input(
+            CmdSuffix::Redirection(Redirection::new_input(
                 Word::new("4", " "),
                 Word::new("/dev/null", ""),
             )),
-            SimpleCommandMeta::Word(Word::new("foo", " ")),
-            SimpleCommandMeta::Redirection(Redirection::new_output(
+            CmdSuffix::Word(Word::new("foo", " ")),
+            CmdSuffix::Redirection(Redirection::new_output(
                 Word::new("2", " "),
                 Word::new("stderr.log", " "),
                 true,
             )),
-            SimpleCommandMeta::Word(Word::new("bar", " ")),
-            SimpleCommandMeta::Word(Word::new("baz", " ")),
+            CmdSuffix::Word(Word::new("bar", " ")),
+            CmdSuffix::Word(Word::new("baz", " ")),
         ],
     };
 
@@ -247,12 +247,12 @@ fn parse_simple_command() {
 
     let expected = SimpleCommand {
         name: Some(Word::new("echo", " ")),
-        prefixes: vec![SimpleCommandMeta::Assignment(VariableAssignment::new(
+        prefixes: vec![CmdPrefix::Assignment(VariableAssignment::new(
             "foo",
             Some(Word::new("bar", "")),
             "",
         ))],
-        suffixes: vec![SimpleCommandMeta::Word(Word::new("bar=baz", " "))],
+        suffixes: vec![CmdSuffix::Word(Word::new("bar=baz", " "))],
     };
 
     assert_eq!(Some(expected), actual);
@@ -271,8 +271,8 @@ fn parse_simple_pipeline() {
             name: Some(Word::new("echo", "")),
             prefixes: Vec::new(),
             suffixes: vec![
-                SimpleCommandMeta::Word(Word::new("foo", " ")),
-                SimpleCommandMeta::Redirection(Redirection::new_output(
+                CmdSuffix::Word(Word::new("foo", " ")),
+                CmdSuffix::Redirection(Redirection::new_output(
                     Word::new("2", " "),
                     Word::new("/dev/null", ""),
                     false,
@@ -286,7 +286,7 @@ fn parse_simple_pipeline() {
                 Command::Simple(SimpleCommand {
                     name: Some(Word::new("rev", "")),
                     prefixes: Vec::new(),
-                    suffixes: vec![SimpleCommandMeta::Redirection(Redirection::new_input(
+                    suffixes: vec![CmdSuffix::Redirection(Redirection::new_input(
                         Word::new("2", " "),
                         Word::new("file", " "),
                     ))],
@@ -462,7 +462,7 @@ fn parse_complete_command() {
                     first: Command::Simple(SimpleCommand {
                         name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
-                        suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                     }),
                     rest: Vec::new(),
                 },
@@ -488,7 +488,7 @@ fn parse_complete_command() {
                     first: Command::Simple(SimpleCommand {
                         name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
-                        suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                     }),
                     rest: Vec::new(),
                 },
@@ -514,7 +514,7 @@ fn parse_complete_command() {
                     first: Command::Simple(SimpleCommand {
                         name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
-                        suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                     }),
                     rest: Vec::new(),
                 },
@@ -540,7 +540,7 @@ fn parse_complete_command() {
                     first: Command::Simple(SimpleCommand {
                         name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
-                        suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                     }),
                     rest: Vec::new(),
                 },
@@ -580,7 +580,7 @@ fn parse_complete_command() {
                     first: Command::Simple(SimpleCommand {
                         name: Some(Word::new("echo", "")),
                         prefixes: Vec::new(),
-                        suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                     }),
                     rest: Vec::new(),
                 },
@@ -623,14 +623,14 @@ fn ast() {
                         bang: Some(" ".to_string()),
                         first: Command::Simple(SimpleCommand {
                             name: Some(Word::new("echo", " ")),
-                            prefixes: vec![SimpleCommandMeta::Redirection(
+                            prefixes: vec![CmdPrefix::Redirection(
                                 Redirection::new_output(
                                     Word::new("2", " "),
                                     Word::new("&1", ""),
                                     false,
                                 ),
                             )],
-                            suffixes: vec![SimpleCommandMeta::Word(Word::new("foo", " "))],
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                         }),
                         rest: vec![(
                             " ".to_string(),
@@ -676,7 +676,7 @@ fn ast() {
                             first: Command::Simple(SimpleCommand {
                                 name: Some(Word::new("sleep", " ")),
                                 prefixes: Vec::new(),
-                                suffixes: vec![SimpleCommandMeta::Word(Word::new("3s", " "))],
+                                suffixes: vec![CmdSuffix::Word(Word::new("3s", " "))],
                             }),
                             rest: Vec::new(),
                         },
@@ -802,8 +802,8 @@ fn parse_with_comment() {
                             name: Some(Word::new("echo", "")),
                             prefixes: Vec::new(),
                             suffixes: vec![
-                                SimpleCommandMeta::Word(Word::new("foo", " ")),
-                                SimpleCommandMeta::Word(Word::new("bar", " ")),
+                                CmdSuffix::Word(Word::new("foo", " ")),
+                                CmdSuffix::Word(Word::new("bar", " ")),
                             ],
                         }),
                         rest: Vec::new(),
