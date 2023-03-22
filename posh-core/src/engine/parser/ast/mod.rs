@@ -631,10 +631,9 @@ impl Word {
         let quote_removed = Self::do_quote_removal(input);
         let expanded = Self::expand(&quote_removed);
 
-        // FIXME: get rid of .to_string() twice, probably requires API change
         Self {
             raw,
-            name: expanded.to_string(),
+            name: expanded,
             whitespace: whitespace.into(),
             expansions: Default::default(),
         }
