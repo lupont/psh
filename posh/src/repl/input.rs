@@ -308,7 +308,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
 
-    let ast = parse(&state.line)?;
+    let ast = parse(&state.line, true)?;
     ast.write_highlighted(&mut engine.writer)?;
     engine.writer.flush()?;
 

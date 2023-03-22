@@ -9,10 +9,10 @@ use super::consumer::Consumer;
 use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use super::tok::Tokenizer;
 
-use crate::Result;
+use crate::{Error, Result};
 
-pub fn parse(input: impl AsRef<str>) -> Result<SyntaxTree> {
-    input
+pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
+    match input
         .as_ref()
         .chars()
         .peekable()
@@ -23,10 +23,18 @@ pub fn parse(input: impl AsRef<str>) -> Result<SyntaxTree> {
         .into_iter()
         .peekable()
         .parse()
+    {
+        Ok(ast) => Ok(ast),
+        Err(ast) if allow_errors => Ok(ast),
+        Err(ast) => Err(Error::SyntaxError(format!(
+            "could not parse the following: `{}`",
+            ast.unparsed.trim_start(),
+        ))),
+    }
 }
 
 pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
-    fn parse(&mut self) -> Result<SyntaxTree> {
+    fn parse(&mut self) -> std::result::Result<SyntaxTree, SyntaxTree> {
         let mut complete_commands = Vec::new();
 
         while let Some(cmd) = self.parse_complete_command() {
@@ -38,10 +46,18 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
             unparsed.push_str(&token.to_string());
         }
 
-        Ok(SyntaxTree {
+        let ok = unparsed.is_empty() || unparsed.chars().all(|c| c.is_ascii_whitespace());
+
+        let ast = SyntaxTree {
             program: complete_commands,
             unparsed,
-        })
+        };
+
+        if ok {
+            Ok(ast)
+        } else {
+            Err(ast)
+        }
     }
 
     fn parse_complete_command(&mut self) -> Option<CompleteCommand> {

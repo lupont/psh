@@ -26,7 +26,7 @@ fn main() {
 
         std::process::exit(0);
     } else if args.ast {
-        let ast = parse(args.command.unwrap());
+        let ast = parse(args.command.unwrap(), true);
 
         println!("{:#?}", ast);
 

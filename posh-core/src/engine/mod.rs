@@ -96,7 +96,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
-        let ast = parse(line.to_string())?;
+        let ast = parse(line.to_string(), false)?;
         self.walk_ast(ast)
     }
 
