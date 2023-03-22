@@ -1,10 +1,11 @@
 pub mod history;
 pub mod parser;
 
-use std::io::{self, Read, Stdout, Write};
+use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
+use crate::ast::{CompoundCommand, FunctionDefinition, SimpleCommand};
 use crate::{path, Result};
 
 pub use self::history::{FileHistory, History};
@@ -98,43 +99,83 @@ impl<W: Write> Engine<W> {
         self.walk_ast(ast)
     }
 
+    fn execute_simple_command(
+        &mut self,
+        cmd: &SimpleCommand,
+        stdin: Stdio,
+        stdout: Stdio,
+    ) -> Result<process::Child> {
+        if let Some(name) = cmd.name() {
+            let mut command = process::Command::new(name);
+
+            let child = command
+                .stdin(stdin)
+                .stdout(stdout)
+                .args(cmd.args())
+                .spawn()?;
+
+            Ok(child)
+        } else {
+            todo!()
+        }
+    }
+
+    fn execute_compound_command(
+        &mut self,
+        _cmd: &CompoundCommand,
+        _stdin: Stdio,
+        _stdout: Stdio,
+    ) -> Result<process::Child> {
+        todo!()
+    }
+
+    fn execute_function_defenition(
+        &mut self,
+        _func_def: &FunctionDefinition,
+        _stdin: Stdio,
+        _stdout: Stdio,
+    ) -> Result<process::Child> {
+        todo!()
+    }
+
+    fn execute_command(
+        &mut self,
+        command: &Command,
+        stdin: Stdio,
+        stdout: Stdio,
+    ) -> Result<process::Child> {
+        match command {
+            Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout),
+            Command::Compound(cmd) => self.execute_compound_command(cmd, stdin, stdout),
+            Command::FunctionDefinition(func_def) => {
+                self.execute_function_defenition(func_def, stdin, stdout)
+            }
+        }
+    }
+
     pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
         let pipeline = pipeline.pipeline();
         let mut pipeline = pipeline.iter().peekable();
         let mut codes: Vec<ExitStatus> = Vec::new();
         let mut last_stdout: Option<process::ChildStdout> = None;
 
-        while let Some(Command::Simple(cmd)) = pipeline.next() {
-            if let Some(name) = cmd.name() {
-                let mut command = process::Command::new(name);
+        while let Some(cmd) = pipeline.next() {
+            let stdin = match last_stdout {
+                Some(output) => Stdio::from(output),
+                None => Stdio::null(),
+            };
 
-                let stdin = match last_stdout {
-                    Some(output) => Stdio::from(output),
-                    None => Stdio::null(),
-                };
+            let stdout = if pipeline.peek().is_none() {
+                Stdio::inherit()
+            } else {
+                Stdio::piped()
+            };
 
-                let stdout = if pipeline.peek().is_none() {
-                    Stdio::inherit()
-                } else {
-                    Stdio::piped()
-                };
+            let mut child = self.execute_command(cmd, stdin, stdout)?;
 
-                let mut child = command
-                    .stdin(stdin)
-                    .stdout(stdout)
-                    .args(cmd.args())
-                    .spawn()?;
-
-                last_stdout = child.stdout.take();
-                let output = child.wait_with_output()?;
-                codes.push(ExitStatus::from(output.status));
-            }
-        }
-
-        if let Some(mut last_stdout) = last_stdout {
-            let mut buf = String::new();
-            last_stdout.read_to_string(&mut buf)?;
-            self.writer.write_all(buf.as_bytes())?;
+            last_stdout = child.stdout.take();
+            let output = child.wait_with_output()?;
+            codes.push(ExitStatus::from(output.status));
         }
 
         Ok(codes)
