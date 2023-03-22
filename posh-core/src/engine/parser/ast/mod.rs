@@ -514,6 +514,18 @@ pub struct Pipeline {
     pub rest: Vec<(LeadingWhitespace, Command)>,
 }
 
+impl Pipeline {
+    /// Always at least one in length, since this joins self.first and self.rest.
+    pub fn pipeline(&self) -> Vec<&Command> {
+        let mut v = Vec::new();
+        v.push(&self.first);
+        for (_, cmd) in &self.rest {
+            v.push(cmd);
+        }
+        v
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Simple(SimpleCommand),

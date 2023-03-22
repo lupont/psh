@@ -1,16 +1,14 @@
 pub mod history;
 pub mod parser;
 
-use std::io::{self, Stdout, Write};
+use std::io::{self, Read, Stdout, Write};
 use std::path::PathBuf;
-use std::process;
+use std::process::{self, Stdio};
 
 use crate::{path, Result};
 
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{
-    parse, AndOrList, Command, CompleteCommand, Pipeline, SimpleCommand, SyntaxTree,
-};
+use self::parser::ast::{parse, AndOrList, Command, CompleteCommand, Pipeline, SyntaxTree};
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -26,19 +24,19 @@ impl<W: Write> Engine<W> {
 
             Some("-") => {
                 writeln!(self.writer, "cd: No previous directory.")?;
-                return Ok(ExitStatus::from(1));
+                return Ok(ExitStatus::from_code(1));
             }
 
             Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
 
             Some(dir) if PathBuf::from(dir).exists() => {
                 writeln!(self.writer, "cd: '{}' is not a directory.", dir)?;
-                return Ok(ExitStatus::from(3));
+                return Ok(ExitStatus::from_code(3));
             }
 
             Some(dir) => {
                 writeln!(self.writer, "cd: '{}' does not exist.", dir)?;
-                return Ok(ExitStatus::from(2));
+                return Ok(ExitStatus::from_code(2));
             }
 
             None => PathBuf::from(path::home_dir()),
@@ -46,7 +44,7 @@ impl<W: Write> Engine<W> {
 
         self.prev_dir = Some(std::env::current_dir()?);
         std::env::set_current_dir(path)?;
-        Ok(ExitStatus::from(0))
+        Ok(ExitStatus::from_code(0))
     }
 
     fn _exit(&self, code: i32) -> ! {
@@ -100,98 +98,46 @@ impl<W: Write> Engine<W> {
         self.walk_ast(ast)
     }
 
-    // fn build_command(
-    //     &self,
-    //     command: &CompleteCommand,
-    //     prev_stdout: Option<Option<ChildStdout>>,
-    //     final_cmd: bool,
-    // ) -> Result<process::Command> {
-    //     let (stdin_redirect, stdout_redirect, stderr_redirect) = command.redirections();
-
-    //     let mut stdin = match prev_stdout {
-    //         Some(Some(stdout)) => Stdio::from(stdout),
-    //         Some(None) => Stdio::null(),
-    //         None => Stdio::inherit(),
-    //     };
-
-    //     if let Some(Redirect::Input { to }) = stdin_redirect {
-    //         let f = std::fs::OpenOptions::new().read(true).open(to.name)?;
-    //         stdin = Stdio::from(f);
-    //     }
-
-    //     let stdout = if let Some(Redirect::Output {
-    //         from: _,
-    //         to,
-    //         append,
-    //     }) = stdout_redirect
-    //     {
-    //         let f = std::fs::OpenOptions::new()
-    //             .write(true)
-    //             .create(true)
-    //             .append(append)
-    //             .open(to.name)?;
-    //         Stdio::from(f)
-    //     } else if final_cmd {
-    //         Stdio::inherit()
-    //     } else {
-    //         Stdio::piped()
-    //     };
-
-    //     let stderr = if let Some(Redirect::Output {
-    //         from: _,
-    //         to,
-    //         append,
-    //     }) = stderr_redirect
-    //     {
-    //         let f = std::fs::OpenOptions::new()
-    //             .write(true)
-    //             .create(true)
-    //             .append(append)
-    //             .open(to.name)?;
-    //         Stdio::from(f)
-    //     } else {
-    //         Stdio::inherit()
-    //     };
-
-    //     let mut cmd = process::Command::new(command.cmd_name());
-    //     let cmd = cmd
-    //         .args(command.args())
-    //         .envs(command.vars())
-    //         .stdin(stdin)
-    //         .stdout(stdout)
-    //         .stderr(stderr);
-
-    //     let dummy = process::Command::new("tmp");
-    //     Ok(std::mem::replace(cmd, dummy))
-    // }
-
-    pub fn execute_simple_command(&mut self, cmd: &SimpleCommand) -> Result<ExitStatus> {
-        if let Some(name) = cmd.name() {
-            let mut command = process::Command::new(name);
-            let mut child = command.args(cmd.args()).spawn()?;
-            let exit_status = child.wait()?;
-            Ok(ExitStatus::from(exit_status.code().unwrap()))
-        } else {
-            // FIXME: figure out if this case is correct
-            Ok(ExitStatus::from(0))
-        }
-    }
-
-    pub fn execute_command(&mut self, cmd: &Command) -> Result<ExitStatus> {
-        match cmd {
-            Command::Simple(cmd) => self.execute_simple_command(cmd),
-            Command::Compound(_compound) => todo!(),
-            Command::FunctionDefinition(_def) => todo!(),
-        }
-    }
-
     pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
-        if pipeline.rest.is_empty() {
-            let status = self.execute_command(&pipeline.first)?;
-            Ok(vec![status])
-        } else {
-            todo!()
+        let pipeline = pipeline.pipeline();
+        let mut pipeline = pipeline.iter().peekable();
+        let mut codes: Vec<ExitStatus> = Vec::new();
+        let mut last_stdout: Option<process::ChildStdout> = None;
+
+        while let Some(Command::Simple(cmd)) = pipeline.next() {
+            if let Some(name) = cmd.name() {
+                let mut command = process::Command::new(name);
+
+                let stdin = match last_stdout {
+                    Some(output) => Stdio::from(output),
+                    None => Stdio::null(),
+                };
+
+                let stdout = if pipeline.peek().is_none() {
+                    Stdio::inherit()
+                } else {
+                    Stdio::piped()
+                };
+
+                let mut child = command
+                    .stdin(stdin)
+                    .stdout(stdout)
+                    .args(cmd.args())
+                    .spawn()?;
+
+                last_stdout = child.stdout.take();
+                let output = child.wait_with_output()?;
+                codes.push(ExitStatus::from(output.status));
+            }
         }
+
+        if let Some(mut last_stdout) = last_stdout {
+            let mut buf = String::new();
+            last_stdout.read_to_string(&mut buf)?;
+            self.writer.write_all(buf.as_bytes())?;
+        }
+
+        Ok(codes)
     }
 
     pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
@@ -235,7 +181,16 @@ pub struct ExitStatus {
 }
 
 impl ExitStatus {
-    pub fn from(code: i32) -> Self {
+    pub fn from_code(code: i32) -> Self {
         Self { code }
+    }
+}
+
+impl From<std::process::ExitStatus> for ExitStatus {
+    fn from(status: std::process::ExitStatus) -> Self {
+        Self {
+            // FIXME: handle None case
+            code: status.code().unwrap(),
+        }
     }
 }
