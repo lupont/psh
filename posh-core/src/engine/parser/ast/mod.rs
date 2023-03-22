@@ -509,9 +509,9 @@ pub struct AndOrList {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pipeline {
-    pub bang: Option<String>,
+    pub bang: Option<LeadingWhitespace>,
     pub first: Command,
-    pub rest: Vec<(String, Command)>,
+    pub rest: Vec<(LeadingWhitespace, Command)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

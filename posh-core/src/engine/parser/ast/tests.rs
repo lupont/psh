@@ -18,14 +18,12 @@ fn parse(input: &str) -> Peekable<impl Iterator<Item = SemanticToken> + Clone + 
 fn parse_variable_assignment() {
     let mut tokens = parse("foo=bar");
     let actual = tokens.parse_variable_assignment();
-    let expected =
-        VariableAssignment::new("foo", Some(Word::new("bar", "")), "");
+    let expected = VariableAssignment::new("foo", Some(Word::new("bar", "")), "");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse("  foo='bar baz'");
     let actual = tokens.parse_variable_assignment();
-    let expected =
-        VariableAssignment::new("foo", Some(Word::new("'bar baz'", "")), "  ");
+    let expected = VariableAssignment::new("foo", Some(Word::new("'bar baz'", "")), "  ");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse(" foo=bar\\ baz");
@@ -35,8 +33,7 @@ fn parse_variable_assignment() {
 
     let mut tokens = parse(r#"foo="bar baz""#);
     let actual = tokens.parse_variable_assignment();
-    let expected =
-        VariableAssignment::new("foo", Some(Word::new("\"bar baz\"", "")), "");
+    let expected = VariableAssignment::new("foo", Some(Word::new("\"bar baz\"", "")), "");
     assert_eq!(Some(expected), actual);
 
     let mut tokens = parse("foo=");
@@ -164,9 +161,7 @@ fn parse_simple_command() {
         let expected = SimpleCommand {
             name: Some(Word::new("echo", "")),
             prefixes: Vec::new(),
-            suffixes: vec![
-                SimpleCommandMeta::Word(Word::new(item, " ")),
-            ],
+            suffixes: vec![SimpleCommandMeta::Word(Word::new(item, " "))],
         };
 
         assert_eq!(Some(expected), actual);
@@ -215,7 +210,7 @@ fn parse_simple_command() {
             SimpleCommandMeta::Assignment(VariableAssignment::new(
                 "foo",
                 Some(Word::new("'bar baz'", "")),
-                ""
+                "",
             )),
             SimpleCommandMeta::Redirection(Redirection::new_output(
                 Word::new("3", " "),
