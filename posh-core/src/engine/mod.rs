@@ -4,6 +4,8 @@ pub mod parser;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
+use std::sync::mpsc::channel;
+use std::thread;
 
 use crate::ast::{CompoundCommand, FunctionDefinition, SimpleCommand};
 use crate::{path, Result};
@@ -156,26 +158,50 @@ impl<W: Write> Engine<W> {
     pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
         let pipeline = pipeline.pipeline();
         let mut pipeline = pipeline.iter().peekable();
-        let mut codes: Vec<ExitStatus> = Vec::new();
-        let mut last_stdout: Option<process::ChildStdout> = None;
+
+        let mut codes = Vec::with_capacity(pipeline.len());
+        let mut pids = Vec::with_capacity(pipeline.len());
+
+        let (tx, rx) = channel();
+
+        let mut last_stdout = None;
 
         while let Some(cmd) = pipeline.next() {
             let stdin = match last_stdout {
-                Some(output) => Stdio::from(output),
+                Some(stdout) => Stdio::from(stdout),
                 None => Stdio::inherit(),
             };
 
-            let stdout = if pipeline.peek().is_none() {
-                Stdio::inherit()
-            } else {
-                Stdio::piped()
+            let stdout = match pipeline.peek() {
+                Some(_) => Stdio::piped(),
+                None => Stdio::inherit(),
             };
 
             let mut child = self.execute_command(cmd, stdin, stdout)?;
-
             last_stdout = child.stdout.take();
-            let output = child.wait_with_output()?;
-            codes.push(ExitStatus::from(output.status));
+            pids.push(child.id());
+
+            let thread_tx = tx.clone();
+
+            thread::spawn(move || {
+                // FIXME: error handling, .unwrap()
+                if let Ok(status) = child.wait() {
+                    thread_tx
+                        .send((child.id(), ExitStatus::from(status)))
+                        .unwrap();
+                }
+            });
+        }
+
+        while !pids.is_empty() {
+            // FIXME: error handling, .unwrap() and silent skip if index was not found
+            let (pid, rc) = rx.recv().unwrap();
+
+            if let Some(index) = pids.iter().position(|i| *i == pid) {
+                pids.swap_remove(index);
+                // FIXME: this doesn't preserve order
+                codes.push(rc);
+            }
         }
 
         Ok(codes)
