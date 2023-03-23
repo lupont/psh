@@ -623,13 +623,11 @@ fn ast() {
                         bang: Some(" ".to_string()),
                         first: Command::Simple(SimpleCommand {
                             name: Some(Word::new("echo", " ")),
-                            prefixes: vec![CmdPrefix::Redirection(
-                                Redirection::new_output(
-                                    Word::new("2", " "),
-                                    Word::new("&1", ""),
-                                    false,
-                                ),
-                            )],
+                            prefixes: vec![CmdPrefix::Redirection(Redirection::new_output(
+                                Word::new("2", " "),
+                                Word::new("&1", ""),
+                                false,
+                            ))],
                             suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
                         }),
                         rest: vec![(

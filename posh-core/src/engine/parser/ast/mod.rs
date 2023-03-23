@@ -482,7 +482,7 @@ pub struct SyntaxTree {
 pub struct CompleteCommand {
     pub list: List,
     pub separator: Option<Separator>,
-    pub comment: Option<(String, String)>,
+    pub comment: Option<(LeadingWhitespace, String)>,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -1,4 +1,6 @@
 use super::AndOrList;
+use super::CmdPrefix;
+use super::CmdSuffix;
 use super::Command;
 use super::CompleteCommand;
 use super::CompoundCommand;
@@ -9,8 +11,6 @@ use super::Pipeline;
 use super::Redirection;
 use super::Separator;
 use super::SimpleCommand;
-use super::CmdPrefix;
-use super::CmdSuffix;
 use super::SyntaxTree;
 use super::VariableAssignment;
 use super::Word;

@@ -339,6 +339,8 @@ fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(S
 
 mod syntax_highlighting {
     use posh_core::ast::AndOrList;
+    use posh_core::ast::CmdPrefix;
+    use posh_core::ast::CmdSuffix;
     use posh_core::ast::Command;
     use posh_core::ast::CompleteCommand;
     use posh_core::ast::List;
@@ -348,8 +350,6 @@ mod syntax_highlighting {
     use posh_core::ast::Separator;
     use posh_core::ast::SimpleCommand;
     use posh_core::ast::VariableAssignment;
-    use posh_core::ast::CmdPrefix;
-    use posh_core::ast::CmdSuffix;
     use posh_core::ast::Word;
 
     use self::Colors;
