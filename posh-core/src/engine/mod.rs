@@ -162,7 +162,7 @@ impl<W: Write> Engine<W> {
         while let Some(cmd) = pipeline.next() {
             let stdin = match last_stdout {
                 Some(output) => Stdio::from(output),
-                None => Stdio::null(),
+                None => Stdio::inherit(),
             };
 
             let stdout = if pipeline.peek().is_none() {
