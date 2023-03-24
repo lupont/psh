@@ -383,8 +383,9 @@ mod syntax_highlighting {
     impl Highlighter for CompleteCommand {
         fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
             self.list.write_highlighted(engine)?;
-            if let Some(sep) = &self.separator {
-                sep.write_highlighted(engine)?;
+
+            if let Some(separator) = &self.separator {
+                separator.write_highlighted(engine)?;
             }
 
             if let Some((ws, comment)) = &self.comment {
@@ -409,6 +410,7 @@ mod syntax_highlighting {
                 sep.write_highlighted(engine)?;
                 and_or_list.write_highlighted(engine)?;
             }
+
             Ok(())
         }
     }

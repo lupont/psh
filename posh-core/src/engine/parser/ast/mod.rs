@@ -121,13 +121,7 @@ where
 
         while let Some(thing) = self
             .parse_separator()
-            .and_then(|separator| {
-                self.parse_and_or_list().map(|a| (separator, a))
-                // .or_else(|| {
-                //     *self = initial.clone();
-                //     None
-                // })
-            })
+            .and_then(|s| self.parse_and_or_list().map(|a| (s, a)))
             .or_else(|| {
                 *self = initial.clone();
                 None
@@ -485,15 +479,51 @@ pub struct CompleteCommand {
     pub comment: Option<(LeadingWhitespace, String)>,
 }
 
+impl CompleteCommand {
+    pub fn list_with_separator(&self) -> Vec<(&AndOrList, Separator)> {
+        let mut items = Vec::new();
+
+        let final_separator = match &self.separator {
+            Some(separator) => separator.clone(),
+            None => Default::default(),
+        };
+
+        if self.list.rest.is_empty() {
+            items.push((&self.list.first, final_separator));
+        } else {
+            let mut prev_list = &self.list.first;
+
+            for (sep, and_or_list) in &self.list.rest {
+                items.push((prev_list, sep.clone()));
+                prev_list = and_or_list;
+            }
+
+            if let Some((_, and_or_list)) = self.list.rest.last() {
+                items.push((and_or_list, final_separator));
+            }
+        }
+
+        items
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub first: AndOrList,
-
-    // As noted semantically by having it be the first part of
-    // the tuple, each `Separator` here ends the previous
-    // `AndOrList`.
     pub rest: Vec<(Separator, AndOrList)>,
 }
+
+// foo
+//
+// foo;
+//
+// foo &
+//
+// foo && bar
+//
+// foo && bar &
+//
+// foo & bar ; baz && quux ;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
@@ -515,8 +545,7 @@ pub struct Pipeline {
 impl Pipeline {
     /// Always at least one in length, since this joins self.first and self.rest.
     pub fn pipeline(&self) -> Vec<&Command> {
-        let mut v = Vec::new();
-        v.push(&self.first);
+        let mut v = vec![&self.first];
         for (_, cmd) in &self.rest {
             v.push(cmd);
         }
@@ -559,6 +588,26 @@ impl SimpleCommand {
                 _ => None,
             })
             .map(|w| &w.name)
+    }
+
+    pub fn assignments(&self) -> impl Iterator<Item = &VariableAssignment> {
+        self.prefixes.iter().filter_map(|m| match m {
+            CmdPrefix::Assignment(a) => Some(a),
+            _ => None,
+        })
+    }
+
+    pub fn redirections(&self) -> impl Iterator<Item = &Redirection> {
+        self.prefixes
+            .iter()
+            .filter_map(|m| match m {
+                CmdPrefix::Redirection(r) => Some(r),
+                _ => None,
+            })
+            .chain(self.suffixes.iter().filter_map(|m| match m {
+                CmdSuffix::Redirection(r) => Some(r),
+                _ => None,
+            }))
     }
 }
 
@@ -748,6 +797,18 @@ pub enum Expansion {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct CompoundList {
+    pub term: Term,
+    pub separator: Option<Separator>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Term {
+    pub first: AndOrList,
+    pub rest: Vec<(Separator, AndOrList)>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct CompoundCommand {
     //  true: (cmd; cmd)
     //  false: { cmd; cmd; }
@@ -756,16 +817,42 @@ pub struct CompoundCommand {
     pub rest: Vec<Command>,
 }
 
+/// brace_group  : Lbrace compound_list Rbrace
+///              ;
+#[derive(Debug, PartialEq, Eq)]
+pub struct BraceGroup {
+    pub list: CompoundList,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionDefinition {
     pub name: String,
     pub commands: CompoundCommand,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Separator {
     Sync(LeadingWhitespace),
     Async(LeadingWhitespace),
+}
+
+impl Separator {
+    pub fn is_sync(&self) -> bool {
+        match self {
+            Self::Sync(_) => true,
+            Self::Async(_) => false,
+        }
+    }
+
+    pub fn is_async(&self) -> bool {
+        !self.is_sync()
+    }
+}
+
+impl Default for Separator {
+    fn default() -> Self {
+        Self::Sync(Default::default())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

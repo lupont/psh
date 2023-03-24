@@ -29,9 +29,11 @@ impl ToString for SyntaxTree {
 impl ToString for CompleteCommand {
     fn to_string(&self) -> String {
         let mut s = self.list.to_string();
-        if let Some(sep) = &self.separator {
-            s.push_str(&sep.to_string());
+
+        if let Some(separator) = &self.separator {
+            s.push_str(&separator.to_string());
         }
+
         s
     }
 }
@@ -39,10 +41,12 @@ impl ToString for CompleteCommand {
 impl ToString for List {
     fn to_string(&self) -> String {
         let mut list = self.first.to_string();
+
         for (sep, and_or_list) in &self.rest {
             list.push_str(&sep.to_string());
             list.push_str(&and_or_list.to_string());
         }
+
         list
     }
 }

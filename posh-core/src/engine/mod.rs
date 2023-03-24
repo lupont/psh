@@ -156,13 +156,14 @@ impl<W: Write> Engine<W> {
     pub fn execute_pipeline(
         &mut self,
         pipeline: &Pipeline,
+        background: bool,
     ) -> Result<(ExitStatus, Vec<ExitStatus>)> {
         let pipeline_cmds = pipeline.pipeline();
         let mut pipeline_iter = pipeline_cmds.iter().peekable();
         let mut pids = Vec::with_capacity(pipeline_iter.len());
 
         let mut last_stdout = None;
-        let mut last_status = None;
+        let mut last_status = ExitStatus::from_code(0);
 
         while let Some(cmd) = pipeline_iter.next() {
             let stdin = match last_stdout {
@@ -179,29 +180,33 @@ impl<W: Write> Engine<W> {
             last_stdout = child.stdout.take();
             pids.push(child.id());
 
-            if pipeline_iter.peek().is_none() {
+            if !background && pipeline_iter.peek().is_none() {
                 let status = child.wait().unwrap();
-                last_status = Some(ExitStatus::from(status));
+                last_status = ExitStatus::from(status);
             }
         }
 
         let exit_status = match (pipeline.has_bang(), last_status) {
-            (false, Some(code)) => code,
-            (true, Some(code)) if code.is_ok() => ExitStatus::from_code(1),
-            (true, Some(_)) => ExitStatus::from_code(0),
-            (_, None) => ExitStatus::from_code(0),
+            (false, code) => code,
+            (true, code) if code.is_ok() => ExitStatus::from_code(1),
+            (true, _) => ExitStatus::from_code(0),
         };
 
         Ok((exit_status, vec![exit_status]))
     }
 
-    pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
-        let (mut prev_status, mut codes) = self.execute_pipeline(&logical_expr.first)?;
+    pub fn execute_and_or_list(
+        &mut self,
+        logical_expr: &AndOrList,
+        background: bool,
+    ) -> Result<Vec<ExitStatus>> {
+        let (mut prev_status, mut codes) =
+            self.execute_pipeline(&logical_expr.first, background)?;
 
         for (op, expr) in &logical_expr.rest {
             match (op, prev_status.is_ok()) {
                 (LogicalOp::And(_), true) | (LogicalOp::Or(_), false) => {
-                    let (status, mut pipeline_codes) = self.execute_pipeline(expr)?;
+                    let (status, mut pipeline_codes) = self.execute_pipeline(expr, background)?;
                     prev_status = status;
                     codes.append(&mut pipeline_codes);
                 }
@@ -213,9 +218,15 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
-        let list = &cmd.list;
-        let exit_status = self.execute_logical_expr(&list.first)?;
-        Ok(exit_status)
+        let nice = cmd.list_with_separator();
+
+        let mut codes = Vec::new();
+
+        for (and_or_list, separator) in nice {
+            codes.append(&mut self.execute_and_or_list(and_or_list, separator.is_async())?);
+        }
+
+        Ok(codes)
     }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
