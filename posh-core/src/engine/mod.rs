@@ -115,13 +115,22 @@ impl<W: Write> Engine<W> {
 
         let mut command = process::Command::new(name);
 
-        let redirections = cmd.redirections();
+        let mut assignments = Vec::new();
+
+        for assignment in cmd.assignments() {
+            let lhs = &assignment.lhs;
+            let rhs = match &assignment.rhs {
+                Some(rhs) => rhs.name.as_str(),
+                None => "",
+            };
+            assignments.push((lhs, rhs));
+        }
 
         let mut stdin_override = None;
         let mut stdout_override = None;
         let mut stderr_override = None;
 
-        for redirection in redirections {
+        for redirection in cmd.redirections() {
             match redirection {
                 Redirection::Output {
                     file_descriptor,
@@ -169,6 +178,7 @@ impl<W: Write> Engine<W> {
         let stdout_redirected = stdout_override.is_some();
 
         let child = command
+            .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
             .stderr(stderr_override.unwrap_or(stderr))
