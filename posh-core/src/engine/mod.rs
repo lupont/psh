@@ -4,8 +4,6 @@ pub mod parser;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
-use std::sync::mpsc::channel;
-use std::thread;
 
 use crate::ast::{CompoundCommand, FunctionDefinition, LogicalOp, SimpleCommand};
 use crate::{path, Result};
@@ -161,13 +159,10 @@ impl<W: Write> Engine<W> {
     ) -> Result<(ExitStatus, Vec<ExitStatus>)> {
         let pipeline_cmds = pipeline.pipeline();
         let mut pipeline_iter = pipeline_cmds.iter().peekable();
-
-        let mut codes = Vec::with_capacity(pipeline_iter.len());
         let mut pids = Vec::with_capacity(pipeline_iter.len());
 
-        let (tx, rx) = channel();
-
         let mut last_stdout = None;
+        let mut last_status = None;
 
         while let Some(cmd) = pipeline_iter.next() {
             let stdin = match last_stdout {
@@ -184,37 +179,20 @@ impl<W: Write> Engine<W> {
             last_stdout = child.stdout.take();
             pids.push(child.id());
 
-            let thread_tx = tx.clone();
-
-            thread::spawn(move || {
-                // FIXME: error handling, .unwrap()
-                if let Ok(status) = child.wait() {
-                    thread_tx
-                        .send((child.id(), ExitStatus::from(status)))
-                        .unwrap();
-                }
-            });
-        }
-
-        while !pids.is_empty() {
-            // FIXME: error handling, .unwrap() and silent skip if index was not found
-            let (pid, rc) = rx.recv().unwrap();
-
-            if let Some(index) = pids.iter().position(|i| *i == pid) {
-                pids.swap_remove(index);
-                // FIXME: this doesn't preserve order
-                codes.push(rc);
+            if pipeline_iter.peek().is_none() {
+                let status = child.wait().unwrap();
+                last_status = Some(ExitStatus::from(status));
             }
         }
 
-        let exit_status = match (pipeline.has_bang(), codes.last()) {
-            (false, Some(code)) => *code,
+        let exit_status = match (pipeline.has_bang(), last_status) {
+            (false, Some(code)) => code,
             (true, Some(code)) if code.is_ok() => ExitStatus::from_code(1),
             (true, Some(_)) => ExitStatus::from_code(0),
-            _ => todo!(),
+            (_, None) => ExitStatus::from_code(0),
         };
 
-        Ok((exit_status, codes))
+        Ok((exit_status, vec![exit_status]))
     }
 
     pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
