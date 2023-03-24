@@ -1,15 +1,18 @@
 pub mod history;
 pub mod parser;
 
+use std::fs;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use crate::ast::{CompoundCommand, FunctionDefinition, LogicalOp, SimpleCommand};
 use crate::{path, Result};
 
 pub use self::history::{FileHistory, History};
-use self::parser::ast::{parse, AndOrList, Command, CompleteCommand, Pipeline, SyntaxTree};
+use self::parser::ast::{
+    parse, AndOrList, Command, CompleteCommand, CompoundCommand, FunctionDefinition, LogicalOp,
+    Pipeline, Redirection, SimpleCommand, SyntaxTree,
+};
 
 pub struct Engine<W: Write> {
     pub writer: W,
@@ -104,36 +107,93 @@ impl<W: Write> Engine<W> {
         cmd: &SimpleCommand,
         stdin: Stdio,
         stdout: Stdio,
-    ) -> Result<process::Child> {
-        if let Some(name) = cmd.name() {
-            let mut command = process::Command::new(name);
+        stderr: Stdio,
+    ) -> Result<(bool, process::Child)> {
+        let Some(name) = cmd.name() else {
+            return Err(crate::Error::Unimplemented("".to_string()));
+        };
 
-            let child = command
-                .stdin(stdin)
-                .stdout(stdout)
-                .args(cmd.args())
-                .spawn()?;
+        let mut command = process::Command::new(name);
 
-            Ok(child)
-        } else {
-            todo!()
+        let redirections = cmd.redirections();
+
+        let mut stdin_override = None;
+        let mut stdout_override = None;
+        let mut stderr_override = None;
+
+        for redirection in redirections {
+            match redirection {
+                Redirection::Output {
+                    file_descriptor,
+                    append,
+                    target,
+                } => {
+                    let fd = &file_descriptor.name;
+
+                    let file = fs::OpenOptions::new()
+                        .read(false)
+                        .write(true)
+                        .append(*append)
+                        .create(true)
+                        .open(&target.name)?;
+
+                    if fd.is_empty() || fd == "1" {
+                        stdout_override = Some(Stdio::from(file));
+                    } else if fd == "2" {
+                        stderr_override = Some(Stdio::from(file));
+                    }
+                }
+
+                Redirection::Input {
+                    file_descriptor,
+                    target,
+                } => {
+                    let fd = &file_descriptor.name;
+
+                    if fd.is_empty() || fd == "0" {
+                        let file = fs::OpenOptions::new()
+                            .read(true)
+                            .write(false)
+                            .open(&target.name)?;
+                        stdin_override = Some(Stdio::from(file));
+                    }
+                }
+
+                Redirection::HereDocument {
+                    file_descriptor: _,
+                    delimiter: _,
+                } => todo!(),
+            }
         }
+
+        let stdout_redirected = stdout_override.is_some();
+
+        let child = command
+            .stdin(stdin_override.unwrap_or(stdin))
+            .stdout(stdout_override.unwrap_or(stdout))
+            .stderr(stderr_override.unwrap_or(stderr))
+            .args(cmd.args())
+            .spawn()?;
+
+        Ok((stdout_redirected, child))
     }
 
-    fn execute_compound_command(
+    fn _execute_compound_command(
         &mut self,
         _cmd: &CompoundCommand,
         _stdin: Stdio,
         _stdout: Stdio,
+        _stderr: Stdio,
     ) -> Result<process::Child> {
         todo!()
     }
 
-    fn execute_function_defenition(
+    fn _execute_function_defenition(
         &mut self,
         _func_def: &FunctionDefinition,
         _stdin: Stdio,
         _stdout: Stdio,
+        _stderr: Stdio,
     ) -> Result<process::Child> {
         todo!()
     }
@@ -143,13 +203,12 @@ impl<W: Write> Engine<W> {
         command: &Command,
         stdin: Stdio,
         stdout: Stdio,
-    ) -> Result<process::Child> {
+        stderr: Stdio,
+    ) -> Result<(bool, process::Child)> {
         match command {
-            Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout),
-            Command::Compound(cmd) => self.execute_compound_command(cmd, stdin, stdout),
-            Command::FunctionDefinition(func_def) => {
-                self.execute_function_defenition(func_def, stdin, stdout)
-            }
+            Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout, stderr),
+            Command::Compound(_cmd) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
+            Command::FunctionDefinition(_func_def) => todo!(), //self.execute_function_defenition(func_def, stdin, stdout, stderr)
         }
     }
 
@@ -167,7 +226,8 @@ impl<W: Write> Engine<W> {
 
         while let Some(cmd) = pipeline_iter.next() {
             let stdin = match last_stdout {
-                Some(stdout) => Stdio::from(stdout),
+                Some(Some(stdout)) => Stdio::from(stdout),
+                Some(None) => Stdio::null(),
                 None => Stdio::inherit(),
             };
 
@@ -176,8 +236,18 @@ impl<W: Write> Engine<W> {
                 None => Stdio::inherit(),
             };
 
-            let mut child = self.execute_command(cmd, stdin, stdout)?;
-            last_stdout = child.stdout.take();
+            // FIXME: figure out how to do this on-spec
+            let stderr = Stdio::inherit();
+
+            let (stdout_redirected, mut child) =
+                self.execute_command(cmd, stdin, stdout, stderr)?;
+
+            last_stdout = if stdout_redirected {
+                Some(None)
+            } else {
+                Some(child.stdout.take())
+            };
+
             pids.push(child.id());
 
             if !background && pipeline_iter.peek().is_none() {
