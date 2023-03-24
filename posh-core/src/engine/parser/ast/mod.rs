@@ -522,6 +522,10 @@ impl Pipeline {
         }
         v
     }
+
+    pub fn has_bang(&self) -> bool {
+        self.bang.is_some()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

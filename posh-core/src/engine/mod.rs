@@ -7,7 +7,7 @@ use std::process::{self, Stdio};
 use std::sync::mpsc::channel;
 use std::thread;
 
-use crate::ast::{CompoundCommand, FunctionDefinition, SimpleCommand};
+use crate::ast::{CompoundCommand, FunctionDefinition, LogicalOp, SimpleCommand};
 use crate::{path, Result};
 
 pub use self::history::{FileHistory, History};
@@ -155,24 +155,27 @@ impl<W: Write> Engine<W> {
         }
     }
 
-    pub fn execute_pipeline(&mut self, pipeline: &Pipeline) -> Result<Vec<ExitStatus>> {
-        let pipeline = pipeline.pipeline();
-        let mut pipeline = pipeline.iter().peekable();
+    pub fn execute_pipeline(
+        &mut self,
+        pipeline: &Pipeline,
+    ) -> Result<(ExitStatus, Vec<ExitStatus>)> {
+        let pipeline_cmds = pipeline.pipeline();
+        let mut pipeline_iter = pipeline_cmds.iter().peekable();
 
-        let mut codes = Vec::with_capacity(pipeline.len());
-        let mut pids = Vec::with_capacity(pipeline.len());
+        let mut codes = Vec::with_capacity(pipeline_iter.len());
+        let mut pids = Vec::with_capacity(pipeline_iter.len());
 
         let (tx, rx) = channel();
 
         let mut last_stdout = None;
 
-        while let Some(cmd) = pipeline.next() {
+        while let Some(cmd) = pipeline_iter.next() {
             let stdin = match last_stdout {
                 Some(stdout) => Stdio::from(stdout),
                 None => Stdio::inherit(),
             };
 
-            let stdout = match pipeline.peek() {
+            let stdout = match pipeline_iter.peek() {
                 Some(_) => Stdio::piped(),
                 None => Stdio::inherit(),
             };
@@ -204,11 +207,31 @@ impl<W: Write> Engine<W> {
             }
         }
 
-        Ok(codes)
+        let exit_status = match (pipeline.has_bang(), codes.last()) {
+            (false, Some(code)) => *code,
+            (true, Some(code)) if code.is_ok() => ExitStatus::from_code(1),
+            (true, Some(_)) => ExitStatus::from_code(0),
+            _ => todo!(),
+        };
+
+        Ok((exit_status, codes))
     }
 
     pub fn execute_logical_expr(&mut self, logical_expr: &AndOrList) -> Result<Vec<ExitStatus>> {
-        self.execute_pipeline(&logical_expr.first)
+        let (mut prev_status, mut codes) = self.execute_pipeline(&logical_expr.first)?;
+
+        for (op, expr) in &logical_expr.rest {
+            match (op, prev_status.is_ok()) {
+                (LogicalOp::And(_), true) | (LogicalOp::Or(_), false) => {
+                    let (status, mut pipeline_codes) = self.execute_pipeline(expr)?;
+                    prev_status = status;
+                    codes.append(&mut pipeline_codes);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(codes)
     }
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
@@ -242,7 +265,7 @@ impl Default for Engine<Stdout> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ExitStatus {
     pub code: i32,
 }
@@ -250,6 +273,10 @@ pub struct ExitStatus {
 impl ExitStatus {
     pub fn from_code(code: i32) -> Self {
         Self { code }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.code == 0
     }
 }
 
