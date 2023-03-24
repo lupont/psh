@@ -30,7 +30,7 @@ run-tests() {
     expect $'foo\nbar' \
         'echo foo; printf bar'
 
-    expect $'foo\nbar' \
+    expect $'foonbar' \
         'echo -e foo\nbar'
 
     expect $'foo\nbar' \
@@ -60,11 +60,16 @@ run-tests() {
     expect "$HOME" \
         'echo "$HOME"'
 
-    expect bar \
+    expect '' \
         'foo=bar echo "$foo"'
 
-    expect a/b \
+    expect '/' \
         'foo=a bar=b echo "$foo/$bar"'
+
+    # expect $'\n'$'\n' \
+    #     'foo=bar echo $foo; echo $foo'
+    # expect foo \
+    #     'foo=bar; echo $foo'
 }
 
 run() {
