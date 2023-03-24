@@ -322,11 +322,11 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
-        let nice = cmd.list_with_separator();
+        let lists_with_separator = cmd.list_with_separator();
 
         let mut codes = Vec::new();
 
-        for (and_or_list, separator) in nice {
+        for (and_or_list, separator) in lists_with_separator {
             codes.append(&mut self.execute_and_or_list(and_or_list, separator.is_async())?);
         }
 
