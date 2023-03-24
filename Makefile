@@ -17,8 +17,10 @@ lint: shellcheck
 shellcheck:
 	${SHELLCHECK} test.sh
 
-test:
+test-rust:
 	${CARGO} test -q
+
+test: test-rust
 	${BASH} test.sh
 
 .PHONY: all coverage fmt lint shellcheck test
