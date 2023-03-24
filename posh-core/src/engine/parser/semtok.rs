@@ -122,6 +122,8 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
             .or_else(|| self.parse_pipe())
             .or_else(|| self.parse_redirect_input())
             .or_else(|| self.parse_redirect_output())
+            .or_else(|| self.parse_lparen())
+            .or_else(|| self.parse_rparen())
             .or_else(|| self.parse_comment())
             .or_else(|| self.parse_reserved_word())
             .or_else(|| self.parse_word())
