@@ -24,6 +24,15 @@ run-tests() {
     expect "$HOME" \
         'echo ~'
 
+    expect '~~' \
+        'echo ~~'
+
+    expect '~' \
+        'echo "~"'
+
+    expect "$HOME" \
+        "echo ~$(whoami)"
+
     expect foobar \
         'printf foo; printf bar'
 

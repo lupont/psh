@@ -3,12 +3,14 @@ pub mod reconstruct;
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::{iter::Peekable, ops::RangeInclusive};
 
 use super::consumer::Consumer;
 use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use super::tok::Tokenizer;
 
+use crate::path;
 use crate::{Error, Result};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
@@ -748,13 +750,79 @@ impl Word {
 
     fn expand(input: &str) -> String {
         // TODO: expand
-        input.to_string()
+        Self::expand_tilde(input).to_string()
     }
 
-    // TODO: expanding should probably result in multiple `Word`s
-    // fn expand(self) -> Vec<Self> {
-    //     vec![self]
-    // }
+    fn expand_tilde(input: &str) -> Cow<str> {
+        if !matches!(input.chars().next(), Some('~')) {
+            return Cow::Borrowed(input);
+        }
+
+        let slash_index = match Self::find_unquoted(input, '/') {
+            Some(index) => index,
+            None => input.len(),
+        };
+
+        let pre = &input[..slash_index];
+
+        let expanded = if pre.len() > 1 && path::is_portable_filename(&pre[1..slash_index]) {
+            // FIXME: the tilde-prefix shall be replaced by a pathname
+            //        of the initial working directory associated with
+            //        the login name obtained using the getpwnam()
+            //        function as defined in the System Interfaces
+            //        volume of POSIX.1-2017
+            format!("/home/{}", &pre[1..slash_index])
+        } else if pre.len() > 1 {
+            return Cow::Borrowed(input);
+        } else {
+            path::home_dir()
+        };
+
+        Cow::Owned(input.replacen(pre, &expanded, 1))
+    }
+
+    fn find_unquoted(haystack: &str, needle: char) -> Option<usize> {
+        #[derive(PartialEq, Clone, Copy)]
+        enum State {
+            InSingleQuote,
+            InDoubleQuote,
+            None,
+        }
+
+        let mut state = State::None;
+        let mut is_escaped = false;
+
+        let mut found = None;
+
+        for (i, c) in haystack.chars().enumerate() {
+            match (c, state) {
+                ('\'', State::InSingleQuote) => {
+                    state = State::None;
+                }
+                ('\'', State::None) => {
+                    state = State::InSingleQuote;
+                }
+
+                ('"', State::InDoubleQuote) if !is_escaped => {
+                    state = State::None;
+                }
+                ('"', State::None) => {
+                    state = State::InDoubleQuote;
+                }
+
+                ('\\', _) if !is_escaped => is_escaped = true,
+
+                (c, _) => {
+                    if state == State::None && c == needle {
+                        found = Some(i);
+                    }
+                    is_escaped = false;
+                }
+            }
+        }
+
+        found
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
