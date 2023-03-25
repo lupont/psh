@@ -6,7 +6,7 @@ use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use crate::{path, Result};
+use crate::{path, Result, Error};
 
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{
@@ -22,7 +22,7 @@ pub struct Engine<W: Write> {
 }
 
 impl<W: Write> Engine<W> {
-    fn _cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
+    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
         let path = match dir {
             Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
 
@@ -51,41 +51,60 @@ impl<W: Write> Engine<W> {
         Ok(ExitStatus::from_code(0))
     }
 
-    fn _exit(&self, code: i32) -> ! {
+    fn exit(&self, code: i32) -> ! {
         std::process::exit(code)
     }
 
-    pub fn has_builtin(&self, cmd: impl AsRef<str>) -> bool {
-        let cmd = cmd.as_ref();
-        let has = |s| cmd == s || cmd.starts_with(&format!("{s} "));
+    pub fn has_builtin(&self, s: impl AsRef<str>) -> bool {
+        let name = s.as_ref();
+        let has = |s| name == s || name.starts_with(&format!("{s} "));
         has("cd") || has("exit")
     }
 
-    pub fn execute_builtin(&mut self, _cmd: CompleteCommand) -> Result<ExitStatus> {
-        todo!()
-        // let command = cmd.cmd_name();
-        // let args = cmd.args();
+    pub fn is_builtin(&self, cmd: &Command) -> bool {
+        match cmd {
+            Command::Simple(cmd) => {
+                if let Some(name) = cmd.name() {
+                    self.has_builtin(name)
+                } else {
+                    false
+                }
+            },
+            _ => false,
+        }
+    }
 
-        // match (command.as_str(), &args[..]) {
-        //     ("exit", []) => self.exit(0),
-        //     ("exit", [code]) => {
-        //         if let Ok(s) = code.parse::<i32>() {
-        //             self.exit(s)
-        //         } else {
-        //             writeln!(self.writer, "invalid integer: '{}'", code)?;
-        //             Ok(ExitStatus::from(1))
-        //         }
-        //     }
+    pub fn execute_builtin(&mut self, cmd: &Command) -> Result<ExitStatus> {
+        let Command::Simple(cmd) = cmd else {
+            return Err(Error::Unimplemented("tried to execute complex command as builtin".to_string()));
+        };
 
-        //     ("cd", [dir]) => self.cd(Some(dir)),
-        //     ("cd", []) => self.cd(None),
-        //     ("cd", _) => {
-        //         writeln!(self.writer, "invalid number of arguments")?;
-        //         Ok(ExitStatus::from(1))
-        //     }
+        let Some(command) = cmd.name() else {
+            return Err(Error::Unimplemented("tried to execute empty command as builtin".to_string()));
+        };
 
-        //     (c, _) => Err(Error::UnknownCommand(c.to_string())),
-        // }
+        let args = cmd.args().collect::<Vec<_>>();
+
+        match (command.as_str(), &args[..]) {
+            ("exit", []) => self.exit(0),
+            ("exit", [code]) => {
+                if let Ok(s) = code.parse::<i32>() {
+                    self.exit(s)
+                } else {
+                    writeln!(self.writer, "invalid integer: '{}'", code)?;
+                    Ok(ExitStatus::from_code(1))
+                }
+            }
+
+            ("cd", [dir]) => self.cd(Some(dir)),
+            ("cd", []) => self.cd(None),
+            ("cd", _) => {
+                writeln!(self.writer, "invalid number of arguments")?;
+                Ok(ExitStatus::from_code(1))
+            }
+
+            (c, _) => Err(Error::UnknownCommand(c.to_string())),
+        }
     }
 
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
@@ -235,6 +254,11 @@ impl<W: Write> Engine<W> {
         let mut last_status = ExitStatus::from_code(0);
 
         while let Some(cmd) = pipeline_iter.next() {
+            if self.is_builtin(cmd) {
+                let code = self.execute_builtin(cmd)?;
+                return Ok((code, vec![code]));
+            }
+
             let stdin = match last_stdout {
                 Some(Some(stdout)) => Stdio::from(stdout),
                 Some(None) => Stdio::null(),
