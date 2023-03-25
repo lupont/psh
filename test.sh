@@ -78,6 +78,30 @@ run-tests() {
     expect '/' \
         'foo=a bar=b echo "$foo/$bar"'
 
+    expect 'foo' \
+        ': && echo foo'
+
+    expect '' \
+        ': || echo foo'
+
+    expect '' \
+        ': | : || echo foo'
+
+    expect 'foo' \
+        ': | : && echo foo'
+
+    expect '' \
+        '! : && echo foo'
+
+    expect 'foo' \
+        '! : || echo foo'
+
+    expect 'foo' \
+        '! : | : || echo foo'
+
+    expect '' \
+        '! : | : && echo foo'
+
     # expect $'\n'$'\n' \
     #     'foo=bar echo $foo; echo $foo'
     # expect foo \
