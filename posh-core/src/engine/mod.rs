@@ -3,6 +3,7 @@ pub mod parser;
 
 use std::fs;
 use std::io::{self, Stdout, Write};
+use std::ops::Not;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
@@ -380,6 +381,16 @@ impl From<std::process::ExitStatus> for ExitStatus {
         Self {
             // FIXME: handle None case
             code: status.code().unwrap(),
+        }
+    }
+}
+
+impl Not for ExitStatus {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        match self.code {
+            0 => Self::Output { code: 1 },
+            _ => Self::Output { code: 0 },
         }
     }
 }
