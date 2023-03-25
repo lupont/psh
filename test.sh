@@ -27,6 +27,9 @@ run-tests() {
     expect '~~' \
         'echo ~~'
 
+    expect "$HOME/~" \
+        'echo ~/~'
+
     expect '~' \
         'echo "~"'
 

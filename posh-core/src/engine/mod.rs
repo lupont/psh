@@ -246,7 +246,7 @@ impl<W: Write> Engine<W> {
         pipeline: &Pipeline,
         background: bool,
     ) -> Result<(ExitStatus, Vec<ExitStatus>)> {
-        let pipeline_cmds = pipeline.pipeline();
+        let pipeline_cmds = pipeline.full();
         let mut pipeline_iter = pipeline_cmds.iter().peekable();
         let mut pids = Vec::with_capacity(pipeline_iter.len());
 

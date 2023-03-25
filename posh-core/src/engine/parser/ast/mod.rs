@@ -4,7 +4,8 @@ pub mod reconstruct;
 mod tests;
 
 use std::borrow::Cow;
-use std::{iter::Peekable, ops::RangeInclusive};
+use std::iter::Peekable;
+use std::ops::RangeInclusive;
 
 use super::consumer::Consumer;
 use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
@@ -34,6 +35,9 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
         ))),
     }
 }
+
+/// Type alias used in data structures that keep track of whitespace.
+pub type LeadingWhitespace = String;
 
 pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse(&mut self) -> std::result::Result<SyntaxTree, SyntaxTree> {
@@ -509,18 +513,6 @@ pub struct List {
     pub rest: Vec<(Separator, AndOrList)>,
 }
 
-// foo
-//
-// foo;
-//
-// foo &
-//
-// foo && bar
-//
-// foo && bar &
-//
-// foo & bar ; baz && quux ;
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
     pub first: Pipeline,
@@ -540,7 +532,7 @@ pub struct Pipeline {
 
 impl Pipeline {
     /// Always at least one in length, since this joins self.first and self.rest.
-    pub fn pipeline(&self) -> Vec<&Command> {
+    pub fn full(&self) -> Vec<&Command> {
         let mut v = vec![&self.first];
         for (_, cmd) in &self.rest {
             v.push(cmd);
@@ -678,8 +670,6 @@ impl VariableAssignment {
         }
     }
 }
-
-pub type LeadingWhitespace = String;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Word {
@@ -900,10 +890,7 @@ pub enum Separator {
 
 impl Separator {
     pub fn is_sync(&self) -> bool {
-        match self {
-            Self::Sync(_) => true,
-            Self::Async(_) => false,
-        }
+        matches!(self, Self::Sync(_))
     }
 
     pub fn is_async(&self) -> bool {
