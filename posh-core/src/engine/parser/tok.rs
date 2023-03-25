@@ -153,7 +153,13 @@ impl Tokenizer for Peekable<Chars<'_>> {
     }
 
     fn parse_backslash(&mut self) -> Option<Token> {
-        self.consume_single('\\').map(|_| Token::Backslash)
+        let backslash = self.consume_single('\\').map(|_| Token::Backslash);
+        if let Some('\n') = self.peek() {
+            self.next();
+            None
+        } else {
+            backslash
+        }
     }
 
     fn parse_whitespace(&mut self) -> Option<Token> {

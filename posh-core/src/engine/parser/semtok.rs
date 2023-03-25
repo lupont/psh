@@ -276,11 +276,7 @@ where
             }
         }
 
-        if word.is_empty() {
-            None
-        } else {
-            Some(word)
-        }
+        Some(word)
     }
 
     fn parse_word(&mut self) -> Option<SemanticToken> {

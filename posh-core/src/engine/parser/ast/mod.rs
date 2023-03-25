@@ -61,9 +61,8 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     }
 
     fn parse_complete_command(&mut self) -> Option<CompleteCommand> {
-        let list = match self.parse_list() {
-            Some(list) => list,
-            None => return None,
+        let Some(list) = self.parse_list() else {
+            return None;
         };
 
         let separator = self.parse_separator();
@@ -111,9 +110,8 @@ where
     T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
 {
     fn parse_list(&mut self) -> Option<List> {
-        let first = match self.parse_and_or_list() {
-            Some(list) => list,
-            None => return None,
+        let Some(first) = self.parse_and_or_list() else {
+            return None;
         };
 
         let mut rest = Vec::new();
@@ -135,9 +133,8 @@ where
     }
 
     fn parse_and_or_list(&mut self) -> Option<AndOrList> {
-        let first = match self.parse_pipeline() {
-            Some(pipeline) => pipeline,
-            None => return None,
+        let Some(first) = self.parse_pipeline() else {
+            return None;
         };
 
         let mut rest = Vec::new();
@@ -164,12 +161,9 @@ where
 
         let bang = self.parse_bang();
 
-        let first = match self.parse_command() {
-            Some(cmd) => cmd,
-            None => {
-                *self = initial;
-                return None;
-            }
+        let Some(first) = self.parse_command() else {
+            *self = initial;
+            return None;
         };
 
         let mut rest = Vec::new();
@@ -696,12 +690,12 @@ pub struct Word {
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
         let raw = input.to_string();
-        let quote_removed = Self::do_quote_removal(input);
-        let expanded = Self::expand(&quote_removed);
+        let expanded = Self::expand(input);
+        let quote_removed = Self::do_quote_removal(&expanded);
 
         Self {
             raw,
-            name: expanded,
+            name: quote_removed,
             whitespace: whitespace.into(),
             expansions: Default::default(),
         }

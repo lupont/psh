@@ -469,7 +469,9 @@ mod syntax_highlighting {
         fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
             let cmd_color = match &self.name {
                 Some(Word { name, .. })
-                    if engine.has_command(name) || engine.has_builtin(name) || super::has_abbreviation(name) =>
+                    if engine.has_command(name)
+                        || engine.has_builtin(name)
+                        || super::has_abbreviation(name) =>
                 {
                     Colors::VALID_CMD_COLOR
                 }

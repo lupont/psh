@@ -113,7 +113,7 @@ expect() {
         success "$res"
     else
         printf '$ %s\n' "$2"
-        QUIET=false failure "$res (expected: $1)"
+        QUIET=false failure "$res (expected: ${1:-<empty>})"
         FAILED=$((FAILED + 1))
     fi
 

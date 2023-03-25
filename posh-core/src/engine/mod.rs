@@ -6,7 +6,7 @@ use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use crate::{path, Result, Error};
+use crate::{path, Error, Result};
 
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{
@@ -69,7 +69,7 @@ impl<W: Write> Engine<W> {
                 } else {
                     false
                 }
-            },
+            }
             _ => false,
         }
     }
