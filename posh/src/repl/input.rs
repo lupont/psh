@@ -124,14 +124,10 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
             }
 
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                if !state.line.is_empty() {
-                    continue;
+                if state.line.is_empty() {
+                    state.about_to_exit = true;
+                    state.line = "exit".to_string();
                 }
-
-                execute!(engine.writer, style::Print("\n\r"))?;
-
-                // FIXME: better control flow than this
-                std::process::exit(0);
             }
 
             (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
