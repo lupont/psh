@@ -3,6 +3,7 @@ pub mod parser;
 
 use std::fs;
 use std::io::{self, Stdout, Write};
+use std::ops::Not;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
@@ -247,7 +248,7 @@ impl<W: Write> Engine<W> {
         &mut self,
         pipeline: &Pipeline,
         background: bool,
-    ) -> Result<(ExitStatus, Vec<ExitStatus>)> {
+    ) -> Result<ExitStatus> {
         let pipeline_cmds = pipeline.full();
         let mut pipeline_iter = pipeline_cmds.iter().peekable();
         let mut pids = Vec::with_capacity(pipeline_iter.len());
@@ -257,8 +258,8 @@ impl<W: Write> Engine<W> {
 
         while let Some(cmd) = pipeline_iter.next() {
             if self.is_builtin(cmd) {
-                let code = self.execute_builtin(cmd)?;
-                return Ok((code, vec![code]));
+                last_status = self.execute_builtin(cmd)?;
+                break;
             }
 
             let stdin = match last_stdout {
@@ -292,13 +293,11 @@ impl<W: Write> Engine<W> {
             }
         }
 
-        let exit_status = match (pipeline.has_bang(), last_status) {
-            (false, code) => code,
-            (true, code) if code.is_ok() => ExitStatus::from_code(1),
-            (true, _) => ExitStatus::from_code(0),
-        };
-
-        Ok((exit_status, vec![exit_status]))
+        Ok(if pipeline.has_bang() {
+            !last_status
+        } else {
+            last_status
+        })
     }
 
     pub fn execute_and_or_list(
@@ -306,15 +305,14 @@ impl<W: Write> Engine<W> {
         logical_expr: &AndOrList,
         background: bool,
     ) -> Result<Vec<ExitStatus>> {
-        let (mut prev_status, mut codes) =
-            self.execute_pipeline(&logical_expr.first, background)?;
+        let mut prev_status = self.execute_pipeline(&logical_expr.first, background)?;
+        let mut codes = vec![prev_status];
 
         for (op, expr) in &logical_expr.rest {
             match (op, prev_status.is_ok()) {
                 (LogicalOp::And(_), true) | (LogicalOp::Or(_), false) => {
-                    let (status, mut pipeline_codes) = self.execute_pipeline(expr, background)?;
-                    prev_status = status;
-                    codes.append(&mut pipeline_codes);
+                    prev_status = self.execute_pipeline(expr, background)?;
+                    codes.push(prev_status);
                 }
                 _ => {}
             }
@@ -380,6 +378,16 @@ impl From<std::process::ExitStatus> for ExitStatus {
         Self {
             // FIXME: handle None case
             code: status.code().unwrap(),
+        }
+    }
+}
+
+impl Not for ExitStatus {
+    type Output = Self;
+    fn not(self) -> Self::Output {
+        match self.code {
+            0 => Self::Output { code: 1 },
+            _ => Self::Output { code: 0 },
         }
     }
 }
