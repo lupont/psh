@@ -671,6 +671,13 @@ impl VariableAssignment {
     }
 }
 
+#[derive(PartialEq, Clone, Copy)]
+enum QuoteState {
+    InSingle,
+    InDouble,
+    None,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Word {
     pub raw: String,
@@ -684,12 +691,72 @@ impl Word {
         let raw = input.to_string();
         let expanded = Self::expand(input);
         let quote_removed = Self::do_quote_removal(&expanded);
+        let expansions = Self::find_expansions(input);
 
         Self {
             raw,
             name: quote_removed,
             whitespace: whitespace.into(),
-            expansions: Default::default(),
+            expansions,
+        }
+    }
+
+    fn find_expansions(input: &str) -> Vec<Expansion> {
+        let mut expansions = Vec::new();
+
+        if let Some(tilde) = Self::find_tilde_expansion(input) {
+            expansions.push(tilde);
+        }
+
+        if let Some(cmd_sub) = Self::find_command_substitution(input) {
+            expansions.push(cmd_sub);
+        }
+
+        expansions
+    }
+
+    fn find_tilde_expansion(input: &str) -> Option<Expansion> {
+        if !matches!(input.chars().next(), Some('~')) {
+            return None;
+        }
+
+        let slash_index = match Self::find(QuoteState::None, input, '/', true) {
+            Some(index) => index,
+            None => input.len(),
+        };
+
+        let name = &input[1..slash_index];
+
+        Some(Expansion::Tilde {
+            range: 0..=slash_index - 1,
+            name: name.to_string(),
+        })
+    }
+
+    fn find_command_substitution(input: &str) -> Option<Expansion> {
+        let unquoted_start_index = match Self::find(QuoteState::None, input, '$', true) {
+            Some(dollar_index) => match Self::find(QuoteState::None, input, '(', true) {
+                Some(lparen_index) if dollar_index + 1 == lparen_index => Some(dollar_index),
+
+                _ => None,
+            },
+
+            None => None,
+        };
+        let unquoted_end_index = Self::find(QuoteState::None, input, ')', false);
+
+        match (unquoted_start_index, unquoted_end_index) {
+            (Some(start), Some(end)) => {
+                let sub = &input[start + 2..=end - 1];
+                let expansion = Expansion::Command {
+                    range: start..=end,
+                    tree: parse(sub, false).unwrap(),
+                };
+
+                Some(expansion)
+            }
+
+            _ => None,
         }
     }
 
@@ -748,7 +815,7 @@ impl Word {
             return Cow::Borrowed(input);
         }
 
-        let slash_index = match Self::find_unquoted(input, '/') {
+        let slash_index = match Self::find(QuoteState::None, input, '/', true) {
             Some(index) => index,
             None => input.len(),
         };
@@ -771,40 +838,36 @@ impl Word {
         Cow::Owned(input.replacen(pre, &expanded, 1))
     }
 
-    fn find_unquoted(haystack: &str, needle: char) -> Option<usize> {
-        #[derive(PartialEq, Clone, Copy)]
-        enum State {
-            InSingleQuote,
-            InDoubleQuote,
-            None,
-        }
-
-        let mut state = State::None;
+    fn find(target_state: QuoteState, haystack: &str, needle: char, first: bool) -> Option<usize> {
+        let mut state = QuoteState::None;
         let mut is_escaped = false;
 
         let mut found = None;
 
         for (i, c) in haystack.chars().enumerate() {
             match (c, state) {
-                ('\'', State::InSingleQuote) => {
-                    state = State::None;
+                ('\'', QuoteState::InSingle) => {
+                    state = QuoteState::None;
                 }
-                ('\'', State::None) => {
-                    state = State::InSingleQuote;
+                ('\'', QuoteState::None) => {
+                    state = QuoteState::InSingle;
                 }
 
-                ('"', State::InDoubleQuote) if !is_escaped => {
-                    state = State::None;
+                ('"', QuoteState::InDouble) if !is_escaped => {
+                    state = QuoteState::None;
                 }
-                ('"', State::None) => {
-                    state = State::InDoubleQuote;
+                ('"', QuoteState::None) => {
+                    state = QuoteState::InDouble;
                 }
 
                 ('\\', _) if !is_escaped => is_escaped = true,
 
                 (c, _) => {
-                    if state == State::None && c == needle {
+                    if state == target_state && c == needle {
                         found = Some(i);
+                        if first {
+                            break;
+                        }
                     }
                     is_escaped = false;
                 }
@@ -818,7 +881,8 @@ impl Word {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expansion {
     Tilde {
-        index: usize,
+        range: RangeInclusive<usize>,
+        name: String,
     },
 
     Glob {
