@@ -671,10 +671,10 @@ impl VariableAssignment {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 enum QuoteState {
-    InSingle,
-    InDouble,
+    Single,
+    Double,
     None,
 }
 
@@ -750,6 +750,7 @@ impl Word {
                 let sub = &input[start + 2..=end - 1];
                 let expansion = Expansion::Command {
                     range: start..=end,
+                    part: sub.to_string(),
                     tree: parse(sub, false).unwrap(),
                 };
 
@@ -846,30 +847,30 @@ impl Word {
 
         for (i, c) in haystack.chars().enumerate() {
             match (c, state) {
-                ('\'', QuoteState::InSingle) => {
+                ('\'', QuoteState::Single) => {
                     state = QuoteState::None;
                 }
                 ('\'', QuoteState::None) => {
-                    state = QuoteState::InSingle;
+                    state = QuoteState::Single;
                 }
 
-                ('"', QuoteState::InDouble) if !is_escaped => {
+                ('"', QuoteState::Double) if !is_escaped => {
                     state = QuoteState::None;
                 }
                 ('"', QuoteState::None) => {
-                    state = QuoteState::InDouble;
+                    state = QuoteState::Double;
                 }
 
                 ('\\', _) if !is_escaped => is_escaped = true,
 
                 (c, _) => {
+                    is_escaped = false;
                     if state == target_state && c == needle {
                         found = Some(i);
                         if first {
                             break;
                         }
                     }
-                    is_escaped = false;
                 }
             }
         }
@@ -903,6 +904,7 @@ pub enum Expansion {
 
     Command {
         range: RangeInclusive<usize>,
+        part: String,
         tree: SyntaxTree,
     },
 
