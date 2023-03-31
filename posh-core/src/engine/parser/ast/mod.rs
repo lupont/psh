@@ -89,11 +89,14 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse_command(&mut self) -> Option<Command> {
         self.parse_function_definition()
             .map(Command::FunctionDefinition)
-            .or_else(|| self.parse_compound_command().map(Command::Compound))
+            .or_else(|| {
+                self.parse_compound_command()
+                    .map(|(c, r)| Command::Compound(c, r))
+            })
             .or_else(|| self.parse_simple_command().map(Command::Simple))
     }
     fn parse_function_definition(&mut self) -> Option<FunctionDefinition>;
-    fn parse_compound_command(&mut self) -> Option<CompoundCommand>;
+    fn parse_compound_command(&mut self) -> Option<(CompoundCommand, Vec<Redirection>)>;
     fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
 
     fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
@@ -195,7 +198,7 @@ where
         None
     }
 
-    fn parse_compound_command(&mut self) -> Option<CompoundCommand> {
+    fn parse_compound_command(&mut self) -> Option<(CompoundCommand, Vec<Redirection>)> {
         None
     }
 
@@ -548,7 +551,7 @@ impl Pipeline {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Simple(SimpleCommand),
-    Compound(CompoundCommand),
+    Compound(CompoundCommand, Vec<Redirection>),
     FunctionDefinition(FunctionDefinition),
 }
 

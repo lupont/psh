@@ -84,7 +84,13 @@ impl ToString for Command {
     fn to_string(&self) -> String {
         match self {
             Command::Simple(s) => s.to_string(),
-            Command::Compound(c) => c.to_string(),
+            Command::Compound(cmd, redirections) => {
+                let mut s = cmd.to_string();
+                for r in redirections {
+                    s.push_str(&r.to_string());
+                }
+                s
+            }
             Command::FunctionDefinition(f) => f.to_string(),
         }
     }

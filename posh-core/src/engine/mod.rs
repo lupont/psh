@@ -239,7 +239,7 @@ impl<W: Write> Engine<W> {
     ) -> Result<(bool, process::Child)> {
         match command {
             Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout, stderr),
-            Command::Compound(_cmd) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
+            Command::Compound(_cmd, _redirections) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
             Command::FunctionDefinition(_func_def) => todo!(), //self.execute_function_defenition(func_def, stdin, stdout, stderr)
         }
     }

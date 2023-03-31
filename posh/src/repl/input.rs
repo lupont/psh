@@ -455,7 +455,7 @@ mod syntax_highlighting {
         fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
             match self {
                 Command::Simple(cmd) => cmd.write_highlighted(engine),
-                Command::Compound(_) => todo!(),
+                Command::Compound(_, _) => todo!(),
                 Command::FunctionDefinition(_) => todo!(),
             }
         }
