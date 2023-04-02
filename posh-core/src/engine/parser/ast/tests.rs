@@ -825,7 +825,6 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: "$foo".to_string(),
         name: "$foo".to_string(),
         whitespace: "".to_string(),
         expansions: vec![Expansion::Parameter {
@@ -840,8 +839,7 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: "\"$foo\"".to_string(),
-        name: "$foo".to_string(),
+        name: "\"$foo\"".to_string(),
         whitespace: "".to_string(),
         expansions: vec![Expansion::Parameter {
             range: 1..=4,
@@ -855,8 +853,7 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: "'$foo'".to_string(),
-        name: "$foo".to_string(),
+        name: "'$foo'".to_string(),
         whitespace: "".to_string(),
         expansions: vec![],
     };
@@ -867,8 +864,7 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: "\"$foo..$bar_-\"".to_string(),
-        name: "$foo..$bar_-".to_string(),
+        name: "\"$foo..$bar_-\"".to_string(),
         whitespace: "".to_string(),
         expansions: vec![
             Expansion::Parameter {
@@ -889,8 +885,7 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: r#"$FOO\ $_"#.to_string(),
-        name: "$FOO $_".to_string(),
+        name: r#"$FOO\ $_"#.to_string(),
         whitespace: "".to_string(),
         expansions: vec![
             Expansion::Parameter {
@@ -910,8 +905,7 @@ fn word_with_parameter_expansions() {
     let actual = tokens.parse_word(false);
 
     let expected = Word {
-        raw: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
-        name: "$a$FOO\\ $_foo$b$c".to_string(),
+        name: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
         whitespace: "".to_string(),
         expansions: vec![
             Expansion::Parameter {

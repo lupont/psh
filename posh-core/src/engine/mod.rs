@@ -1,3 +1,4 @@
+pub mod expand;
 pub mod history;
 pub mod parser;
 
@@ -9,6 +10,7 @@ use std::process::{self, Stdio};
 
 use crate::{path, Error, Result};
 
+use self::expand::Expand;
 pub use self::history::{FileHistory, History};
 use self::parser::ast::{
     parse, AndOrList, Command, CompleteCommand, CompoundCommand, FunctionDefinition, LogicalOp,
@@ -121,6 +123,7 @@ impl<W: Write> Engine<W> {
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
         let ast = parse(line.to_string(), false)?;
+        let ast = ast.expand(self);
         self.walk_ast(ast)
     }
 

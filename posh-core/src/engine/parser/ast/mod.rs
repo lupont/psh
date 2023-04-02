@@ -3,7 +3,6 @@ pub mod reconstruct;
 #[cfg(test)]
 mod tests;
 
-use std::borrow::Cow;
 use std::iter::Peekable;
 use std::ops::RangeInclusive;
 
@@ -11,8 +10,7 @@ use super::consumer::Consumer;
 use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use super::tok::Tokenizer;
 
-use crate::path;
-use crate::{Error, Result};
+use crate::{Error, Result, path};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
     match input
@@ -441,10 +439,10 @@ where
         let initial = self.clone();
 
         if let Some(Word {
-            whitespace, raw, ..
+            whitespace, name, ..
         }) = self.parse_word(false)
         {
-            if let Some((lhs, rhs)) = raw.split_once('=') {
+            if let Some((lhs, rhs)) = name.split_once('=') {
                 if is_name(lhs) {
                     let var_assg = VariableAssignment::new(
                         lhs,
@@ -533,6 +531,16 @@ pub struct AndOrList {
     // the tuple, each `LogicalOp` here operates on the previous
     // `Pipeline` and it's tuple partner.
     pub rest: Vec<(LogicalOp, Pipeline)>,
+}
+
+impl AndOrList {
+    pub fn all_pipelines(&self) -> Vec<&Pipeline> {
+        let mut pipelines = vec![&self.first];
+        for (_, p) in &self.rest {
+            pipelines.push(p);
+        }
+        pipelines
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -684,7 +692,7 @@ impl VariableAssignment {
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum QuoteState {
+pub enum QuoteState {
     Single,
     Double,
     None,
@@ -692,7 +700,6 @@ enum QuoteState {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Word {
-    pub raw: String,
     pub name: String,
     pub whitespace: LeadingWhitespace,
     pub expansions: Vec<Expansion>,
@@ -700,14 +707,10 @@ pub struct Word {
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
-        let raw = input.to_string();
-        let expanded = Self::expand(input);
-        let quote_removed = Self::do_quote_removal(&expanded);
         let expansions = Self::find_expansions(input);
 
         Self {
-            raw,
-            name: quote_removed,
+            name: input.to_string(),
             whitespace: whitespace.into(),
             expansions,
         }
@@ -723,7 +726,7 @@ impl Word {
         let parameters = Self::find_parameter_expansions(input);
         expansions.extend(&mut parameters.into_iter());
 
-        if let Some(cmd_sub) = Self::find_command_substitution(input) {
+        if let Some(cmd_sub) = Self::find_cmd_sub_expansions(input) {
             expansions.push(cmd_sub);
         }
 
@@ -818,13 +821,17 @@ impl Word {
 
         let name = &input[1..slash_index];
 
+        if !path::is_portable_filename(name) {
+            return None;
+        }
+
         Some(Expansion::Tilde {
             range: 0..=slash_index - 1,
             name: name.to_string(),
         })
     }
 
-    fn find_command_substitution(input: &str) -> Option<Expansion> {
+    fn find_cmd_sub_expansions(input: &str) -> Option<Expansion> {
         let unquoted_start_index = match Self::find(QuoteState::None, input, '$', true) {
             Some(dollar_index) => match Self::find(QuoteState::None, input, '(', true) {
                 Some(lparen_index) if dollar_index + 1 == lparen_index => Some(dollar_index),
@@ -852,85 +859,7 @@ impl Word {
         }
     }
 
-    fn do_quote_removal(input: &str) -> String {
-        #[derive(PartialEq, Clone, Copy)]
-        enum State {
-            InSingleQuote,
-            InDoubleQuote,
-            None,
-        }
-
-        let mut s = String::new();
-        let mut state = State::None;
-        let mut is_escaped = false;
-
-        for c in input.chars() {
-            match (c, state) {
-                ('\'', State::InSingleQuote) => {
-                    state = State::None;
-                }
-                ('\'', State::None) => {
-                    state = State::InSingleQuote;
-                }
-                (c, State::InSingleQuote) => s.push(c),
-
-                ('"', State::InDoubleQuote) if !is_escaped => {
-                    state = State::None;
-                }
-                ('"', State::None) => {
-                    state = State::InDoubleQuote;
-                }
-
-                (c, State::InDoubleQuote) if !is_escaped => {
-                    s.push(c);
-                }
-
-                ('\\', _) if !is_escaped => is_escaped = true,
-
-                (c, _) => {
-                    s.push(c);
-                    is_escaped = false;
-                }
-            }
-        }
-
-        s
-    }
-
-    fn expand(input: &str) -> String {
-        // TODO: expand
-        Self::expand_tilde(input).to_string()
-    }
-
-    fn expand_tilde(input: &str) -> Cow<str> {
-        if !matches!(input.chars().next(), Some('~')) {
-            return Cow::Borrowed(input);
-        }
-
-        let slash_index = match Self::find(QuoteState::None, input, '/', true) {
-            Some(index) => index,
-            None => input.len(),
-        };
-
-        let pre = &input[..slash_index];
-
-        let expanded = if pre.len() > 1 && path::is_portable_filename(&pre[1..slash_index]) {
-            // FIXME: the tilde-prefix shall be replaced by a pathname
-            //        of the initial working directory associated with
-            //        the login name obtained using the getpwnam()
-            //        function as defined in the System Interfaces
-            //        volume of POSIX.1-2017
-            format!("/home/{}", &pre[1..slash_index])
-        } else if pre.len() > 1 {
-            return Cow::Borrowed(input);
-        } else {
-            path::home_dir()
-        };
-
-        Cow::Owned(input.replacen(pre, &expanded, 1))
-    }
-
-    fn find(target_state: QuoteState, haystack: &str, needle: char, first: bool) -> Option<usize> {
+    pub fn find(target_state: QuoteState, haystack: &str, needle: char, first: bool) -> Option<usize> {
         let mut state = QuoteState::None;
         let mut is_escaped = false;
 
