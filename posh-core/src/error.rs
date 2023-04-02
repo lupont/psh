@@ -13,6 +13,7 @@ pub enum Error {
     UnknownCommand(String),
     Unimplemented(String),
     SyntaxError(String),
+    ParseError(ParseError),
 }
 
 impl fmt::Display for Error {
@@ -29,6 +30,7 @@ impl fmt::Display for Error {
                 Self::UnknownCommand(cmd) => format!("Unknown command: {}", cmd),
                 Self::Unimplemented(s) => s.to_string(),
                 Self::SyntaxError(s) => format!("syntax error: {s}"),
+                Self::ParseError(e) => e.to_string(),
             }
         )
     }
@@ -41,3 +43,22 @@ impl From<io::Error> for Error {
         Self::Io(e)
     }
 }
+
+#[derive(Debug)]
+pub enum ParseError {
+    InvalidName(String),
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::InvalidName(name) => format!("`{name}` is not a valid name"),
+            }
+        )
+    }
+}
+
+impl std::error::Error for ParseError {}

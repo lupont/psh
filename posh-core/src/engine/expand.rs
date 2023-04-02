@@ -1,7 +1,6 @@
 use std::io::Write;
 
 use crate::ast::prelude::*;
-use crate::ast::QuoteState;
 use crate::{path, Engine};
 
 pub trait Expand {
@@ -11,8 +10,24 @@ pub trait Expand {
 impl Expand for SyntaxTree {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         Self {
-            program: self.program.into_iter().map(|c| c.expand(engine)).collect(),
+            leading: self.leading,
+            commands: self
+                .commands
+                .map(|(cmds, linebreak)| (cmds.expand(engine), linebreak)),
             unparsed: self.unparsed,
+        }
+    }
+}
+
+impl Expand for CompleteCommands {
+    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+        Self {
+            head: self.head.expand(engine),
+            tail: self
+                .tail
+                .into_iter()
+                .map(|(newlines, cmd)| (newlines, cmd.expand(engine)))
+                .collect(),
         }
     }
 }
@@ -20,9 +35,10 @@ impl Expand for SyntaxTree {
 impl Expand for CompleteCommand {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         Self {
+            list_and_separator: self
+                .list_and_separator
+                .map(|(list, sep)| (list.expand(engine), sep)),
             comment: self.comment,
-            separator: self.separator,
-            list: self.list.expand(engine),
         }
     }
 }
@@ -30,9 +46,9 @@ impl Expand for CompleteCommand {
 impl Expand for List {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         Self {
-            first: self.first.expand(engine),
-            rest: self
-                .rest
+            head: self.head.expand(engine),
+            tail: self
+                .tail
                 .into_iter()
                 .map(|(sep, and_or)| (sep, and_or.expand(engine)))
                 .collect(),
@@ -43,11 +59,11 @@ impl Expand for List {
 impl Expand for AndOrList {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         Self {
-            first: self.first.expand(engine),
-            rest: self
-                .rest
+            head: self.head.expand(engine),
+            tail: self
+                .tail
                 .into_iter()
-                .map(|(op, pipeline)| (op, pipeline.expand(engine)))
+                .map(|(op, linebreak, pipeline)| (op, linebreak, pipeline.expand(engine)))
                 .collect(),
         }
     }
@@ -57,11 +73,19 @@ impl Expand for Pipeline {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         Self {
             bang: self.bang,
-            first: self.first.expand(engine),
-            rest: self
-                .rest
+            sequence: self.sequence.expand(engine),
+        }
+    }
+}
+
+impl Expand for PipeSequence {
+    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+        Self {
+            head: Box::new(self.head.expand(engine)),
+            tail: self
+                .tail
                 .into_iter()
-                .map(|(ws, cmd)| (ws, cmd.expand(engine)))
+                .map(|(ws, linebreak, cmd)| (ws, linebreak, cmd.expand(engine)))
                 .collect(),
         }
     }
@@ -120,18 +144,22 @@ impl Expand for Redirection {
                 file_descriptor,
                 append,
                 target,
+                target_is_fd,
             } => Self::Output {
                 file_descriptor: file_descriptor.expand(engine),
                 append,
                 target: target.expand(engine),
+                target_is_fd,
             },
 
             Self::Input {
                 file_descriptor,
                 target,
+                target_is_fd,
             } => Self::Input {
                 file_descriptor: file_descriptor.expand(engine),
                 target: target.expand(engine),
+                target_is_fd,
             },
 
             Self::HereDocument {

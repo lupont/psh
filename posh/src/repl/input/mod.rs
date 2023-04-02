@@ -9,7 +9,6 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
-use posh_core::engine::parser::parse;
 use posh_core::{Engine, Result};
 
 use crate::config::{Colors, ABBREVIATIONS};
@@ -306,9 +305,10 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
 
-    let ast = parse(&state.line, true)?;
+    let ast = posh_core::parse(&state.line, true)?;
     ast.write_highlighted(engine)?;
     engine.writer.flush()?;
+    // queue!(engine.writer, style::Print(&state.line))?;
 
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;

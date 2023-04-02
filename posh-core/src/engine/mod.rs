@@ -158,6 +158,13 @@ impl<W: Write> Engine<W> {
         self.walk_ast(ast)
     }
 
+    pub fn execute_file(&mut self, path: PathBuf) -> Result<Vec<ExitStatus>> {
+        let lines = std::fs::read_to_string(path)?;
+        let ast = parse(lines, false)?;
+        let ast = ast.expand(self);
+        self.walk_ast(ast)
+    }
+
     fn execute_simple_command(
         &mut self,
         cmd: &SimpleCommand,
@@ -167,7 +174,7 @@ impl<W: Write> Engine<W> {
     ) -> Result<Option<(bool, process::Child)>> {
         let mut assignments = Vec::new();
         for assignment in cmd.assignments() {
-            let lhs = assignment.lhs.clone();
+            let lhs = assignment.lhs.name.clone();
             let rhs = match &assignment.rhs {
                 Some(rhs) => rhs.name.clone(),
                 None => "".to_string(),
@@ -194,6 +201,7 @@ impl<W: Write> Engine<W> {
                     file_descriptor,
                     append,
                     target,
+                    target_is_fd: _,
                 } => {
                     let fd = &file_descriptor.name;
 
@@ -214,6 +222,7 @@ impl<W: Write> Engine<W> {
                 Redirection::Input {
                     file_descriptor,
                     target,
+                    target_is_fd: _,
                 } => {
                     let fd = &file_descriptor.name;
 
@@ -342,13 +351,13 @@ impl<W: Write> Engine<W> {
 
     pub fn execute_and_or_list(
         &mut self,
-        logical_expr: &AndOrList,
+        and_or_list: &AndOrList,
         background: bool,
     ) -> Result<Vec<ExitStatus>> {
-        let mut prev_status = self.execute_pipeline(&logical_expr.first, background)?;
+        let mut prev_status = self.execute_pipeline(&and_or_list.head, background)?;
         let mut codes = vec![prev_status];
 
-        for (op, expr) in &logical_expr.rest {
+        for (op, _, expr) in &and_or_list.tail {
             match (op, prev_status.is_ok()) {
                 (LogicalOp::And(_), true) | (LogicalOp::Or(_), false) => {
                     prev_status = self.execute_pipeline(expr, background)?;
@@ -376,9 +385,13 @@ impl<W: Write> Engine<W> {
     }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
-        ast.program
-            .into_iter()
-            .fold(Ok(vec![]), |_, c| self.execute(&c))
+        if let Some((cmds, _)) = ast.commands {
+            return cmds
+                .full()
+                .into_iter()
+                .fold(Ok(vec![]), |_, c| self.execute(c));
+        }
+        Ok(vec![])
     }
 }
 

@@ -3,7 +3,7 @@ use crossterm::style::Color;
 pub struct Colors;
 
 impl Colors {
-    pub const UNPARSED: Color = Color::Red;
+    pub const UNPARSED: Color = Color::DarkRed;
 
     pub const COMMENT_COLOR: Color = Color::DarkGrey;
 
@@ -26,22 +26,10 @@ impl Colors {
     pub const SEPARATOR_COLOR: Color = Color::DarkBlue;
     pub const LOGICAL_OP_COLOR: Color = Color::DarkBlue;
 
-    // pub const VALID_ABBR: Color = Color::Yellow;
-    // pub const VALID_CMD: Color = Color::Yellow;
-    // pub const VALID_BUILTIN: Color = Color::DarkYellow;
-    // pub const INVALID_CMD: Color = Color::Red;
+    pub const FUNC_DEF_PAREN_COLOR: Color = Color::Grey;
+    pub const BRACE_GROUP_COLOR: Color = Color::DarkGreen;
 
-    // pub const STRING: Color = Color::Reset;
-    // pub const SINGLE_QUOTED_STRING: Color = Color::Blue;
-    // pub const DOUBLE_QUOTED_STRING: Color = Color::DarkGreen;
-    // pub const ASSIGNMENT: Color = Color::DarkBlue;
-    // pub const FLAG: Color = Color::Grey;
-    // pub const PIPE: Color = Color::DarkMagenta;
-    // pub const SEMICOLON: Color = Color::Magenta;
-    // pub const REDIRECT_OUTPUT: Color = Color::Grey;
     pub const REDIRECT_INPUT: Color = Color::Grey;
-    // pub const NYI: Color = Color::Red;
-    // pub const INCOMPLETE: Color = Color::Red;
 
     pub const NON_ZERO_RC: Color = Color::Red;
     pub const PROMPT: Color = Color::Yellow;

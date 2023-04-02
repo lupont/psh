@@ -15,7 +15,8 @@ The project is (currently) split into two crates:
 posh aims to be a POSIX compliant shell, with interactive features inspired
 (mostly) by fish. One of the main purposes of the `posh-core` crate is to expose
 the AST parsed by input, to make it easy to create different front-ends and
-linting/formatting tools.
+linting/formatting tools. It would be cool to expose each individual parser as
+well, somehow.
 
 Currently, it's a long way from reaching these goals. There are measures taken
 to move the project in this direction, but it is very much alpha software and
