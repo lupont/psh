@@ -61,7 +61,7 @@ impl<W: Write> Engine<W> {
     pub fn has_builtin(&self, s: impl AsRef<str>) -> bool {
         let name = s.as_ref();
         let has = |s| name == s || name.starts_with(&format!("{s} "));
-        has("cd") || has("exit") || has(":")
+        has("cd") || has("exit") || has(":") || has("debug")
     }
 
     pub fn is_builtin(&self, cmd: &Command) -> bool {
@@ -89,6 +89,12 @@ impl<W: Write> Engine<W> {
         let args = cmd.args().collect::<Vec<_>>();
 
         match (command.as_str(), &args[..]) {
+            ("debug", _) => {
+                writeln!(self.writer, "prev_dir: {:?}", self.prev_dir)?;
+                writeln!(self.writer, "bindings: {:?}", self.bindings)?;
+                Ok(ExitStatus::from_code(0))
+            }
+
             (":", _) => Ok(ExitStatus::from_code(0)),
 
             ("exit", []) => self.exit(0),
