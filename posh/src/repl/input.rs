@@ -569,6 +569,7 @@ mod syntax_highlighting {
         fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
             Ok(queue!(
                 engine.writer,
+                Print(&self.whitespace),
                 SetForegroundColor(Colors::ASSIGNMENT_LHS_COLOR),
                 Print(self.lhs.to_string()),
                 SetForegroundColor(Colors::ASSIGNMENT_OP_COLOR),
