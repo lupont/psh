@@ -19,7 +19,7 @@ pub struct Engine<W: Write> {
     pub prev_dir: Option<PathBuf>,
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
-    pub bindings: HashMap<String, String>,
+    pub assignments: HashMap<String, String>,
 }
 
 impl<W: Write> Engine<W> {
@@ -56,6 +56,18 @@ impl<W: Write> Engine<W> {
         std::process::exit(code)
     }
 
+    fn debug(&mut self, args: &[&str]) -> Result<ExitStatus> {
+        match args {
+            &["assignments"] => {
+                for (k, v) in &self.assignments {
+                    writeln!(self.writer, "{k}={v}")?;
+                }
+            }
+            _ => {}
+        }
+        Ok(ExitStatus::from_code(0))
+    }
+
     pub fn has_builtin(&self, s: impl AsRef<str>) -> bool {
         let name = s.as_ref();
         let has = |s| name == s || name.starts_with(&format!("{s} "));
@@ -84,14 +96,10 @@ impl<W: Write> Engine<W> {
             return Err(Error::Unimplemented("tried to execute empty command as builtin".to_string()));
         };
 
-        let args = cmd.args().collect::<Vec<_>>();
+        let args = cmd.args().map(|s| s.as_str()).collect::<Vec<_>>();
 
         match (command.as_str(), &args[..]) {
-            ("debug", _) => {
-                writeln!(self.writer, "prev_dir: {:?}", self.prev_dir)?;
-                writeln!(self.writer, "bindings: {:?}", self.bindings)?;
-                Ok(ExitStatus::from_code(0))
-            }
+            ("debug", args) => self.debug(args),
 
             (":", _) => Ok(ExitStatus::from_code(0)),
 
@@ -117,12 +125,12 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<&String> {
-        self.bindings.get(var_name.as_ref())
+        self.assignments.get(var_name.as_ref())
     }
 
-    fn update_bindings(&mut self) {
+    fn update_assignments_from_env(&mut self) {
         for (k, v) in std::env::vars() {
-            self.bindings.insert(k, v);
+            self.assignments.insert(k, v);
         }
     }
 
@@ -160,7 +168,7 @@ impl<W: Write> Engine<W> {
 
         let Some(name) = cmd.name() else {
             for (k, v) in assignments {
-                self.bindings.insert(k, v);
+                self.assignments.insert(k, v);
             }
             return Ok(None);
         };
@@ -219,7 +227,7 @@ impl<W: Write> Engine<W> {
         let stdout_redirected = stdout_override.is_some();
 
         let child = command
-            .envs(&self.bindings)
+            .envs(&self.assignments)
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
@@ -345,7 +353,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
-        self.update_bindings();
+        self.update_assignments_from_env();
 
         let lists_with_separator = cmd.list_with_separator();
 
@@ -373,9 +381,9 @@ impl Engine<Stdout> {
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
-            bindings: Default::default(),
+            assignments: Default::default(),
         };
-        this.update_bindings();
+        this.update_assignments_from_env();
         this
     }
 }

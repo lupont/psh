@@ -187,11 +187,7 @@ fn expand_tilde(mut word: Word) -> Word {
         word.name.replace_range(range, &path::home_dir());
     }
 
-    Word {
-        name: word.name,
-        whitespace: word.whitespace,
-        expansions: word.expansions,
-    }
+    word
 }
 
 fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
