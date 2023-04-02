@@ -465,12 +465,16 @@ where
     }
 }
 
+fn is_valid_part_of_name(c: char) -> bool {
+    matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
+}
+
 fn is_name(input: impl AsRef<str>) -> bool {
     let mut input = input.as_ref().chars().peekable();
     match input.peek() {
         Some('0'..='9') => false,
         None => false,
-        _ => input.all(|c| c == '_' || matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z')),
+        _ => input.all(is_valid_part_of_name),
     }
 }
 
@@ -716,8 +720,87 @@ impl Word {
             expansions.push(tilde);
         }
 
+        let parameters = Self::find_parameter_expansions(input);
+        expansions.extend(&mut parameters.into_iter());
+
         if let Some(cmd_sub) = Self::find_command_substitution(input) {
             expansions.push(cmd_sub);
+        }
+
+        expansions
+    }
+
+    fn find_parameter_expansions(input: &str) -> Vec<Expansion> {
+        let mut state = QuoteState::None;
+        let mut is_escaped = false;
+
+        let mut expansions = Vec::new();
+        let mut curr_expansion = None::<String>;
+        let mut curr_expansion_start = 0;
+        let mut curr_expansion_end = 0;
+
+        let chars = input.chars().peekable();
+
+        for (index, c) in chars.enumerate() {
+            match (c, state) {
+                ('\'', QuoteState::Single) => {
+                    state = QuoteState::None;
+                }
+                ('\'', QuoteState::None) => {
+                    state = QuoteState::Single;
+                }
+
+                ('"', QuoteState::Double) if !is_escaped => {
+                    state = QuoteState::None;
+                }
+                ('"', QuoteState::None) => {
+                    state = QuoteState::Double;
+                }
+
+                ('\\', QuoteState::None | QuoteState::Double) => is_escaped = !is_escaped,
+
+                ('$', QuoteState::None | QuoteState::Double) if !is_escaped => {
+                    if matches!(&curr_expansion, Some(s) if !s.is_empty()) {
+                        expansions.push(Expansion::Parameter {
+                            range: curr_expansion_start..=curr_expansion_end,
+                            name: curr_expansion.unwrap(),
+                        });
+                    }
+                    curr_expansion = Some(String::new());
+                    curr_expansion_start = index;
+                }
+
+                (c, _) if !is_escaped && curr_expansion.is_some() => {
+                    if is_valid_part_of_name(c) {
+                        curr_expansion.as_mut().unwrap().push(c);
+                        curr_expansion_end = index;
+                    } else {
+                        let parameter = curr_expansion.unwrap();
+                        if !parameter.is_empty() {
+                            expansions.push(Expansion::Parameter {
+                                range: curr_expansion_start..=curr_expansion_end,
+                                name: parameter,
+                            });
+                        }
+                        curr_expansion = None;
+                    }
+                }
+
+                (_, _) => {}
+            }
+
+            if !matches!((c, state), ('\\', QuoteState::None | QuoteState::Double)) {
+                is_escaped = false;
+            }
+        }
+
+        if let Some(exp) = curr_expansion {
+            if !exp.is_empty() {
+                expansions.push(Expansion::Parameter {
+                    range: curr_expansion_start..=curr_expansion_end,
+                    name: exp,
+                });
+            }
         }
 
         expansions

@@ -818,3 +818,120 @@ fn parse_with_comment() {
 
     assert_eq!(actual, expected);
 }
+
+#[test]
+fn word_with_parameter_expansions() {
+    let mut tokens = parse("$foo");
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: "$foo".to_string(),
+        name: "$foo".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![Expansion::Parameter {
+            range: 0..=3,
+            name: "foo".to_string(),
+        }],
+    };
+
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse(r#""$foo""#);
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: "\"$foo\"".to_string(),
+        name: "$foo".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![Expansion::Parameter {
+            range: 1..=4,
+            name: "foo".to_string(),
+        }],
+    };
+
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse("'$foo'");
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: "'$foo'".to_string(),
+        name: "$foo".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![],
+    };
+
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse(r#""$foo..$bar_-""#);
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: "\"$foo..$bar_-\"".to_string(),
+        name: "$foo..$bar_-".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![
+            Expansion::Parameter {
+                range: 1..=4,
+                name: "foo".to_string(),
+            },
+            Expansion::Parameter {
+                range: 7..=11,
+                name: "bar_".to_string(),
+            },
+        ],
+    };
+
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse(r#"$FOO\ $_"#);
+    println!("tokens: {tokens:?}");
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: r#"$FOO\ $_"#.to_string(),
+        name: "$FOO $_".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![
+            Expansion::Parameter {
+                range: 0..=3,
+                name: "FOO".to_string(),
+            },
+            Expansion::Parameter {
+                range: 6..=7,
+                name: "_".to_string(),
+            },
+        ],
+    };
+
+    assert_eq!(Some(expected), actual);
+
+    let mut tokens = parse(r#"$a"$FOO\ $_foo"$b'$c'"#);
+    let actual = tokens.parse_word(false);
+
+    let expected = Word {
+        raw: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
+        name: "$a$FOO\\ $_foo$b$c".to_string(),
+        whitespace: "".to_string(),
+        expansions: vec![
+            Expansion::Parameter {
+                range: 0..=1,
+                name: "a".to_string(),
+            },
+            Expansion::Parameter {
+                range: 3..=6,
+                name: "FOO".to_string(),
+            },
+            Expansion::Parameter {
+                range: 9..=13,
+                name: "_foo".to_string(),
+            },
+            Expansion::Parameter {
+                range: 15..=16,
+                name: "b".to_string(),
+            },
+        ],
+    };
+
+    assert_eq!(Some(expected), actual);
+}
