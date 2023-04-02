@@ -198,7 +198,25 @@ fn expand_tilde(mut word: Word) -> Word {
     }
 }
 
-fn expand_parameters(word: Word, _engine: &mut Engine<impl Write>) -> Word {
+fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
+    let mut expansion_indices = Vec::new();
+    for (i, exp) in word.expansions.iter().enumerate().rev() {
+        if matches!(exp, Expansion::Parameter { .. }) {
+            expansion_indices.push(i);
+        }
+    }
+
+    for index in expansion_indices {
+        let Expansion::Parameter { range, name } = word.expansions.remove(index) else {
+            unreachable!()
+        };
+        if let Some(val) = engine.get_value_of(&name) {
+            word.name.replace_range(range, val);
+        } else {
+            word.name.replace_range(range, "");
+        }
+    }
+
     word
 }
 

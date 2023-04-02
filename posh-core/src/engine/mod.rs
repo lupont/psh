@@ -2,6 +2,7 @@ pub mod expand;
 pub mod history;
 pub mod parser;
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::ops::Not;
@@ -22,6 +23,7 @@ pub struct Engine<W: Write> {
     pub prev_dir: Option<PathBuf>,
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
+    pub bindings: HashMap<String, String>,
 }
 
 impl<W: Write> Engine<W> {
@@ -118,6 +120,16 @@ impl<W: Write> Engine<W> {
         }
     }
 
+    pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<&String> {
+        self.bindings.get(var_name.as_ref())
+    }
+
+    fn update_bindings(&mut self) {
+        for (k, v) in std::env::vars() {
+            self.bindings.insert(k, v);
+        }
+    }
+
     pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
         let cmd = cmd.as_ref();
         path::has_relative_command(cmd)
@@ -139,23 +151,25 @@ impl<W: Write> Engine<W> {
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
-    ) -> Result<(bool, process::Child)> {
-        let Some(name) = cmd.name() else {
-            return Err(crate::Error::Unimplemented("".to_string()));
-        };
-
-        let mut command = process::Command::new(name);
-
+    ) -> Result<Option<(bool, process::Child)>> {
         let mut assignments = Vec::new();
-
         for assignment in cmd.assignments() {
-            let lhs = &assignment.lhs;
+            let lhs = assignment.lhs.clone();
             let rhs = match &assignment.rhs {
-                Some(rhs) => rhs.name.as_str(),
-                None => "",
+                Some(rhs) => rhs.name.clone(),
+                None => "".to_string(),
             };
             assignments.push((lhs, rhs));
         }
+
+        let Some(name) = cmd.name() else {
+            for (k, v) in assignments {
+                self.bindings.insert(k, v);
+            }
+            return Ok(None);
+        };
+
+        let mut command = process::Command::new(name);
 
         let mut stdin_override = None;
         let mut stdout_override = None;
@@ -209,6 +223,7 @@ impl<W: Write> Engine<W> {
         let stdout_redirected = stdout_override.is_some();
 
         let child = command
+            .envs(&self.bindings)
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
@@ -216,7 +231,7 @@ impl<W: Write> Engine<W> {
             .args(cmd.args())
             .spawn()?;
 
-        Ok((stdout_redirected, child))
+        Ok(Some((stdout_redirected, child)))
     }
 
     fn _execute_compound_command(
@@ -245,7 +260,7 @@ impl<W: Write> Engine<W> {
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
-    ) -> Result<(bool, process::Child)> {
+    ) -> Result<Option<(bool, process::Child)>> {
         match command {
             Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout, stderr),
             Command::Compound(_cmd, _redirections) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
@@ -285,20 +300,23 @@ impl<W: Write> Engine<W> {
             // FIXME: figure out how to do this on-spec
             let stderr = Stdio::inherit();
 
-            let (stdout_redirected, mut child) =
-                self.execute_command(cmd, stdin, stdout, stderr)?;
+            if let Some((stdout_redirected, mut child)) =
+                self.execute_command(cmd, stdin, stdout, stderr)?
+            {
+                last_stdout = if stdout_redirected {
+                    Some(None)
+                } else {
+                    Some(child.stdout.take())
+                };
 
-            last_stdout = if stdout_redirected {
-                Some(None)
+                pids.push(child.id());
+
+                if !background && pipeline_iter.peek().is_none() {
+                    let status = child.wait().unwrap();
+                    last_status = ExitStatus::from(status);
+                }
             } else {
-                Some(child.stdout.take())
-            };
-
-            pids.push(child.id());
-
-            if !background && pipeline_iter.peek().is_none() {
-                let status = child.wait().unwrap();
-                last_status = ExitStatus::from(status);
+                last_stdout = Some(None);
             }
         }
 
@@ -331,6 +349,8 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
+        self.update_bindings();
+
         let lists_with_separator = cmd.list_with_separator();
 
         let mut codes = Vec::new();
@@ -352,12 +372,15 @@ impl<W: Write> Engine<W> {
 impl Engine<Stdout> {
     pub fn new() -> Self {
         let history = FileHistory::init().expect("could not initialize history");
-        Self {
+        let mut this = Self {
             prev_dir: None,
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
-        }
+            bindings: Default::default(),
+        };
+        this.update_bindings();
+        this
     }
 }
 

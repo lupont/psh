@@ -10,7 +10,7 @@ use super::consumer::Consumer;
 use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use super::tok::Tokenizer;
 
-use crate::{Error, Result, path};
+use crate::{path, Error, Result};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
     match input
@@ -859,7 +859,12 @@ impl Word {
         }
     }
 
-    pub fn find(target_state: QuoteState, haystack: &str, needle: char, first: bool) -> Option<usize> {
+    pub fn find(
+        target_state: QuoteState,
+        haystack: &str,
+        needle: char,
+        first: bool,
+    ) -> Option<usize> {
         let mut state = QuoteState::None;
         let mut is_escaped = false;
 
