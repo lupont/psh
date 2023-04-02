@@ -1,3 +1,4 @@
+pub mod prelude;
 pub mod reconstruct;
 
 #[cfg(test)]
@@ -6,10 +7,9 @@ mod tests;
 use std::iter::Peekable;
 use std::ops::RangeInclusive;
 
-use super::consumer::Consumer;
-use super::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
-use super::tok::Tokenizer;
-
+use crate::engine::parser::consumer::Consumer;
+use crate::engine::parser::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
+use crate::engine::parser::tok::Tokenizer;
 use crate::{path, Error, Result};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
@@ -33,9 +33,6 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
         ))),
     }
 }
-
-/// Type alias used in data structures that keep track of whitespace.
-pub type LeadingWhitespace = String;
 
 pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse(&mut self) -> std::result::Result<SyntaxTree, SyntaxTree> {
@@ -463,18 +460,8 @@ where
     }
 }
 
-fn is_valid_part_of_name(c: char) -> bool {
-    matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
-}
-
-fn is_name(input: impl AsRef<str>) -> bool {
-    let mut input = input.as_ref().chars().peekable();
-    match input.peek() {
-        Some('0'..='9') => false,
-        None => false,
-        _ => input.all(is_valid_part_of_name),
-    }
-}
+/// Type alias used in data structures that keep track of whitespace.
+pub type LeadingWhitespace = String;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct SyntaxTree {
@@ -999,4 +986,17 @@ impl Default for Separator {
 pub enum LogicalOp {
     And(LeadingWhitespace),
     Or(LeadingWhitespace),
+}
+
+fn is_valid_part_of_name(c: char) -> bool {
+    matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
+}
+
+fn is_name(input: impl AsRef<str>) -> bool {
+    let mut input = input.as_ref().chars().peekable();
+    match input.peek() {
+        Some('0'..='9') => false,
+        None => false,
+        _ => input.all(is_valid_part_of_name),
+    }
 }

@@ -1,19 +1,4 @@
-use super::AndOrList;
-use super::CmdPrefix;
-use super::CmdSuffix;
-use super::Command;
-use super::CompleteCommand;
-use super::CompoundCommand;
-use super::FunctionDefinition;
-use super::List;
-use super::LogicalOp;
-use super::Pipeline;
-use super::Redirection;
-use super::Separator;
-use super::SimpleCommand;
-use super::SyntaxTree;
-use super::VariableAssignment;
-use super::Word;
+use crate::ast::prelude::*;
 
 impl ToString for SyntaxTree {
     fn to_string(&self) -> String {

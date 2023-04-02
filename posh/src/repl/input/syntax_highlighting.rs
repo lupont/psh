@@ -1,21 +1,12 @@
-use posh_core::ast::AndOrList;
-use posh_core::ast::CmdPrefix;
-use posh_core::ast::CmdSuffix;
-use posh_core::ast::Command;
-use posh_core::ast::CompleteCommand;
-use posh_core::ast::List;
-use posh_core::ast::LogicalOp;
-use posh_core::ast::Pipeline;
-use posh_core::ast::Redirection;
-use posh_core::ast::Separator;
-use posh_core::ast::SimpleCommand;
-use posh_core::ast::VariableAssignment;
-use posh_core::ast::Word;
+use std::io::Write;
 
-use self::Colors;
-use super::*;
-
+use crossterm::queue;
 use crossterm::style::{Print, ResetColor, SetForegroundColor};
+
+use posh_core::ast::prelude::*;
+use posh_core::{Engine, Result};
+
+use crate::repl::Colors;
 
 pub trait Highlighter {
     fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()>;

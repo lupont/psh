@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::iter::Peekable;
 use std::str::Chars;
 
-use super::consumer::Consumer;
+use crate::engine::parser::consumer::Consumer;
 
 pub fn tokenize(input: impl AsRef<str>) -> Vec<Token> {
     input.as_ref().chars().peekable().tokenize()

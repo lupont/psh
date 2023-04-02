@@ -5,6 +5,7 @@ use std::io::{Stdout, Write};
 use std::process;
 
 use crossterm::{execute, style, terminal};
+
 use posh_core::path::compress_tilde;
 use posh_core::{Engine, ExitStatus, Result};
 

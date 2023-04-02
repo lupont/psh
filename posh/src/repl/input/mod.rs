@@ -8,13 +8,13 @@ use crossterm::execute;
 use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
-use posh_core::engine::parser::{parse, SyntaxTree};
+
+use posh_core::engine::parser::parse;
 use posh_core::{Engine, Result};
 
-use syntax_highlighting::Highlighter;
-
-use super::RawMode;
 use crate::config::{Colors, ABBREVIATIONS};
+use crate::repl::input::syntax_highlighting::Highlighter;
+use crate::repl::RawMode;
 
 struct State {
     /// The current content of the input line.

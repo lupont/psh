@@ -3,7 +3,10 @@ mod config;
 mod repl;
 
 use clap::Parser;
-use posh_core::engine::parser::{lex, parse, tokenize};
+
+use posh_core::engine::parser::semtok::lex;
+use posh_core::engine::parser::tok::tokenize;
+use posh_core::parse;
 use posh_core::Engine;
 
 fn main() {

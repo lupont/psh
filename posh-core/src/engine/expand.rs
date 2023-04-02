@@ -1,12 +1,8 @@
 use std::io::Write;
 
-use crate::{
-    ast::{
-        AndOrList, CmdPrefix, CmdSuffix, Command, CompleteCommand, Expansion, List, Pipeline,
-        QuoteState, Redirection, SimpleCommand, SyntaxTree, VariableAssignment, Word,
-    },
-    path, Engine,
-};
+use crate::ast::prelude::*;
+use crate::ast::QuoteState;
+use crate::{path, Engine};
 
 pub trait Expand {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self;

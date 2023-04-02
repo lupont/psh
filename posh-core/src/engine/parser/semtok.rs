@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 
-use super::consumer::Consumer;
-use super::tok::{Token, Tokenizer};
+use crate::engine::parser::consumer::Consumer;
+use crate::engine::parser::tok::{Token, Tokenizer};
 
 pub fn lex(input: impl AsRef<str>) -> Vec<SemanticToken> {
     input

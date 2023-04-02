@@ -9,14 +9,10 @@ use std::ops::Not;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
+use self::parser::ast::prelude::*;
+use crate::engine::expand::Expand;
+pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
-
-use self::expand::Expand;
-pub use self::history::{FileHistory, History};
-use self::parser::ast::{
-    parse, AndOrList, Command, CompleteCommand, CompoundCommand, FunctionDefinition, LogicalOp,
-    Pipeline, Redirection, SimpleCommand, SyntaxTree,
-};
 
 pub struct Engine<W: Write> {
     pub writer: W,
