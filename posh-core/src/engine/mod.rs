@@ -58,14 +58,23 @@ impl<W: Write> Engine<W> {
 
     fn debug(&mut self, args: &[&str]) -> Result<ExitStatus> {
         match args {
-            &["assignments"] => {
+            ["assignments"] => {
                 for (k, v) in &self.assignments {
                     writeln!(self.writer, "{k}={v}")?;
                 }
+                Ok(ExitStatus::from_code(0))
             }
-            _ => {}
+
+            [arg] => {
+                writeln!(self.writer, "debug: unknown command '{arg}'")?;
+                Ok(ExitStatus::from_code(1))
+            }
+
+            _ => {
+                writeln!(self.writer, "usage: debug assignments")?;
+                Ok(ExitStatus::from_code(2))
+            }
         }
-        Ok(ExitStatus::from_code(0))
     }
 
     pub fn has_builtin(&self, s: impl AsRef<str>) -> bool {
