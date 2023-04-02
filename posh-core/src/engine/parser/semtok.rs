@@ -390,6 +390,11 @@ where
                     self.next();
                 }
 
+                Token::Pound if !word.is_empty() => {
+                    word.push_str(&token.to_str());
+                    self.next();
+                }
+
                 _ => break,
             }
         }

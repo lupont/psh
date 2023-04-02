@@ -302,6 +302,11 @@ where
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
+        if ws.is_empty() {
+            *self = initial;
+            return None;
+        }
+
         if let Some(SemanticToken::Comment(comment)) = self.next() {
             Some((ws, comment))
         } else {
