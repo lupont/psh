@@ -3,6 +3,7 @@ pub mod history;
 pub mod parser;
 
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::ops::Not;
@@ -16,7 +17,6 @@ use crate::{path, Error, Result};
 
 pub struct Engine<W: Write> {
     pub writer: W,
-    pub prev_dir: Option<PathBuf>,
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
@@ -25,11 +25,13 @@ pub struct Engine<W: Write> {
 impl<W: Write> Engine<W> {
     fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
         let path = match dir {
-            Some("-") if self.prev_dir.is_some() => self.prev_dir.take().unwrap(),
-
             Some("-") => {
-                writeln!(self.writer, "cd: No previous directory.")?;
-                return Ok(ExitStatus::from_code(1));
+                if let Ok(old_pwd) = env::var("OLD_PWD") {
+                    PathBuf::from(old_pwd)
+                } else {
+                    writeln!(self.writer, "cd: No previous directory.")?;
+                    return Ok(ExitStatus::from_code(1));
+                }
             }
 
             Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
@@ -47,8 +49,8 @@ impl<W: Write> Engine<W> {
             None => PathBuf::from(path::home_dir()),
         };
 
-        self.prev_dir = Some(std::env::current_dir()?);
-        std::env::set_current_dir(path)?;
+        env::set_var("OLD_PWD", env::current_dir()?);
+        env::set_current_dir(path)?;
         Ok(ExitStatus::from_code(0))
     }
 
@@ -138,7 +140,7 @@ impl<W: Write> Engine<W> {
     }
 
     fn update_assignments_from_env(&mut self) {
-        for (k, v) in std::env::vars() {
+        for (k, v) in env::vars() {
             self.assignments.insert(k, v);
         }
     }
@@ -399,7 +401,6 @@ impl Engine<Stdout> {
     pub fn new() -> Self {
         let history = FileHistory::init().expect("could not initialize history");
         let mut this = Self {
-            prev_dir: None,
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
