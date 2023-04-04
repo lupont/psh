@@ -155,15 +155,13 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
-        let ast = parse(line.to_string(), false)?;
-        let ast = ast.expand(self);
+        let ast = parse(line.to_string(), false)?.expand(self);
         self.walk_ast(ast)
     }
 
     pub fn execute_file(&mut self, path: PathBuf) -> Result<Vec<ExitStatus>> {
         let lines = std::fs::read_to_string(path)?;
-        let ast = parse(lines, false)?;
-        let ast = ast.expand(self);
+        let ast = parse(lines, false)?.expand(self);
         self.walk_ast(ast)
     }
 

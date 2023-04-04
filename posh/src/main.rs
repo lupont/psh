@@ -6,38 +6,41 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use posh_core::engine::parser::semtok::lex;
-use posh_core::engine::parser::tok::tokenize;
+use posh_core::engine::parser::semtok;
+use posh_core::engine::parser::tok;
 use posh_core::parse;
 use posh_core::Engine;
 
 fn main() {
     let args = args::Args::parse();
 
-    if args.tokenize && args.command.is_some() {
-        let tokens = tokenize(args.command.unwrap());
+    if let Some(command) = args.command {
+        run_command(&command, args.tokenize, args.lex, args.ast);
+    } else if let Some(file) = args.file {
+        run_file(&file, args.tokenize, args.lex, args.ast);
+    } else {
+        let mut repl = repl::Repl::new();
 
-        for token in tokens {
-            println!("{:?}", token);
+        if let Err(e) = repl.run() {
+            eprintln!("posh: Unrecoverable error occurred: {e}");
         }
+    }
+}
 
-        std::process::exit(0);
-    } else if args.lex && args.command.is_some() {
-        let tokens = lex(args.command.unwrap());
-
-        for token in tokens {
-            println!("{:?}", token);
+fn run_command(command: &String, tokenize: bool, lex: bool, ast: bool) {
+    if tokenize {
+        for token in tok::tokenize(command) {
+            println!("{token:?}");
         }
-
-        std::process::exit(0);
-    } else if args.ast && args.command.is_some() {
-        let ast = parse(args.command.unwrap(), true);
-
-        println!("{:#?}", ast);
-
-        std::process::exit(0);
-    } else if let Some(cmd) = args.command {
-        let code = match Engine::default().execute_line(cmd) {
+    } else if lex {
+        for token in semtok::lex(command) {
+            println!("{token:?}");
+        }
+    } else if ast {
+        let ast = parse(command, true);
+        println!("{ast:#?}");
+    } else {
+        let code = match Engine::default().execute_line(command) {
             Ok(codes) if codes.is_empty() => 0,
 
             Ok(codes) => codes.last().map(|e| e.code).unwrap(),
@@ -47,30 +50,27 @@ fn main() {
                 1
             }
         };
-
         std::process::exit(code);
-    } else if let Some(file) = args.file {
-        let path = PathBuf::from(file);
+    }
+}
 
-        if args.tokenize {
-            let tokens = tokenize(std::fs::read_to_string(path).unwrap());
-            for token in tokens {
-                println!("{:?}", token);
-            }
-            std::process::exit(0);
-        } else if args.lex {
-            let tokens = lex(std::fs::read_to_string(path).unwrap());
-            for token in tokens {
-                println!("{:?}", token);
-            }
-            std::process::exit(0);
-        } else if args.ast {
-            let ast = parse(std::fs::read_to_string(path).unwrap(), true);
-
-            println!("{:#?}", ast);
-
-            std::process::exit(0);
+fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool) {
+    let path = PathBuf::from(file);
+    if tokenize {
+        let content = std::fs::read_to_string(path).unwrap();
+        for token in tok::tokenize(content) {
+            println!("{token:?}");
         }
+    } else if lex {
+        let content = std::fs::read_to_string(path).unwrap();
+        for token in semtok::lex(content) {
+            println!("{token:?}");
+        }
+    } else if ast {
+        let content = std::fs::read_to_string(path).unwrap();
+        let ast = parse(content, true);
+        println!("{ast:#?}");
+    } else {
         let code = match Engine::default().execute_file(path) {
             Ok(codes) if codes.is_empty() => 0,
 
@@ -81,13 +81,6 @@ fn main() {
                 1
             }
         };
-
         std::process::exit(code);
-    }
-
-    let mut repl = repl::Repl::new();
-
-    if let Err(e) = repl.run() {
-        eprintln!("posh: Unrecoverable error occurred: {e}");
     }
 }
