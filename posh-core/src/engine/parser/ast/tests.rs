@@ -1051,12 +1051,3 @@ fn word_with_parameter_expansions() {
 
     assert_eq!(Some(expected), actual);
 }
-
-#[test]
-fn brace_group() {
-    let mut tokens = tokenize("{ foo; bar;}");
-    let actual = tokens.parse_brace_group();
-
-    println!("{actual:#?}");
-    // assert!(false);
-}

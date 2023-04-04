@@ -360,20 +360,13 @@ impl Highlighter for Linebreak {
 
 impl Highlighter for SeparatorOp {
     fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
-        Ok(match self {
-            SeparatorOp::Sync(ws) => queue!(
-                engine.writer,
-                SetForegroundColor(Colors::SEPARATOR_COLOR),
-                Print(format!("{ws};")),
-                ResetColor
-            ),
-            SeparatorOp::Async(ws) => queue!(
-                engine.writer,
-                SetForegroundColor(Colors::SEPARATOR_COLOR),
-                Print(format!("{ws}&")),
-                ResetColor
-            ),
-        }?)
+        queue!(
+            engine.writer,
+            SetForegroundColor(Colors::SEPARATOR_COLOR),
+            Print(self.to_string()),
+            ResetColor
+        )?;
+        Ok(())
     }
 }
 
