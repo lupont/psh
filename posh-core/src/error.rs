@@ -23,11 +23,11 @@ impl fmt::Display for Error {
             "{}",
             match self {
                 Self::Io(e) => e.to_string(),
-                Self::NoHome => "Could not read $HOME".to_string(),
+                Self::NoHome => "could not read $HOME".to_string(),
                 Self::InvalidHistfile(path) =>
                     format!("$POSH_HISTFILE contains invalid path: {}", path.display()),
-                Self::HistoryOutOfBounds => "Tried to read beyond the history bounds.".to_string(),
-                Self::UnknownCommand(cmd) => format!("Unknown command: {}", cmd),
+                Self::HistoryOutOfBounds => "tried to read beyond the history bounds.".to_string(),
+                Self::UnknownCommand(cmd) => format!("unknown command: {}", cmd),
                 Self::Unimplemented(s) => s.to_string(),
                 Self::SyntaxError(s) => format!("syntax error: {s}"),
                 Self::ParseError(e) => e.to_string(),
