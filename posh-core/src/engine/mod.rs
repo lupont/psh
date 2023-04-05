@@ -26,7 +26,7 @@ impl<W: Write> Engine<W> {
     fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
         let path = match dir {
             Some("-") => {
-                if let Ok(old_pwd) = env::var("OLD_PWD") {
+                if let Ok(old_pwd) = env::var("OLDPWD") {
                     PathBuf::from(old_pwd)
                 } else {
                     writeln!(self.writer, "cd: No previous directory.")?;
@@ -49,7 +49,7 @@ impl<W: Write> Engine<W> {
             None => PathBuf::from(path::home_dir()),
         };
 
-        env::set_var("OLD_PWD", env::current_dir()?);
+        env::set_var("OLDPWD", env::current_dir()?);
         env::set_current_dir(path)?;
         Ok(ExitStatus::from_code(0))
     }
