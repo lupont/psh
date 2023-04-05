@@ -154,6 +154,10 @@ impl<W: Write> Engine<W> {
                 .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
     }
 
+    fn has_executable(&self, cmd: impl AsRef<str>) -> bool {
+        self.has_command(&cmd) || self.has_builtin(&cmd)
+    }
+
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
         let ast = parse(line.to_string(), false)?.expand(self);
         self.walk_ast(ast)
@@ -188,6 +192,10 @@ impl<W: Write> Engine<W> {
             }
             return Ok(None);
         };
+
+        if !self.has_executable(name) {
+            return Err(Error::UnknownCommand(name.to_string()));
+        }
 
         let mut command = process::Command::new(name);
 
@@ -378,7 +386,14 @@ impl<W: Write> Engine<W> {
         let mut codes = Vec::new();
 
         for (and_or_list, separator) in lists_with_separator {
-            codes.append(&mut self.execute_and_or_list(and_or_list, separator.is_async())?);
+            let res = self.execute_and_or_list(and_or_list, separator.is_async());
+
+            if let Err(e @ Error::UnknownCommand(_)) = res {
+                codes.push(ExitStatus::from_code(127));
+                writeln!(self.writer, "posh: {e}")?;
+            } else {
+                codes.append(&mut res?);
+            }
         }
 
         Ok(codes)
