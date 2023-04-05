@@ -6,8 +6,9 @@ use std::process;
 
 use crossterm::{execute, style, terminal};
 
+use posh_core::engine::parser::{semtok, tok};
 use posh_core::path::compress_tilde;
-use posh_core::{Engine, ExitStatus, Result};
+use posh_core::{parse, Engine, ExitStatus, Result};
 
 use crate::config::{self, Colors};
 use crate::repl::input::read_line;
@@ -25,13 +26,7 @@ impl Repl {
         }
     }
 
-    fn read_and_execute(&mut self) -> Result<Vec<ExitStatus>> {
-        let line = read_line(&mut self.engine)?;
-        self.engine.history.append(&line)?;
-        self.engine.execute_line(line)
-    }
-
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
         loop {
             if let Err(e) = self.prompt() {
                 writeln!(
@@ -40,18 +35,34 @@ impl Repl {
                 )?;
             }
 
-            match self.read_and_execute() {
-                Ok(statuses) if statuses.is_empty() => {}
+            let line = read_line(&mut self.engine)?;
 
-                Ok(statuses) => {
-                    self.last_status = Some(statuses);
+            if tokenize && line != "exit" {
+                for token in tok::tokenize(line) {
+                    println!("{token:?}");
                 }
+            } else if lex && line != "exit" {
+                for token in semtok::lex(line) {
+                    println!("{token:?}");
+                }
+            } else if ast && line != "exit" {
+                let ast = parse(line, true)?;
+                println!("{ast:#?}");
+            } else {
+                self.engine.history.append(&line)?;
+                match self.engine.execute_line(line) {
+                    Ok(statuses) if statuses.is_empty() => {}
 
-                Err(e) => {
-                    writeln!(
-                        self.engine.writer,
-                        "posh: Error occurred when reading or executing: {e}"
-                    )?;
+                    Ok(statuses) => {
+                        self.last_status = Some(statuses);
+                    }
+
+                    Err(e) => {
+                        writeln!(
+                            self.engine.writer,
+                            "posh: Error occurred when reading or executing: {e}"
+                        )?;
+                    }
                 }
             }
         }

@@ -21,8 +21,9 @@ fn main() {
     } else {
         let mut repl = repl::Repl::new();
 
-        if let Err(e) = repl.run() {
+        if let Err(e) = repl.run(args.tokenize, args.lex, args.ast) {
             eprintln!("posh: Unrecoverable error occurred: {e}");
+            std::process::exit(7);
         }
     }
 }
