@@ -241,7 +241,7 @@ fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
 }
 
 fn remove_quotes(word: Word) -> Word {
-    let mut s = String::new();
+    let mut name = String::new();
     let mut state = QuoteState::None;
     let mut is_escaped = false;
 
@@ -253,7 +253,7 @@ fn remove_quotes(word: Word) -> Word {
             ('\'', QuoteState::None) => {
                 state = QuoteState::Single;
             }
-            (c, QuoteState::Single) => s.push(c),
+            (c, QuoteState::Single) => name.push(c),
 
             ('"', QuoteState::Double) if !is_escaped => {
                 state = QuoteState::None;
@@ -263,20 +263,20 @@ fn remove_quotes(word: Word) -> Word {
             }
 
             (c, QuoteState::Double) if !is_escaped => {
-                s.push(c);
+                name.push(c);
             }
 
             ('\\', _) if !is_escaped => is_escaped = true,
 
             (c, _) => {
-                s.push(c);
+                name.push(c);
                 is_escaped = false;
             }
         }
     }
 
     Word {
-        name: s,
+        name,
         whitespace: word.whitespace,
         expansions: word.expansions,
     }
