@@ -7,6 +7,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::ops::Not;
+use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
@@ -431,35 +432,97 @@ impl Default for Engine<Stdout> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExitStatus {
-    pub code: i32,
+pub enum ExitStatus {
+    Code(i32),
+    Signal(i32),
 }
 
 impl ExitStatus {
     pub fn from_code(code: i32) -> Self {
-        Self { code }
+        if code > 255 {
+            Self::Signal(code - 255)
+        } else {
+            Self::Code(code)
+        }
+    }
+
+    pub fn raw_code(&self) -> i32 {
+        match self {
+            Self::Code(code) => *code,
+            Self::Signal(signal) => 255 + signal,
+        }
     }
 
     pub fn is_ok(&self) -> bool {
-        self.code == 0
+        matches!(self, Self::Code(0))
+    }
+}
+
+impl ToString for ExitStatus {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Code(c) => format!("{c}"),
+            Self::Signal(s) => match s {
+                1 => "SIGHUP",
+                2 => "SIGINT",
+                3 => "SIGQUIT",
+                4 => "SIGILL",
+                5 => "SIGTRAP",
+                6 => "SIGABRT",
+                7 => "SIGBUS",
+                8 => "SIGFPE",
+                9 => "SIGKILL",
+                10 => "SIGUSR1",
+                11 => "SIGSEGV",
+                12 => "SIGUSR2",
+                13 => "SIGPIPE",
+                14 => "SIGALRM",
+                15 => "SIGTERM",
+                16 => "SIGSTKFLT",
+                17 => "SIGCHLD",
+                18 => "SIGCONT",
+                19 => "SIGSTOP",
+                20 => "SIGTSTP",
+                21 => "SIGTTIN",
+                22 => "SIGTTOU",
+                23 => "SIGURG",
+                24 => "SIGXCPU",
+                25 => "SIGXFSZ",
+                26 => "SIGVTALRM",
+                27 => "SIGPROF",
+                28 => "SIGWINCH",
+                29 => "SIGIO",
+                30 => "SIGPWR",
+                31 => "SIGSYS",
+                _ => "???",
+            }
+            .to_string(),
+        }
     }
 }
 
 impl From<std::process::ExitStatus> for ExitStatus {
     fn from(status: std::process::ExitStatus) -> Self {
-        Self {
-            // FIXME: handle None case
-            code: status.code().unwrap(),
+        if let Some(code) = status.code() {
+            Self::Code(code)
+        } else if let Some(signal) = status.signal() {
+            Self::Signal(signal)
+        } else {
+            todo!()
         }
     }
 }
 
 impl Not for ExitStatus {
     type Output = Self;
+
     fn not(self) -> Self::Output {
-        match self.code {
-            0 => Self::Output { code: 1 },
-            _ => Self::Output { code: 0 },
+        match self {
+            Self::Code(0) => Self::Output::Code(1),
+            Self::Code(_) => Self::Output::Code(0),
+
+            // TODO: figure out if this is correct
+            Self::Signal(s) => Self::Output::Signal(s),
         }
     }
 }

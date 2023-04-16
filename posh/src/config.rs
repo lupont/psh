@@ -36,7 +36,8 @@ impl Colors {
     pub const CWD: Color = Color::DarkMagenta;
 }
 
-pub const PROMPT: &str = "$";
+pub const USER_PROMPT: &str = "$";
+pub const ROOT_PROMPT: &str = "#";
 
 pub const ABBREVIATIONS: [(&str, &str); 3] = [
     ("gs", "git status"),

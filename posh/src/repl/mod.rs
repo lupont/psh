@@ -27,8 +27,14 @@ impl Repl {
     }
 
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        ctrlc::set_handler(move || {
+            tx.send(true).unwrap();
+        })
+        .expect("Error setting Ctrl-C handler");
+
         loop {
-            if let Err(e) = self.prompt() {
+            if let Err(e) = self.prompt(rx.try_recv().unwrap_or_default()) {
                 writeln!(
                     self.engine.writer,
                     "posh: Error occurred when computing the prompt: {e}"
@@ -68,7 +74,7 @@ impl Repl {
         }
     }
 
-    pub fn prompt(&mut self) -> Result<()> {
+    pub fn prompt(&mut self, ctrlc: bool) -> Result<()> {
         let _raw = RawMode::init()?;
 
         let cwd = format!(
@@ -76,21 +82,32 @@ impl Repl {
             compress_tilde(env::current_dir()?.display().to_string())
         );
 
-        let exit_code = match &self.last_status {
-            Some(codes) if !codes.iter().all(|c| c.code == 0) => {
-                let codes = codes
-                    .iter()
-                    .map(|c| format!("{}", c.code))
-                    .collect::<Vec<_>>()
-                    .join("|");
+        let exit_code = if ctrlc {
+            "[SIGINT] ".to_string()
+        } else {
+            match &self.last_status {
+                Some(codes) if !codes.iter().all(ExitStatus::is_ok) => {
+                    let codes = codes
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("|");
 
-                format!("[{codes}] ")
+                    format!("[{codes}] ")
+                }
+
+                _ => "".to_string(),
             }
-
-            _ => "".to_string(),
         };
 
-        let prompt = format!("{} ", if is_root() { "#" } else { config::PROMPT });
+        let prompt = format!(
+            "{} ",
+            if is_root() {
+                config::ROOT_PROMPT
+            } else {
+                config::USER_PROMPT
+            }
+        );
 
         Ok(execute!(
             self.engine.writer,
@@ -106,7 +123,8 @@ impl Repl {
 }
 
 fn is_root() -> bool {
-    matches!(process::Command::new("whoami").output(), Ok(output) if output.stdout == b"root\n")
+    let id = process::Command::new("id").arg("-u").output();
+    matches!(id, Ok(id) if id.stdout == b"0\n")
 }
 
 pub struct RawMode;

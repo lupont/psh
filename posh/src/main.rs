@@ -10,6 +10,7 @@ use posh_core::engine::parser::semtok;
 use posh_core::engine::parser::tok;
 use posh_core::parse;
 use posh_core::Engine;
+use posh_core::ExitStatus;
 
 fn main() {
     let args = args::Args::parse();
@@ -44,7 +45,7 @@ fn run_command(command: &String, tokenize: bool, lex: bool, ast: bool) {
         let code = match Engine::default().execute_line(command) {
             Ok(codes) if codes.is_empty() => 0,
 
-            Ok(codes) => codes.last().map(|e| e.code).unwrap(),
+            Ok(codes) => codes.last().map(ExitStatus::raw_code).unwrap(),
 
             Err(e) => {
                 eprintln!("posh: Could not execute command: {e}");
@@ -75,7 +76,7 @@ fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool) {
         let code = match Engine::default().execute_file(path) {
             Ok(codes) if codes.is_empty() => 0,
 
-            Ok(codes) => codes.last().map(|e| e.code).unwrap(),
+            Ok(codes) => codes.last().map(ExitStatus::raw_code).unwrap(),
 
             Err(e) => {
                 eprintln!("posh: Could not execute command: {e}");
