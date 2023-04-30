@@ -27,15 +27,22 @@ impl ToString for CompleteCommand {
     fn to_string(&self) -> String {
         let mut s = String::new();
 
-        if let Some((list, sep)) = &self.list_and_separator {
-            s.push_str(&list.to_string());
-            if let Some(sep) = sep {
-                s.push_str(&sep.to_string());
+        match self {
+            Self::List(list, None, None) => s.push_str(&list.to_string()),
+            Self::List(list, Some(separator_op), None) => {
+                s.push_str(&list.to_string());
+                s.push_str(&separator_op.to_string());
             }
-        }
-
-        if let Some(comment) = &self.comment {
-            s.push_str(&comment.to_string());
+            Self::List(list, None, Some(comment)) => {
+                s.push_str(&list.to_string());
+                s.push_str(&comment.to_string());
+            }
+            Self::List(list, Some(separator_op), Some(comment)) => {
+                s.push_str(&list.to_string());
+                s.push_str(&separator_op.to_string());
+                s.push_str(&comment.to_string());
+            }
+            Self::Comment(comment) => s.push_str(&comment.to_string()),
         }
 
         s

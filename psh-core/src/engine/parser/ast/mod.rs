@@ -141,15 +141,14 @@ where
 
         let comment = self.parse_comment();
 
-        if list_and_separator.is_none() && comment.is_none() {
+        if let Some((list, separator_op)) = list_and_separator {
+            Some(CompleteCommand::List(list, separator_op, comment))
+        } else if let Some(comment) = comment {
+            Some(CompleteCommand::Comment(comment))
+        } else {
             *self = initial;
-            return None;
+            None
         }
-
-        Some(CompleteCommand {
-            list_and_separator,
-            comment,
-        })
     }
 
     fn parse_list(&mut self) -> Option<List> {

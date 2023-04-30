@@ -515,29 +515,27 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand {
-        list_and_separator: Some((
-            List {
-                head: AndOrList {
-                    head: Pipeline {
-                        bang: None,
-                        sequence: PipeSequence {
-                            head: Box::new(Command::Simple(SimpleCommand {
-                                name: Some(Word::new("echo", "")),
-                                prefixes: Vec::new(),
-                                suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
-                            })),
-                            tail: Vec::new(),
-                        },
+    let expected = CompleteCommand::List(
+        List {
+            head: AndOrList {
+                head: Pipeline {
+                    bang: None,
+                    sequence: PipeSequence {
+                        head: Box::new(Command::Simple(SimpleCommand {
+                            name: Some(Word::new("echo", "")),
+                            prefixes: Vec::new(),
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                        })),
+                        tail: Vec::new(),
                     },
-                    tail: Vec::new(),
                 },
                 tail: Vec::new(),
             },
-            None,
-        )),
-        comment: None,
-    };
+            tail: Vec::new(),
+        },
+        None,
+        None,
+    );
 
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
@@ -545,29 +543,27 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo ;");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand {
-        list_and_separator: Some((
-            List {
-                head: AndOrList {
-                    head: Pipeline {
-                        bang: None,
-                        sequence: PipeSequence {
-                            head: Box::new(Command::Simple(SimpleCommand {
-                                name: Some(Word::new("echo", "")),
-                                prefixes: Vec::new(),
-                                suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
-                            })),
-                            tail: Vec::new(),
-                        },
+    let expected = CompleteCommand::List(
+        List {
+            head: AndOrList {
+                head: Pipeline {
+                    bang: None,
+                    sequence: PipeSequence {
+                        head: Box::new(Command::Simple(SimpleCommand {
+                            name: Some(Word::new("echo", "")),
+                            prefixes: Vec::new(),
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                        })),
+                        tail: Vec::new(),
                     },
-                    tail: Vec::new(),
                 },
                 tail: Vec::new(),
             },
-            Some(SeparatorOp::Sync(" ".to_string())),
-        )),
-        comment: None,
-    };
+            tail: Vec::new(),
+        },
+        Some(SeparatorOp::Sync(" ".to_string())),
+        None,
+    );
 
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
@@ -575,29 +571,27 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo&");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand {
-        list_and_separator: Some((
-            List {
-                head: AndOrList {
-                    head: Pipeline {
-                        bang: None,
-                        sequence: PipeSequence {
-                            head: Box::new(Command::Simple(SimpleCommand {
-                                name: Some(Word::new("echo", "")),
-                                prefixes: Vec::new(),
-                                suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
-                            })),
-                            tail: Vec::new(),
-                        },
+    let expected = CompleteCommand::List(
+        List {
+            head: AndOrList {
+                head: Pipeline {
+                    bang: None,
+                    sequence: PipeSequence {
+                        head: Box::new(Command::Simple(SimpleCommand {
+                            name: Some(Word::new("echo", "")),
+                            prefixes: Vec::new(),
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                        })),
+                        tail: Vec::new(),
                     },
-                    tail: Vec::new(),
                 },
                 tail: Vec::new(),
             },
-            Some(SeparatorOp::Async("".to_string())),
-        )),
-        comment: None,
-    };
+            tail: Vec::new(),
+        },
+        Some(SeparatorOp::Async("".to_string())),
+        None,
+    );
 
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
@@ -605,45 +599,43 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo& true ;");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand {
-        list_and_separator: Some((
-            List {
-                head: AndOrList {
+    let expected = CompleteCommand::List(
+        List {
+            head: AndOrList {
+                head: Pipeline {
+                    bang: None,
+                    sequence: PipeSequence {
+                        head: Box::new(Command::Simple(SimpleCommand {
+                            name: Some(Word::new("echo", "")),
+                            prefixes: Vec::new(),
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                        })),
+                        tail: Vec::new(),
+                    },
+                },
+                tail: Vec::new(),
+            },
+            tail: vec![(
+                SeparatorOp::Async("".to_string()),
+                AndOrList {
                     head: Pipeline {
                         bang: None,
                         sequence: PipeSequence {
                             head: Box::new(Command::Simple(SimpleCommand {
-                                name: Some(Word::new("echo", "")),
+                                name: Some(Word::new("true", " ")),
                                 prefixes: Vec::new(),
-                                suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                                suffixes: Vec::new(),
                             })),
                             tail: Vec::new(),
                         },
                     },
                     tail: Vec::new(),
                 },
-                tail: vec![(
-                    SeparatorOp::Async("".to_string()),
-                    AndOrList {
-                        head: Pipeline {
-                            bang: None,
-                            sequence: PipeSequence {
-                                head: Box::new(Command::Simple(SimpleCommand {
-                                    name: Some(Word::new("true", " ")),
-                                    prefixes: Vec::new(),
-                                    suffixes: Vec::new(),
-                                })),
-                                tail: Vec::new(),
-                            },
-                        },
-                        tail: Vec::new(),
-                    },
-                )],
-            },
-            Some(SeparatorOp::Sync(" ".to_string())),
-        )),
-        comment: None,
-    };
+            )],
+        },
+        Some(SeparatorOp::Sync(" ".to_string())),
+        None,
+    );
 
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
@@ -651,45 +643,43 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo;true&");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand {
-        list_and_separator: Some((
-            List {
-                head: AndOrList {
+    let expected = CompleteCommand::List(
+        List {
+            head: AndOrList {
+                head: Pipeline {
+                    bang: None,
+                    sequence: PipeSequence {
+                        head: Box::new(Command::Simple(SimpleCommand {
+                            name: Some(Word::new("echo", "")),
+                            prefixes: Vec::new(),
+                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                        })),
+                        tail: Vec::new(),
+                    },
+                },
+                tail: Vec::new(),
+            },
+            tail: vec![(
+                SeparatorOp::Sync("".to_string()),
+                AndOrList {
                     head: Pipeline {
                         bang: None,
                         sequence: PipeSequence {
                             head: Box::new(Command::Simple(SimpleCommand {
-                                name: Some(Word::new("echo", "")),
+                                name: Some(Word::new("true", "")),
                                 prefixes: Vec::new(),
-                                suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                                suffixes: Vec::new(),
                             })),
                             tail: Vec::new(),
                         },
                     },
                     tail: Vec::new(),
                 },
-                tail: vec![(
-                    SeparatorOp::Sync("".to_string()),
-                    AndOrList {
-                        head: Pipeline {
-                            bang: None,
-                            sequence: PipeSequence {
-                                head: Box::new(Command::Simple(SimpleCommand {
-                                    name: Some(Word::new("true", "")),
-                                    prefixes: Vec::new(),
-                                    suffixes: Vec::new(),
-                                })),
-                                tail: Vec::new(),
-                            },
-                        },
-                        tail: Vec::new(),
-                    },
-                )],
-            },
-            Some(SeparatorOp::Async("".to_string())),
-        )),
-        comment: None,
-    };
+            )],
+        },
+        Some(SeparatorOp::Async("".to_string())),
+        None,
+    );
 
     assert_eq!(Some(expected), actual);
     assert!(tokens.next().is_none());
@@ -704,97 +694,93 @@ fn ast() {
         leading: Linebreak { newlines: None },
         commands: Some((
             CompleteCommands {
-                head: CompleteCommand {
-                    list_and_separator: Some((
-                        List {
-                            head: AndOrList {
-                                head: Pipeline {
-                                    bang: Some(Bang {
-                                        whitespace: " ".to_string(),
-                                    }),
-                                    sequence: PipeSequence {
-                                        head: Box::new(Command::Simple(SimpleCommand {
-                                            name: Some(Word::new("echo", " ")),
-                                            prefixes: vec![CmdPrefix::Redirection(
-                                                Redirection::new_output(
-                                                    Word::new("2", " "),
-                                                    Word::new("1", ""),
-                                                    false,
-                                                    true,
-                                                ),
-                                            )],
-                                            suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
-                                        })),
-                                        tail: vec![(
-                                            Pipe {
-                                                whitespace: " ".to_string(),
-                                            },
-                                            Linebreak { newlines: None },
-                                            Command::Simple(SimpleCommand {
-                                                name: Some(Word::new("rev", " ")),
-                                                prefixes: Vec::new(),
-                                                suffixes: Vec::new(),
-                                            }),
+                head: CompleteCommand::List(
+                    List {
+                        head: AndOrList {
+                            head: Pipeline {
+                                bang: Some(Bang {
+                                    whitespace: " ".to_string(),
+                                }),
+                                sequence: PipeSequence {
+                                    head: Box::new(Command::Simple(SimpleCommand {
+                                        name: Some(Word::new("echo", " ")),
+                                        prefixes: vec![CmdPrefix::Redirection(
+                                            Redirection::new_output(
+                                                Word::new("2", " "),
+                                                Word::new("1", ""),
+                                                false,
+                                                true,
+                                            ),
                                         )],
-                                    },
+                                        suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
+                                    })),
+                                    tail: vec![(
+                                        Pipe {
+                                            whitespace: " ".to_string(),
+                                        },
+                                        Linebreak { newlines: None },
+                                        Command::Simple(SimpleCommand {
+                                            name: Some(Word::new("rev", " ")),
+                                            prefixes: Vec::new(),
+                                            suffixes: Vec::new(),
+                                        }),
+                                    )],
                                 },
-                                tail: vec![
-                                    (
-                                        LogicalOp::And("".to_string()),
-                                        Linebreak { newlines: None },
-                                        Pipeline {
-                                            bang: None,
-                                            sequence: PipeSequence {
-                                                head: Box::new(Command::Simple(SimpleCommand {
-                                                    name: Some(Word::new("exit", " ")),
-                                                    prefixes: Vec::new(),
-                                                    suffixes: Vec::new(),
-                                                })),
-                                                tail: Vec::new(),
-                                            },
-                                        },
-                                    ),
-                                    (
-                                        LogicalOp::Or(" ".to_string()),
-                                        Linebreak { newlines: None },
-                                        Pipeline {
-                                            bang: None,
-                                            sequence: PipeSequence {
-                                                head: Box::new(Command::Simple(SimpleCommand {
-                                                    name: Some(Word::new("die", "")),
-                                                    prefixes: Vec::new(),
-                                                    suffixes: Vec::new(),
-                                                })),
-                                                tail: Vec::new(),
-                                            },
-                                        },
-                                    ),
-                                ],
                             },
-                            tail: vec![(
-                                SeparatorOp::Sync("".to_string()),
-                                AndOrList {
-                                    head: Pipeline {
+                            tail: vec![
+                                (
+                                    LogicalOp::And("".to_string()),
+                                    Linebreak { newlines: None },
+                                    Pipeline {
                                         bang: None,
                                         sequence: PipeSequence {
                                             head: Box::new(Command::Simple(SimpleCommand {
-                                                name: Some(Word::new("sleep", " ")),
+                                                name: Some(Word::new("exit", " ")),
                                                 prefixes: Vec::new(),
-                                                suffixes: vec![CmdSuffix::Word(Word::new(
-                                                    "3s", " ",
-                                                ))],
+                                                suffixes: Vec::new(),
                                             })),
                                             tail: Vec::new(),
                                         },
                                     },
-                                    tail: Vec::new(),
-                                },
-                            )],
+                                ),
+                                (
+                                    LogicalOp::Or(" ".to_string()),
+                                    Linebreak { newlines: None },
+                                    Pipeline {
+                                        bang: None,
+                                        sequence: PipeSequence {
+                                            head: Box::new(Command::Simple(SimpleCommand {
+                                                name: Some(Word::new("die", "")),
+                                                prefixes: Vec::new(),
+                                                suffixes: Vec::new(),
+                                            })),
+                                            tail: Vec::new(),
+                                        },
+                                    },
+                                ),
+                            ],
                         },
-                        Some(SeparatorOp::Async("  ".to_string())),
-                    )),
-                    comment: None,
-                },
+                        tail: vec![(
+                            SeparatorOp::Sync("".to_string()),
+                            AndOrList {
+                                head: Pipeline {
+                                    bang: None,
+                                    sequence: PipeSequence {
+                                        head: Box::new(Command::Simple(SimpleCommand {
+                                            name: Some(Word::new("sleep", " ")),
+                                            prefixes: Vec::new(),
+                                            suffixes: vec![CmdSuffix::Word(Word::new("3s", " "))],
+                                        })),
+                                        tail: Vec::new(),
+                                    },
+                                },
+                                tail: Vec::new(),
+                            },
+                        )],
+                    },
+                    Some(SeparatorOp::Async("  ".to_string())),
+                    None,
+                ),
                 tail: Vec::new(),
             },
             Linebreak { newlines: None },
@@ -902,35 +888,33 @@ fn parse_with_comment() {
         leading: Linebreak { newlines: None },
         commands: Some((
             CompleteCommands {
-                head: CompleteCommand {
-                    list_and_separator: Some((
-                        List {
-                            head: AndOrList {
-                                head: Pipeline {
-                                    bang: None,
-                                    sequence: PipeSequence {
-                                        head: Box::new(Command::Simple(SimpleCommand {
-                                            name: Some(Word::new("echo", "")),
-                                            prefixes: Vec::new(),
-                                            suffixes: vec![
-                                                CmdSuffix::Word(Word::new("foo", " ")),
-                                                CmdSuffix::Word(Word::new("bar", " ")),
-                                            ],
-                                        })),
-                                        tail: Vec::new(),
-                                    },
+                head: CompleteCommand::List(
+                    List {
+                        head: AndOrList {
+                            head: Pipeline {
+                                bang: None,
+                                sequence: PipeSequence {
+                                    head: Box::new(Command::Simple(SimpleCommand {
+                                        name: Some(Word::new("echo", "")),
+                                        prefixes: Vec::new(),
+                                        suffixes: vec![
+                                            CmdSuffix::Word(Word::new("foo", " ")),
+                                            CmdSuffix::Word(Word::new("bar", " ")),
+                                        ],
+                                    })),
+                                    tail: Vec::new(),
                                 },
-                                tail: Vec::new(),
                             },
                             tail: Vec::new(),
                         },
-                        None,
-                    )),
-                    comment: Some(Comment {
+                        tail: Vec::new(),
+                    },
+                    None,
+                    Some(Comment {
                         whitespace: " ".to_string(),
                         content: "this is a comment ".to_string(),
                     }),
-                },
+                ),
                 tail: Vec::new(),
             },
             Linebreak { newlines: None },

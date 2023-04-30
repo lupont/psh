@@ -42,20 +42,18 @@ impl CompleteCommands {
 ///                  | list
 ///                  ;
 #[derive(Debug, PartialEq, Eq)]
-pub struct CompleteCommand {
-    // it should not be possible to construct a CompleteCommand with both fields being None, but
-    // modelling it this way at least makes it possible to have a CompleteCommand that's only a
-    // comment. should figure out a better solution
-    pub list_and_separator: Option<(List, Option<SeparatorOp>)>,
-    pub comment: Option<Comment>,
+pub enum CompleteCommand {
+    List(List, Option<SeparatorOp>, Option<Comment>),
+    Comment(Comment),
 }
 
 impl CompleteCommand {
     pub fn list_with_separator(&self) -> Vec<(&AndOrList, SeparatorOp)> {
         let mut items = Vec::new();
 
-        let Some((list, separator_op)) = &self.list_and_separator else {
-            return items;
+        let (list, separator_op) = match self {
+            Self::List(list, separator_op, _) => (list, separator_op),
+            Self::Comment(_) => return items,
         };
 
         let final_separator = match separator_op {

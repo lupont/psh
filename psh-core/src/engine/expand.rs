@@ -34,11 +34,11 @@ impl Expand for CompleteCommands {
 
 impl Expand for CompleteCommand {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
-        Self {
-            list_and_separator: self
-                .list_and_separator
-                .map(|(list, sep)| (list.expand(engine), sep)),
-            comment: self.comment,
+        match self {
+            Self::List(list, separator_op, comment) => {
+                Self::List(list.expand(engine), separator_op, comment)
+            }
+            Self::Comment(comment) => Self::Comment(comment),
         }
     }
 }
