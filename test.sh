@@ -4,8 +4,8 @@
 ALL=0
 FAILED=0
 ROOT="$(realpath "$(dirname "$0")")"
-TARGET="$ROOT/target/debug/posh"
-TEST_DIR=/tmp/posh-test
+TARGET="$ROOT/target/debug/psh"
+TEST_DIR=/tmp/psh-test
 
 QUIET=true
 case "$1" in

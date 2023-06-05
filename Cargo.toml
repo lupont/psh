@@ -1,5 +1,5 @@
 [workspace]
-members = [ "posh-core", "posh" ]
+members = [ "psh-core", "psh" ]
 
 [profile.release]
 opt-level = "z"

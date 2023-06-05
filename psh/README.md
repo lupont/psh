@@ -1,8 +1,8 @@
-# posh
+# psh
 
-The executable command line front-end of the `posh` engine. 
+The executable command line front-end of the `psh` engine. 
 
-This crate contains the code behind the binary executable of the `posh`
+This crate contains the code behind the binary executable of the `psh`
 interactive shell. The REPL, input reading, syntax highlighting, and everything
 else used in the interactive shell lives here.
 

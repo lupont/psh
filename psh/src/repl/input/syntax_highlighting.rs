@@ -3,8 +3,8 @@ use std::io::Write;
 use crossterm::queue;
 use crossterm::style::{Print, ResetColor, SetForegroundColor};
 
-use posh_core::ast::prelude::*;
-use posh_core::{Engine, Result};
+use psh_core::ast::prelude::*;
+use psh_core::{Engine, Result};
 
 use crate::repl::Colors;
 

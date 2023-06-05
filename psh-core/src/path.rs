@@ -10,13 +10,13 @@ pub fn home_dir() -> String {
 }
 
 pub fn history_file() -> PathBuf {
-    match env::var("POSH_HISTORY") {
+    match env::var("PSH_HISTORY") {
         Ok(path) => PathBuf::from(path),
         Err(_) => match env::var("XDG_CONFIG_HOME") {
-            Ok(config_home) => PathBuf::from(config_home).join("posh").join("history"),
+            Ok(config_home) => PathBuf::from(config_home).join("psh").join("history"),
             Err(_) => PathBuf::from(home_dir())
                 .join(".config")
-                .join("posh")
+                .join("psh")
                 .join("history"),
         },
     }

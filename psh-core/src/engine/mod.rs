@@ -391,7 +391,7 @@ impl<W: Write> Engine<W> {
 
             if let Err(e @ Error::UnknownCommand(_)) = res {
                 codes.push(ExitStatus::from_code(127));
-                writeln!(self.writer, "posh: {e}")?;
+                writeln!(self.writer, "psh: {e}")?;
             } else {
                 codes.append(&mut res?);
             }

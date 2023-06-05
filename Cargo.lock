@@ -247,20 +247,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "posh"
-version = "0.1.0"
-dependencies = [
- "clap",
- "crossterm",
- "ctrlc",
- "posh-core",
-]
-
-[[package]]
-name = "posh-core"
-version = "0.1.0"
-
-[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,6 +278,20 @@ checksum = "57a8eca9f9c4ffde41714334dee777596264c7825420f521abc92b5b5deb63a5"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "psh"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "crossterm",
+ "ctrlc",
+ "psh-core",
+]
+
+[[package]]
+name = "psh-core"
+version = "0.1.0"
 
 [[package]]
 name = "quote"

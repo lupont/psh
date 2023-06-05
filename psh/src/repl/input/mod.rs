@@ -9,7 +9,7 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
-use posh_core::{Engine, Result};
+use psh_core::{Engine, Result};
 
 use crate::config::{Colors, ABBREVIATIONS};
 use crate::repl::input::syntax_highlighting::Highlighter;
@@ -305,7 +305,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
 
-    let ast = posh_core::parse(&state.line, true)?;
+    let ast = psh_core::parse(&state.line, true)?;
     ast.write_highlighted(engine)?;
     engine.writer.flush()?;
 

@@ -6,11 +6,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use posh_core::engine::parser::semtok;
-use posh_core::engine::parser::tok;
-use posh_core::parse;
-use posh_core::Engine;
-use posh_core::ExitStatus;
+use psh_core::engine::parser::semtok;
+use psh_core::engine::parser::tok;
+use psh_core::parse;
+use psh_core::Engine;
+use psh_core::ExitStatus;
 
 fn main() {
     let args = args::Args::parse();
@@ -23,7 +23,7 @@ fn main() {
         let mut repl = repl::Repl::new();
 
         if let Err(e) = repl.run(args.tokenize, args.lex, args.ast) {
-            eprintln!("posh: Unrecoverable error occurred: {e}");
+            eprintln!("psh: Unrecoverable error occurred: {e}");
             std::process::exit(7);
         }
     }
@@ -48,7 +48,7 @@ fn run_command(command: &String, tokenize: bool, lex: bool, ast: bool) {
             Ok(codes) => codes.last().map(ExitStatus::raw_code).unwrap(),
 
             Err(e) => {
-                eprintln!("posh: Could not execute command: {e}");
+                eprintln!("psh: Could not execute command: {e}");
                 1
             }
         };
@@ -79,7 +79,7 @@ fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool) {
             Ok(codes) => codes.last().map(ExitStatus::raw_code).unwrap(),
 
             Err(e) => {
-                eprintln!("posh: Could not execute command: {e}");
+                eprintln!("psh: Could not execute command: {e}");
                 1
             }
         };

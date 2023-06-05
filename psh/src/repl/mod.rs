@@ -6,9 +6,9 @@ use std::process;
 
 use crossterm::{execute, style, terminal};
 
-use posh_core::engine::parser::{semtok, tok};
-use posh_core::path::compress_tilde;
-use posh_core::{parse, Engine, ExitStatus, Result};
+use psh_core::engine::parser::{semtok, tok};
+use psh_core::path::compress_tilde;
+use psh_core::{parse, Engine, ExitStatus, Result};
 
 use crate::config::{self, Colors};
 use crate::repl::input::read_line;
@@ -37,7 +37,7 @@ impl Repl {
             if let Err(e) = self.prompt(rx.try_recv().unwrap_or_default()) {
                 writeln!(
                     self.engine.writer,
-                    "posh: Error occurred when computing the prompt: {e}"
+                    "psh: Error occurred when computing the prompt: {e}"
                 )?;
             }
 
@@ -66,7 +66,7 @@ impl Repl {
                     Err(e) => {
                         writeln!(
                             self.engine.writer,
-                            "posh: Error occurred when reading or executing: {e}"
+                            "psh: Error occurred when reading or executing: {e}"
                         )?;
                     }
                 }

@@ -1,19 +1,19 @@
-# posh
+# psh
 
-`posh` is a shell, mostly aimed at interactive use. It is highly inspired by
+`psh` is a shell, mostly aimed at interactive use. It is highly inspired by
 [`fish`](https://fishshell.com/), but with fewer features.
 
 ## Projects
 
 The project is (currently) split into two crates:
 
-- [`posh-core`](posh-core/README.md), the engine
-- [`posh`](posh/README.md), the official CLI front-end
+- [`psh-core`](psh-core/README.md), the engine
+- [`psh`](psh/README.md), the official CLI front-end
 
 ## Elevator Pitch
 
-posh aims to be a POSIX compliant shell, with interactive features inspired
-(mostly) by fish. One of the main purposes of the `posh-core` crate is to expose
+psh aims to be a POSIX compliant shell, with interactive features inspired
+(mostly) by fish. One of the main purposes of the `psh-core` crate is to expose
 the AST parsed by input, to make it easy to create different front-ends and
 linting/formatting tools. It would be cool to expose each individual parser as
 well, somehow.
@@ -43,7 +43,7 @@ since realized that it can be summarized in two smaller tasks:
 
 ## Contributing
 
-`posh` is written in Rust, and uses `cargo` for building, linting, formatting,
+`psh` is written in Rust, and uses `cargo` for building, linting, formatting,
 and testing. Contributing requires having the stable Rust toolchain installed
 (or made available via some sick `podman` aliases or something). The recommended
 way to install this is with [rustup](https://rustup.rs).
