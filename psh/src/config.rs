@@ -31,9 +31,7 @@ impl Colors {
 
     pub const REDIRECT_INPUT: Color = Color::Grey;
 
-    pub const NON_ZERO_RC: Color = Color::Red;
     pub const PROMPT: Color = Color::Yellow;
-    pub const CWD: Color = Color::DarkMagenta;
 }
 
 pub const USER_PROMPT: &str = "$";

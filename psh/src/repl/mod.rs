@@ -1,13 +1,11 @@
 pub mod input;
 
-use std::env;
 use std::io::{Stdout, Write};
 use std::process;
 
 use crossterm::{execute, style, terminal};
 
 use psh_core::engine::parser::{semtok, tok};
-use psh_core::path::compress_tilde;
 use psh_core::{parse, Engine, ExitStatus, Result};
 
 use crate::config::{self, Colors};
@@ -27,14 +25,10 @@ impl Repl {
     }
 
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
-        let (tx, rx) = std::sync::mpsc::channel();
-        ctrlc::set_handler(move || {
-            tx.send(true).unwrap();
-        })
-        .expect("Error setting Ctrl-C handler");
+        ctrlc::set_handler(|| {}).expect("psh: Error setting ctrl-c handler");
 
         loop {
-            if let Err(e) = self.prompt(rx.try_recv().unwrap_or_default()) {
+            if let Err(e) = self.prompt() {
                 writeln!(
                     self.engine.writer,
                     "psh: Error occurred when computing the prompt: {e}"
@@ -74,31 +68,8 @@ impl Repl {
         }
     }
 
-    pub fn prompt(&mut self, ctrlc: bool) -> Result<()> {
+    pub fn prompt(&mut self) -> Result<()> {
         let _raw = RawMode::init()?;
-
-        let cwd = format!(
-            "{} ",
-            compress_tilde(env::current_dir()?.display().to_string())
-        );
-
-        let exit_code = if ctrlc {
-            "[SIGINT] ".to_string()
-        } else {
-            match &self.last_status {
-                Some(codes) if !codes.iter().all(ExitStatus::is_ok) => {
-                    let codes = codes
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join("|");
-
-                    format!("[{codes}] ")
-                }
-
-                _ => "".to_string(),
-            }
-        };
 
         let prompt = format!(
             "{} ",
@@ -111,10 +82,6 @@ impl Repl {
 
         Ok(execute!(
             self.engine.writer,
-            style::SetForegroundColor(Colors::CWD),
-            style::Print(cwd),
-            style::SetForegroundColor(Colors::NON_ZERO_RC),
-            style::Print(exit_code),
             style::SetForegroundColor(Colors::PROMPT),
             style::Print(prompt),
             style::ResetColor,
