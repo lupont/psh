@@ -447,32 +447,104 @@ impl ToString for CmdSuffix {
 impl ToString for Redirection {
     fn to_string(&self) -> String {
         match self {
-            Redirection::Input {
-                file_descriptor,
+            Redirection::File {
+                whitespace,
+                input_fd,
+                ty,
                 target,
-                target_is_fd,
+            } => {
+                format!(
+                    "{}{}{}{}",
+                    whitespace,
+                    if let Some(fd) = input_fd {
+                        fd.to_string()
+                    } else {
+                        String::new()
+                    },
+                    ty.to_string(),
+                    target.to_string()
+                )
+            }
+            Redirection::Here {
+                whitespace,
+                input_fd,
+                ty,
+                content,
+                end,
             } => format!(
-                "{}<{}{}",
-                file_descriptor.to_string(),
-                if *target_is_fd { "&" } else { "" },
-                target.to_string()
+                "{}{}{}{}{}",
+                whitespace,
+                if let Some(fd) = input_fd {
+                    fd.to_string()
+                } else {
+                    String::new()
+                },
+                ty.to_string(),
+                content.to_string(),
+                end.to_string(),
             ),
-            Redirection::Output {
-                file_descriptor,
-                append,
-                target,
-                target_is_fd,
-            } => format!(
-                "{}>{}{}{}",
-                file_descriptor.to_string(),
-                if *target_is_fd { "&" } else { "" },
-                if *append { ">" } else { "" },
-                target.to_string()
-            ),
-            Redirection::HereDocument {
-                file_descriptor,
-                delimiter,
-            } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
+            // Redirection::Input {
+            //     file_descriptor,
+            //     target,
+            //     target_is_fd,
+            // } => format!(
+            //     "{}<{}{}",
+            //     file_descriptor.to_string(),
+            //     if *target_is_fd { "&" } else { "" },
+            //     target.to_string()
+            // ),
+            // Redirection::Output {
+            //     file_descriptor,
+            //     append,
+            //     target,
+            //     target_is_fd,
+            // } => format!(
+            //     "{}>{}{}{}",
+            //     file_descriptor.to_string(),
+            //     if *target_is_fd { "&" } else { "" },
+            //     if *append { ">" } else { "" },
+            //     target.to_string()
+            // ),
+            // Redirection::HereDocument {
+            //     file_descriptor,
+            //     delimiter,
+            // } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
+        }
+    }
+}
+
+impl ToString for RedirectionType {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Input => "<",
+            Self::InputFd => "<&",
+            Self::Output => ">",
+            Self::OutputFd => ">&",
+            Self::OutputAppend => ">>",
+            Self::OutputClobber => ">|",
+            Self::ReadWrite => "<>",
+        }
+        .to_string()
+    }
+}
+
+impl ToString for HereDocType {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Normal => "<<",
+            Self::StripTabs => "<<-",
+        }
+        .to_string()
+    }
+}
+
+impl ToString for FileDescriptor {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Stdin => "0".to_string(),
+            Self::Stdout => "1".to_string(),
+            Self::Stderr => "2".to_string(),
+            Self::Other(fd) => fd.to_string(),
         }
     }
 }

@@ -355,6 +355,12 @@ pub struct DoGroup {
     pub body: CompoundList,
 }
 
+/// simple_command : cmd_prefix cmd_word cmd_suffix
+///                | cmd_prefix cmd_word
+///                | cmd_prefix
+///                | cmd_name cmd_suffix
+///                | cmd_name
+///                ;
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
     pub name: Option<Word>,
@@ -402,87 +408,173 @@ impl SimpleCommand {
     }
 }
 
+/// cmd_prefix :            io_redirect
+///            | cmd_prefix io_redirect
+///            |            ASSIGNMENT_WORD
+///            | cmd_prefix ASSIGNMENT_WORD
+///            ;
 #[derive(Debug, PartialEq, Eq)]
 pub enum CmdPrefix {
     Redirection(Redirection),
     Assignment(VariableAssignment),
 }
 
+/// cmd_suffix :            io_redirect
+///            | cmd_suffix io_redirect
+///            |            WORD
+///            | cmd_suffix WORD
+///            ;
 #[derive(Debug, PartialEq, Eq)]
 pub enum CmdSuffix {
     Redirection(Redirection),
     Word(Word),
 }
 
-// We might want to do something like this. The reason for not doing it
-// now is that I'm not sure how FileDescriptor should work, since (as I
-// understand it), the amount of valid file descriptors can vary. Would
-// be used in the Redirection enum like this (extract):
-//     enum Redirection {
-//       Input {
-//         file_descriptor: Option<FileDescriptor>,
-//         target: Either<Word, FileDescriptor>,
-//       },
-//     }
-// The target being a FileDescriptor would mean that it was invoked as
-// e.g. `echo foo >&2`. This would remove the need for the
-// `target_is_fd` field.
-//
-// enum Either<L, R> {
-//     Left(L),
-//     Right(R),
-// }
+#[derive(Debug, PartialEq, Eq)]
+pub enum FileDescriptor {
+    Stdin,
+    Stdout,
+    Stderr,
+    Other(i32),
+}
 
-// #[derive(Debug, PartialEq, Eq)]
-// pub enum FileDescriptor {
-//     Stdin,
-//     Stdout,
-//     Stderr,
-// }
+/// `Input`:         `<`
+/// `InputFd`:       `<&`
+/// `ReadWrite`:     `<>`
+/// `Output`:        `>`
+/// `OutputFd`:      `>&`
+/// `OutputAppend`:  `>>`
+/// `OutputClobber`: `>|`
+#[derive(Debug, PartialEq, Eq)]
+pub enum RedirectionType {
+    /// `<`
+    Input,
 
+    /// `<&`
+    InputFd,
+
+    /// `<>`
+    ReadWrite,
+
+    /// `>`
+    Output,
+
+    /// `>&`
+    OutputFd,
+
+    /// `>>`
+    OutputAppend,
+
+    /// `>|`
+    OutputClobber,
+}
+
+/// `Normal`:    `<<`
+/// `StripTabs`: `<<-`
+#[derive(Debug, PartialEq, Eq)]
+pub enum HereDocType {
+    /// `<<`
+    Normal,
+
+    /// `<<-`
+    StripTabs,
+}
+
+/// io_redirect :           io_file
+///             | IO_NUMBER io_file
+///             |           io_here
+///             | IO_NUMBER io_here
+///             ;
+///
+/// io_file : '<'       filename
+///         | LESSAND   filename
+///         | '>'       filename
+///         | GREATAND  filename
+///         | DGREAT    filename
+///         | LESSGREAT filename
+///         | CLOBBER   filename
+///         ;
+///
+/// io_here : DLESS     here_end
+///         | DLESSDASH here_end
+///         ;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Redirection {
-    Output {
-        file_descriptor: Word,
-        append: bool,
+    File {
+        whitespace: LeadingWhitespace,
+        input_fd: Option<FileDescriptor>,
+        ty: RedirectionType,
         target: Word,
-        target_is_fd: bool,
     },
 
-    Input {
-        file_descriptor: Word,
-        target: Word,
-        target_is_fd: bool,
-    },
+    Here {
+        whitespace: LeadingWhitespace,
+        input_fd: Option<FileDescriptor>,
 
-    HereDocument {
-        file_descriptor: Word,
-        delimiter: Word,
+        ty: HereDocType,
+
+        /// The delimiter
+        end: Word,
+
+        /// The entire content of the here document
+        content: Word,
     },
 }
 
 impl Redirection {
-    pub fn new_output(fd: Word, target: Word, append: bool, target_is_fd: bool) -> Self {
-        Self::Output {
-            file_descriptor: fd,
-            append,
+    pub fn new_file(input_fd: Option<FileDescriptor>, ty: RedirectionType, target: Word) -> Self {
+        Self::File {
+            whitespace: Default::default(),
+            input_fd,
+            ty,
             target,
-            target_is_fd,
         }
     }
 
-    pub fn new_input(fd: Word, target: Word, target_is_fd: bool) -> Self {
-        Self::Input {
-            file_descriptor: fd,
-            target,
-            target_is_fd,
-        }
+    pub fn new_input(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::Input, target)
     }
 
-    pub fn new_here_doc(fd: Word, delimiter: Word) -> Self {
-        Self::HereDocument {
-            file_descriptor: fd,
-            delimiter,
+    pub fn new_input_fd(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::InputFd, target)
+    }
+
+    pub fn new_output(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::Output, target)
+    }
+
+    pub fn new_output_fd(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::OutputFd, target)
+    }
+
+    pub fn new_output_append(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::OutputAppend, target)
+    }
+
+    pub fn new_output_clobber(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::OutputClobber, target)
+    }
+
+    pub fn new_read_write(fd: Option<FileDescriptor>, target: Word) -> Self {
+        Self::new_file(fd, RedirectionType::ReadWrite, target)
+    }
+
+    pub fn new_here(
+        input_fd: Option<FileDescriptor>,
+        strip_tabs: bool,
+        content: Word,
+        end: Word,
+    ) -> Self {
+        Self::Here {
+            whitespace: Default::default(),
+            input_fd,
+            ty: if strip_tabs {
+                HereDocType::StripTabs
+            } else {
+                HereDocType::Normal
+            },
+            content,
+            end,
         }
     }
 }

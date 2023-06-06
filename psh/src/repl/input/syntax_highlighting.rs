@@ -285,50 +285,47 @@ impl Highlighter for CmdSuffix {
 impl Highlighter for Redirection {
     fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
         match self {
-            Redirection::Input {
-                file_descriptor,
+            Redirection::File {
+                whitespace,
+                input_fd,
+                ty,
                 target,
-                target_is_fd,
             } => Ok(queue!(
                 engine.writer,
+                Print(whitespace),
                 SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
-                Print(file_descriptor.to_string()),
+                Print(if let Some(fd) = input_fd {
+                    fd.to_string()
+                } else {
+                    String::new()
+                }),
                 SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
-                Print("<"),
-                Print(if *target_is_fd { "&" } else { "" }),
+                Print(ty.to_string()),
                 SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
                 Print(target.to_string()),
                 ResetColor,
             )?),
-            Redirection::Output {
-                file_descriptor,
-                append,
-                target,
-                target_is_fd,
+            Redirection::Here {
+                whitespace,
+                input_fd,
+                ty,
+                end,
+                content,
             } => Ok(queue!(
                 engine.writer,
+                Print(whitespace),
                 SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
-                Print(file_descriptor.to_string()),
+                Print(if let Some(fd) = input_fd {
+                    fd.to_string()
+                } else {
+                    String::new()
+                }),
                 SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
-                Print(">"),
-                Print(if *append { ">" } else { "" }),
-                Print(if *target_is_fd { "&" } else { "" }),
+                Print(ty.to_string()),
                 SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
-                Print(target.to_string()),
+                Print(end.to_string()),
                 ResetColor,
-            )?),
-            Redirection::HereDocument {
-                file_descriptor,
-                delimiter,
-            } => Ok(queue!(
-                engine.writer,
-                SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
-                Print(file_descriptor.to_string()),
-                SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
-                Print("<<"),
-                SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
-                Print(delimiter.to_string()),
-                ResetColor,
+                Print(content.to_string()),
             )?),
         }
     }

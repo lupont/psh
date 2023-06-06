@@ -100,9 +100,13 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse_name(&mut self) -> Option<Name>;
     fn parse_redirection_list(&mut self) -> Vec<Redirection>;
     fn parse_redirection(&mut self) -> Option<Redirection>;
+    fn parse_file_descriptor(&mut self) -> Option<FileDescriptor>;
+    fn parse_file_redirection(&mut self) -> Option<Redirection>;
+    fn parse_here_redirection(&mut self) -> Option<Redirection>;
+    fn parse_redirection_type(&mut self) -> Option<RedirectionType>;
+    fn parse_here_doc_type(&mut self) -> Option<HereDocType>;
     fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
     fn parse_word(&mut self, allow_reserved_words: bool) -> Option<Word>;
-    fn parse_redirection_fd(&mut self) -> Option<Word>;
     fn parse_comment(&mut self) -> Option<Comment>;
     fn parse_pipe(&mut self) -> Option<Pipe>;
     fn parse_bang(&mut self) -> Option<Bang>;
@@ -602,65 +606,113 @@ where
     }
 
     fn parse_redirection(&mut self) -> Option<Redirection> {
+        self.parse_file_redirection()
+            .or_else(|| self.parse_here_redirection())
+    }
+
+    fn parse_file_redirection(&mut self) -> Option<Redirection> {
         let initial = self.clone();
 
-        let fd = self.parse_redirection_fd().unwrap_or_else(|| {
-            let ws = self.swallow_whitespace();
-            Word::new("", ws)
-        });
+        let ws = self.swallow_whitespace();
 
-        match self
-            .consume_single(SemanticToken::RedirectOutput)
-            .or_else(|| self.consume_single(SemanticToken::RedirectInput))
-        {
-            Some(SemanticToken::RedirectInput) => {
-                let is_here_doc = self.consume_single(SemanticToken::RedirectInput).is_some();
+        let input_fd = self.parse_file_descriptor();
 
-                // FIXME: if ampersand is used, "target" should be a file descriptor.
-                //        probably needs to be fixed in the enum definition
-                let target_is_fd = self.consume_single(SemanticToken::AsyncSeparator).is_some();
+        let Some(ty) = self.parse_redirection_type() else {
+            *self = initial;
+            return None;
+        };
 
-                match self.parse_word(true) {
-                    Some(target) if is_here_doc => Some(Redirection::HereDocument {
-                        file_descriptor: fd,
-                        delimiter: target,
-                    }),
+        let Some(target) = self.parse_word(true) else {
+            *self = initial;
+            return None;
+        };
 
-                    Some(target) => Some(Redirection::Input {
-                        file_descriptor: fd,
-                        target,
-                        target_is_fd,
-                    }),
+        Some(Redirection::File {
+            whitespace: ws,
+            input_fd,
+            ty,
+            target,
+        })
+    }
 
-                    None => {
-                        *self = initial;
-                        None
-                    }
-                }
+    fn parse_here_redirection(&mut self) -> Option<Redirection> {
+        let initial = self.clone();
+
+        let ws = self.swallow_whitespace();
+
+        let input_fd = self.parse_file_descriptor();
+
+        let Some(ty) = self.parse_here_doc_type() else {
+            *self = initial;
+            return None;
+        };
+
+        let Some(end) = self.parse_word(true) else {
+            *self = initial;
+            return None;
+        };
+
+        // FIXME: actually parse content
+        let content = Word::new("", "");
+
+        Some(Redirection::Here {
+            whitespace: ws,
+            input_fd,
+            ty,
+            end,
+            content,
+        })
+    }
+
+    fn parse_redirection_type(&mut self) -> Option<RedirectionType> {
+        use SemanticToken::*;
+        let initial = self.clone();
+
+        match (self.next(), self.peek()) {
+            (Some(RedirectInput), Some(AsyncSeparator)) => {
+                self.next();
+                Some(RedirectionType::InputFd)
+            }
+            (Some(RedirectInput), Some(RedirectOutput)) => {
+                self.next();
+                Some(RedirectionType::ReadWrite)
+            }
+            (Some(RedirectInput), _) => Some(RedirectionType::Input),
+
+            (Some(RedirectOutput), Some(AsyncSeparator)) => {
+                self.next();
+                Some(RedirectionType::OutputFd)
+            }
+            (Some(RedirectOutput), Some(RedirectOutput)) => {
+                self.next();
+                Some(RedirectionType::OutputAppend)
+            }
+            (Some(RedirectOutput), Some(Pipe)) => {
+                self.next();
+                Some(RedirectionType::OutputClobber)
+            }
+            (Some(RedirectOutput), _) => Some(RedirectionType::Output),
+
+            _ => {
+                *self = initial;
+                None
+            }
+        }
+    }
+
+    fn parse_here_doc_type(&mut self) -> Option<HereDocType> {
+        use SemanticToken::*;
+        let initial = self.clone();
+
+        match (self.next(), self.next(), self.peek()) {
+            (Some(RedirectInput), Some(RedirectInput), Some(Word(w)))
+                if w.to_string().as_str() == "-" =>
+            {
+                self.next();
+                Some(HereDocType::StripTabs)
             }
 
-            Some(SemanticToken::RedirectOutput) => {
-                let append = self.consume_single(SemanticToken::RedirectOutput).is_some();
-
-                // FIXME: if ampersand is used, "target" should be a file descriptor.
-                //        probably needs to be fixed in the enum definition
-                let target_is_fd = self.consume_single(SemanticToken::AsyncSeparator).is_some();
-
-                let target = match self.parse_word(true) {
-                    Some(word) => word,
-                    None => {
-                        *self = initial;
-                        return None;
-                    }
-                };
-
-                Some(Redirection::Output {
-                    file_descriptor: fd,
-                    append,
-                    target,
-                    target_is_fd,
-                })
-            }
+            (Some(RedirectInput), Some(RedirectInput), _) => Some(HereDocType::Normal),
 
             _ => {
                 *self = initial;
@@ -704,16 +756,14 @@ where
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
-        match self.peek() {
+        match self.next() {
             Some(SemanticToken::Word(xs)) => {
-                let word = Word::new(xs, ws);
-                self.next();
+                let word = Word::new(&xs, ws);
                 Some(word)
             }
 
             Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
                 let word = Word::new(&reserved.to_string(), ws);
-                self.next();
                 Some(word)
             }
 
@@ -724,25 +774,24 @@ where
         }
     }
 
-    fn parse_redirection_fd(&mut self) -> Option<Word> {
-        let ws = self.swallow_whitespace();
+    fn parse_file_descriptor(&mut self) -> Option<FileDescriptor> {
+        let initial = self.clone();
 
-        match self.peek() {
-            Some(SemanticToken::RedirectOutput | SemanticToken::RedirectInput) => {
-                Some(Word::new("", ws))
-            }
-
-            Some(SemanticToken::Word(word)) if word.len() == 1 => match word.chars().next() {
-                Some('0'..='9') => {
-                    let word = Word::new(word, ws);
-                    self.next();
-                    Some(word)
+        if let Some(SemanticToken::Word(word)) = self.next() {
+            match word.as_str() {
+                "0" => return Some(FileDescriptor::Stdin),
+                "1" => return Some(FileDescriptor::Stdout),
+                "2" => return Some(FileDescriptor::Stderr),
+                n => {
+                    if let Ok(n) = n.parse::<i32>() {
+                        return Some(FileDescriptor::Other(n));
+                    }
                 }
-                _ => None,
-            },
-
-            _ => None,
+            }
         }
+
+        *self = initial;
+        None
     }
 
     fn parse_comment(&mut self) -> Option<Comment> {

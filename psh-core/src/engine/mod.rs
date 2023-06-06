@@ -7,6 +7,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::ops::Not;
+use std::os::fd::FromRawFd;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
@@ -203,51 +204,133 @@ impl<W: Write> Engine<W> {
         let mut stdin_override = None;
         let mut stdout_override = None;
         let mut stderr_override = None;
-
         for redirection in cmd.redirections() {
             match redirection {
-                Redirection::Output {
-                    file_descriptor,
-                    append,
+                Redirection::File {
+                    ty: RedirectionType::Input,
                     target,
-                    target_is_fd: _,
+                    ..
                 } => {
-                    let fd = &file_descriptor.name;
-
+                    let file = fs::OpenOptions::new()
+                        .read(true)
+                        .write(false)
+                        .append(false)
+                        .create(false)
+                        .open(&target.name)?;
+                    stdin_override = Some(Stdio::from(file));
+                }
+                Redirection::File {
+                    input_fd,
+                    ty: RedirectionType::Output,
+                    target,
+                    ..
+                } => {
                     let file = fs::OpenOptions::new()
                         .read(false)
                         .write(true)
-                        .append(*append)
                         .create(true)
+                        .append(false)
                         .open(&target.name)?;
-
-                    if fd.is_empty() || fd == "1" {
-                        stdout_override = Some(Stdio::from(file));
-                    } else if fd == "2" {
-                        stderr_override = Some(Stdio::from(file));
-                    }
+                    match input_fd {
+                        None | Some(FileDescriptor::Stdout) => {
+                            stdout_override = Some(Stdio::from(file))
+                        }
+                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
+                        _ => {}
+                    };
                 }
-
-                Redirection::Input {
-                    file_descriptor,
+                Redirection::File {
+                    input_fd,
+                    ty: RedirectionType::OutputAppend,
                     target,
-                    target_is_fd: _,
+                    ..
                 } => {
-                    let fd = &file_descriptor.name;
-
-                    if fd.is_empty() || fd == "0" {
-                        let file = fs::OpenOptions::new()
-                            .read(true)
-                            .write(false)
-                            .open(&target.name)?;
-                        stdin_override = Some(Stdio::from(file));
-                    }
+                    let file = fs::OpenOptions::new()
+                        .read(false)
+                        .write(true)
+                        .create(true)
+                        .append(true)
+                        .open(&target.name)?;
+                    match input_fd {
+                        None | Some(FileDescriptor::Stdout) => {
+                            stdout_override = Some(Stdio::from(file))
+                        }
+                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
+                        _ => {}
+                    };
+                }
+                Redirection::File {
+                    input_fd,
+                    ty: RedirectionType::OutputClobber,
+                    target,
+                    ..
+                } => {
+                    // TODO: real implementation
+                    let file = fs::OpenOptions::new()
+                        .read(false)
+                        .write(true)
+                        .create(true)
+                        .append(false)
+                        .open(&target.name)?;
+                    match input_fd {
+                        None | Some(FileDescriptor::Stdout) => {
+                            stdout_override = Some(Stdio::from(file))
+                        }
+                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
+                        _ => {}
+                    };
+                }
+                Redirection::File {
+                    input_fd,
+                    ty: RedirectionType::ReadWrite,
+                    target,
+                    ..
+                } => {
+                    // TODO: real implementation
+                    let file = fs::OpenOptions::new()
+                        .read(false)
+                        .write(true)
+                        .create(true)
+                        .append(true)
+                        .open(&target.name)?;
+                    match input_fd {
+                        None | Some(FileDescriptor::Stdout) => {
+                            stdout_override = Some(Stdio::from(file))
+                        }
+                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
+                        _ => {}
+                    };
                 }
 
-                Redirection::HereDocument {
-                    file_descriptor: _,
-                    delimiter: _,
-                } => todo!(),
+                Redirection::File {
+                    ty: RedirectionType::InputFd,
+                    target,
+                    ..
+                } => {
+                    // TODO: does not currently work
+                    let fd = target.to_string().parse::<i32>().unwrap();
+                    let file = unsafe { fs::File::from_raw_fd(fd) };
+                    stdin_override = Some(Stdio::from(file));
+                }
+                Redirection::File {
+                    input_fd,
+                    ty: RedirectionType::OutputFd,
+                    target,
+                    ..
+                } => {
+                    // TODO: does not currently work
+                    let fd = target.to_string().parse::<i32>().unwrap();
+                    let file = unsafe { fs::File::from_raw_fd(fd) };
+                    match input_fd {
+                        None | Some(FileDescriptor::Stdout) => {
+                            stdout_override = Some(Stdio::from(file))
+                        }
+                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
+                        _ => {}
+                    };
+                }
+
+                Redirection::Here { .. } => {}
             }
         }
 

@@ -140,34 +140,29 @@ impl Expand for CmdSuffix {
 impl Expand for Redirection {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         match self {
-            Self::Output {
-                file_descriptor,
-                append,
+            Self::File {
+                whitespace,
+                input_fd,
+                ty,
                 target,
-                target_is_fd,
-            } => Self::Output {
-                file_descriptor: file_descriptor.expand(engine),
-                append,
+            } => Self::File {
+                whitespace,
+                input_fd,
+                ty,
                 target: target.expand(engine),
-                target_is_fd,
             },
-
-            Self::Input {
-                file_descriptor,
-                target,
-                target_is_fd,
-            } => Self::Input {
-                file_descriptor: file_descriptor.expand(engine),
-                target: target.expand(engine),
-                target_is_fd,
-            },
-
-            Self::HereDocument {
-                file_descriptor,
-                delimiter,
-            } => Self::HereDocument {
-                file_descriptor: file_descriptor.expand(engine),
-                delimiter: delimiter.expand(engine),
+            Self::Here {
+                whitespace,
+                input_fd,
+                ty,
+                end,
+                content,
+            } => Self::Here {
+                whitespace,
+                input_fd,
+                ty,
+                end: end.expand(engine),
+                content: content.expand(engine),
             },
         }
     }
