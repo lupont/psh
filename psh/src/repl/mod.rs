@@ -25,6 +25,19 @@ impl Repl {
     }
 
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
+        let ps1 = match is_root() {
+            true => config::PS1_ROOT_PROMPT,
+            false => config::PS1_USER_PROMPT,
+        };
+        let ps2 = config::PS2_PROMPT;
+
+        if std::env::var("PS1").is_err() {
+            std::env::set_var("PS1", ps1);
+        }
+        if std::env::var("PS2").is_err() {
+            std::env::set_var("PS2", ps2);
+        }
+
         ctrlc::set_handler(|| {}).expect("psh: Error setting ctrl-c handler");
 
         loop {
@@ -86,11 +99,9 @@ impl Repl {
         let prompt = format!(
             "{} ",
             if ps2 {
-                config::PS2_PROMPT
-            } else if is_root() {
-                config::ROOT_PROMPT
+                std::env::var("PS2").unwrap()
             } else {
-                config::USER_PROMPT
+                std::env::var("PS1").unwrap()
             }
         );
 

@@ -34,8 +34,8 @@ impl Colors {
     pub const PROMPT: Color = Color::DarkGrey;
 }
 
-pub const USER_PROMPT: &str = "$";
-pub const ROOT_PROMPT: &str = "#";
+pub const PS1_USER_PROMPT: &str = "$";
+pub const PS1_ROOT_PROMPT: &str = "#";
 pub const PS2_PROMPT: &str = ">";
 
 pub const ABBREVIATIONS: [(&str, &str); 3] = [
