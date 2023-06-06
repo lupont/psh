@@ -6,7 +6,7 @@ use std::process;
 use crossterm::{execute, style, terminal};
 
 use psh_core::engine::parser::{semtok, tok};
-use psh_core::{parse, Engine, ExitStatus, Result};
+use psh_core::{parse, Engine, Error, ExitStatus, Result};
 
 use crate::config::{self, Colors};
 use crate::repl::input::read_line;
@@ -28,14 +28,26 @@ impl Repl {
         ctrlc::set_handler(|| {}).expect("psh: Error setting ctrl-c handler");
 
         loop {
-            if let Err(e) = self.prompt() {
+            if let Err(e) = self.prompt(false) {
                 writeln!(
                     self.engine.writer,
                     "psh: Error occurred when computing the prompt: {e}"
                 )?;
             }
 
-            let line = read_line(&mut self.engine)?;
+            let mut line = read_line(&mut self.engine, false)?;
+
+            while parse(&line, false).is_err() {
+                self.prompt(true)?;
+                match read_line(&mut self.engine, true) {
+                    Ok(l) => line += &l,
+                    Err(Error::CancelledLine) => {
+                        line = String::new();
+                        break;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
 
             if tokenize && line != "exit" {
                 for token in tok::tokenize(line) {
@@ -68,12 +80,14 @@ impl Repl {
         }
     }
 
-    pub fn prompt(&mut self) -> Result<()> {
+    pub fn prompt(&mut self, ps2: bool) -> Result<()> {
         let _raw = RawMode::init()?;
 
         let prompt = format!(
             "{} ",
-            if is_root() {
+            if ps2 {
+                config::PS2_PROMPT
+            } else if is_root() {
                 config::ROOT_PROMPT
             } else {
                 config::USER_PROMPT

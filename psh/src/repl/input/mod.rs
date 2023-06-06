@@ -9,7 +9,7 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
-use psh_core::{Engine, Result};
+use psh_core::{Engine, Error, Result};
 
 use crate::config::{Colors, ABBREVIATIONS};
 use crate::repl::input::syntax_highlighting::Highlighter;
@@ -64,11 +64,11 @@ impl State {
     }
 }
 
-pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
+pub fn read_line<W: Write>(engine: &mut Engine<W>, ps2: bool) -> Result<String> {
     let _raw = RawMode::init()?;
 
     let mut state = State {
-        line: String::new(),
+        line: Default::default(),
         index: 0,
         start_pos: cursor::position()?,
         size: terminal::size()?,
@@ -109,7 +109,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
 
         match (code, modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                if state.line.is_empty() {
+                if !ps2 && state.line.is_empty() {
                     continue;
                 }
 
@@ -286,11 +286,10 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>) -> Result<String> {
         execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
     }
 
-    // FIXME: should probably return Result<Option<String>> with Ok(None) here?
-    if state.cancelled {
-        Ok("".to_string())
-    } else {
-        Ok(state.line)
+    match (state.cancelled, ps2) {
+        (true, true) => Err(Error::CancelledLine),
+        (true, false) => Ok("".to_string()),
+        (false, _) => Ok(state.line),
     }
 }
 

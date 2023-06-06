@@ -3,7 +3,7 @@ use crossterm::style::Color;
 pub struct Colors;
 
 impl Colors {
-    pub const UNPARSED: Color = Color::DarkRed;
+    pub const UNPARSED: Color = Color::Grey;
 
     pub const COMMENT_COLOR: Color = Color::DarkGrey;
 
@@ -31,11 +31,12 @@ impl Colors {
 
     pub const REDIRECT_INPUT: Color = Color::Grey;
 
-    pub const PROMPT: Color = Color::Yellow;
+    pub const PROMPT: Color = Color::DarkGrey;
 }
 
 pub const USER_PROMPT: &str = "$";
 pub const ROOT_PROMPT: &str = "#";
+pub const PS2_PROMPT: &str = ">";
 
 pub const ABBREVIATIONS: [(&str, &str); 3] = [
     ("gs", "git status"),

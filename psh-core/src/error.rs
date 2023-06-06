@@ -14,6 +14,7 @@ pub enum Error {
     Unimplemented(String),
     SyntaxError(String),
     ParseError(ParseError),
+    CancelledLine,
 }
 
 impl fmt::Display for Error {
@@ -31,6 +32,7 @@ impl fmt::Display for Error {
                 Self::Unimplemented(s) => s.to_string(),
                 Self::SyntaxError(s) => format!("syntax error: {s}"),
                 Self::ParseError(e) => e.to_string(),
+                Self::CancelledLine => "".to_string(),
             }
         )
     }
