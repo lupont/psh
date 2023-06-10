@@ -186,7 +186,7 @@ impl Expand for Word {
         // FIXME: arithmetic expression
         // FIXME: field split (should return one "main" word, and a list of trailing words
         // FIXME: pathname expand
-        remove_quotes(parameter_expanded)
+        quote_removal(parameter_expanded)
     }
 }
 
@@ -235,12 +235,20 @@ fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
     word
 }
 
-fn remove_quotes(word: Word) -> Word {
+fn quote_removal(word: Word) -> Word {
+    Word {
+        name: remove_quotes(&word.name),
+        whitespace: word.whitespace,
+        expansions: word.expansions,
+    }
+}
+
+pub fn remove_quotes(s: &str) -> String {
     let mut name = String::new();
     let mut state = QuoteState::None;
     let mut is_escaped = false;
 
-    for c in word.name.chars() {
+    for c in s.chars() {
         match (c, state) {
             ('\'', QuoteState::Single) => {
                 state = QuoteState::None;
@@ -270,9 +278,5 @@ fn remove_quotes(word: Word) -> Word {
         }
     }
 
-    Word {
-        name,
-        whitespace: word.whitespace,
-        expansions: word.expansions,
-    }
+    name
 }

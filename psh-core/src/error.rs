@@ -2,7 +2,11 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
+use crate::ast::prelude::*;
+
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub type ParseResult<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -15,6 +19,7 @@ pub enum Error {
     SyntaxError(String),
     ParseError(ParseError),
     CancelledLine,
+    Incomplete(String),
 }
 
 impl fmt::Display for Error {
@@ -28,11 +33,12 @@ impl fmt::Display for Error {
                 Self::InvalidHistfile(path) =>
                     format!("$POSH_HISTFILE contains invalid path: {}", path.display()),
                 Self::HistoryOutOfBounds => "tried to read beyond the history bounds.".to_string(),
-                Self::UnknownCommand(cmd) => format!("unknown command: {}", cmd),
+                Self::UnknownCommand(cmd) => format!("unknown command: '{}'", cmd),
                 Self::Unimplemented(s) => s.to_string(),
                 Self::SyntaxError(s) => format!("syntax error: {s}"),
                 Self::ParseError(e) => e.to_string(),
-                Self::CancelledLine => "".to_string(),
+                Self::CancelledLine => "line input cancelled".to_string(),
+                Self::Incomplete(line) => format!("incomplete line: '{line}'"),
             }
         )
     }
@@ -46,9 +52,27 @@ impl From<io::Error> for Error {
     }
 }
 
-#[derive(Debug)]
+impl From<ParseError> for Error {
+    fn from(e: ParseError) -> Self {
+        Self::ParseError(e)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
     InvalidName(String),
+    Invalid,
+    Done,
+    Unimplemented(String),
+    UnfinishedCompleteCommands(LeadingWhitespace, CompleteCommands),
+    UnfinishedCompleteCommand(LeadingWhitespace, CompleteCommand),
+    UnfinishedList(LeadingWhitespace, List),
+    UnfinishedAndOrList(LeadingWhitespace, AndOrList),
+    UnfinishedPipeline(LeadingWhitespace, Pipeline),
+    UnfinishedPipeSequence(LeadingWhitespace, PipeSequence),
+    UnfinishedCommand(Command),
+    UnfinishedSimpleCommand(SimpleCommand),
+    UnfinishedWord(Word),
 }
 
 impl fmt::Display for ParseError {
@@ -58,6 +82,19 @@ impl fmt::Display for ParseError {
             "{}",
             match self {
                 Self::InvalidName(name) => format!("`{name}` is not a valid name"),
+                Self::Invalid => "invalid syntax".to_string(),
+                Self::Done => "all finished".to_string(),
+                Self::Unimplemented(s) => format!("not yet implemented: {s}"),
+                Self::UnfinishedCompleteCommands(_, _) =>
+                    "unfinished complete commands".to_string(),
+                Self::UnfinishedCompleteCommand(_, _) => "unfinished complete command".to_string(),
+                Self::UnfinishedList(_, _) => "unfinished list".to_string(),
+                Self::UnfinishedAndOrList(_, _) => "unfinished and or list".to_string(),
+                Self::UnfinishedPipeline(_, _) => "unfinished pipeline".to_string(),
+                Self::UnfinishedPipeSequence(_, _) => "unfinished pipe sequence".to_string(),
+                Self::UnfinishedCommand(_) => "unfinished command".to_string(),
+                Self::UnfinishedSimpleCommand(_) => "unfinished simple command".to_string(),
+                Self::UnfinishedWord(_) => "unfinished word".to_string(),
             }
         )
     }

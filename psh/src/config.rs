@@ -3,7 +3,7 @@ use crossterm::style::Color;
 pub struct Colors;
 
 impl Colors {
-    pub const UNPARSED: Color = Color::Grey;
+    pub const UNPARSED: Color = Color::DarkRed;
 
     pub const COMMENT_COLOR: Color = Color::DarkGrey;
 

@@ -304,7 +304,7 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
 
-    let ast = psh_core::parse(&state.line, true)?;
+    let Ok(ast) = psh_core::parse(&state.line, true) else { return Ok(()); };
     ast.write_highlighted(engine)?;
     engine.writer.flush()?;
 

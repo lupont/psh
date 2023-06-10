@@ -215,18 +215,11 @@ where
         let quote = self.next().unwrap();
         word.push_str(&quote.to_str());
 
-        while let Some(token) = self.peek() {
-            match token {
-                Token::SingleQuote => {
-                    let quote = self.next().unwrap();
-                    word.push_str(&quote.to_str());
-                    break;
-                }
-
-                _ => {
-                    let inner = self.next().unwrap();
-                    word.push_str(&inner.to_str());
-                }
+        while self.peek().is_some() {
+            let next = self.next().unwrap();
+            word.push_str(&next.to_str());
+            if let Token::SingleQuote = next {
+                break;
             }
         }
 

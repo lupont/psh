@@ -1,5 +1,6 @@
 pub mod input;
 
+use std::env;
 use std::io::{Stdout, Write};
 use std::process;
 
@@ -31,26 +32,21 @@ impl Repl {
         };
         let ps2 = config::PS2_PROMPT;
 
-        if std::env::var("PS1").is_err() {
-            std::env::set_var("PS1", ps1);
+        if env::var("PS1").is_err() {
+            env::set_var("PS1", ps1);
         }
-        if std::env::var("PS2").is_err() {
-            std::env::set_var("PS2", ps2);
+        if env::var("PS2").is_err() {
+            env::set_var("PS2", ps2);
         }
 
         ctrlc::set_handler(|| {}).expect("psh: Error setting ctrl-c handler");
 
         loop {
-            if let Err(e) = self.prompt(false) {
-                writeln!(
-                    self.engine.writer,
-                    "psh: Error occurred when computing the prompt: {e}"
-                )?;
-            }
+            self.prompt(false)?;
 
             let mut line = read_line(&mut self.engine, false)?;
 
-            while parse(&line, false).is_err() {
+            while let Err(Error::Incomplete(_)) = parse(&line, false) {
                 self.prompt(true)?;
                 match read_line(&mut self.engine, true) {
                     Ok(l) => line += &l,
@@ -99,9 +95,9 @@ impl Repl {
         let prompt = format!(
             "{} ",
             if ps2 {
-                std::env::var("PS2").unwrap()
+                env::var("PS2").unwrap()
             } else {
-                std::env::var("PS1").unwrap()
+                env::var("PS1").unwrap()
             }
         );
 

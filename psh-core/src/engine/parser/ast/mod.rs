@@ -10,11 +10,17 @@ use self::prelude::*;
 use crate::engine::parser::consumer::Consumer;
 use crate::engine::parser::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
 use crate::engine::parser::tok::Tokenizer;
+use crate::error::{ParseError, ParseResult};
 use crate::{Error, Result};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
+    let input = input.as_ref();
+
+    if input.chars().all(char::is_whitespace) {
+        return Ok(Default::default());
+    }
+
     match input
-        .as_ref()
         .chars()
         .peekable()
         .tokenize()
@@ -27,9 +33,10 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
     {
         Ok(ast) => Ok(ast),
         Err(ast) if allow_errors => Ok(ast),
+        Err(ast) if ast.is_ok() => Err(Error::Incomplete(ast.to_string())),
         Err(ast) => Err(Error::SyntaxError(format!(
-            "could not parse the following: `{}`",
-            ast.unparsed.trim_start(),
+            "psh: could not parse the following: '{}'",
+            ast.unparsed.trim_start()
         ))),
     }
 }
@@ -37,80 +44,75 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
 pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
     fn parse(&mut self) -> std::result::Result<SyntaxTree, SyntaxTree> {
         let linebreak = self.parse_linebreak();
+        let commands = self.parse_complete_commands();
+        let trailing_linebreak = self.parse_linebreak();
 
-        let commands = self
-            .parse_complete_commands()
-            .map(|c| (c, self.parse_linebreak()));
+        let unparsed = self.by_ref().map(|t| t.to_string()).collect();
 
-        let mut unparsed = String::new();
-        for token in self.by_ref() {
-            unparsed.push_str(&token.to_string());
-        }
-
-        let ok = unparsed.is_empty() || unparsed.chars().all(|c| c.is_ascii_whitespace());
-
-        let ast = SyntaxTree {
-            leading: linebreak,
-            commands,
-            unparsed,
-        };
-
-        if ok {
-            Ok(ast)
-        } else {
-            Err(ast)
+        match commands {
+            Ok(cmds) => Ok(SyntaxTree {
+                leading: linebreak,
+                commands: Some((cmds, trailing_linebreak)),
+                unparsed,
+            }),
+            Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(SyntaxTree {
+                leading: linebreak,
+                commands: Some((cmds, trailing_linebreak)),
+                unparsed: format!("{ws}{unparsed}"),
+            }),
+            Err(e) => todo!("error: {e}"),
         }
     }
 
-    fn parse_complete_commands(&mut self) -> Option<CompleteCommands>;
-    fn parse_complete_command(&mut self) -> Option<CompleteCommand>;
-    fn parse_list(&mut self) -> Option<List>;
-    fn parse_and_or_list(&mut self) -> Option<AndOrList>;
-    fn parse_pipeline(&mut self) -> Option<Pipeline>;
-    fn parse_pipe_sequence(&mut self) -> Option<PipeSequence>;
-    fn parse_command(&mut self) -> Option<Command>;
-    fn parse_compound_command(&mut self) -> Option<CompoundCommand>;
-    fn parse_subshell(&mut self) -> Option<Subshell>;
-    fn parse_compound_list(&mut self) -> Option<CompoundList>;
-    fn parse_term(&mut self) -> Option<Term>;
-    fn parse_for_clause(&mut self) -> Option<ForClause>;
-    fn parse_case_clause(&mut self) -> Option<CaseClause>;
-    fn parse_case_list_ns(&mut self) -> Option<CaseListNs>;
-    fn parse_case_list(&mut self) -> Option<CaseList>;
-    fn parse_case_item_ns(&mut self) -> Option<CaseItemNs>;
-    fn parse_case_item(&mut self) -> Option<CaseItem>;
-    fn parse_pattern(&mut self) -> Option<Pattern>;
-    fn parse_if_clause(&mut self) -> Option<IfClause>;
-    fn parse_else_part(&mut self) -> Option<ElsePart>;
-    fn parse_while_clause(&mut self) -> Option<WhileClause>;
-    fn parse_until_clause(&mut self) -> Option<UntilClause>;
-    fn parse_function_definition(&mut self) -> Option<FunctionDefinition>;
-    fn parse_function_body(&mut self) -> Option<FunctionBody>;
-    fn parse_brace_group(&mut self) -> Option<BraceGroup>;
-    fn parse_do_group(&mut self) -> Option<DoGroup>;
-    fn parse_simple_command(&mut self) -> Option<SimpleCommand>;
-    fn parse_cmd_prefix(&mut self) -> Option<CmdPrefix>;
-    fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> Option<CmdSuffix>;
-    fn parse_newline_list(&mut self) -> Option<NewlineList>;
+    fn parse_complete_commands(&mut self) -> ParseResult<CompleteCommands>;
+    fn parse_complete_command(&mut self) -> ParseResult<CompleteCommand>;
+    fn parse_list(&mut self) -> ParseResult<List>;
+    fn parse_and_or_list(&mut self) -> ParseResult<AndOrList>;
+    fn parse_pipeline(&mut self) -> ParseResult<Pipeline>;
+    fn parse_pipe_sequence(&mut self) -> ParseResult<PipeSequence>;
+    fn parse_command(&mut self) -> ParseResult<Command>;
+    fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand>;
+    fn parse_subshell(&mut self) -> ParseResult<Subshell>;
+    fn parse_compound_list(&mut self) -> ParseResult<CompoundList>;
+    fn parse_term(&mut self) -> ParseResult<Term>;
+    fn parse_for_clause(&mut self) -> ParseResult<ForClause>;
+    fn parse_case_clause(&mut self) -> ParseResult<CaseClause>;
+    fn parse_case_list_ns(&mut self) -> ParseResult<CaseListNs>;
+    fn parse_case_list(&mut self) -> ParseResult<CaseList>;
+    fn parse_case_item_ns(&mut self) -> ParseResult<CaseItemNs>;
+    fn parse_case_item(&mut self) -> ParseResult<CaseItem>;
+    fn parse_pattern(&mut self) -> ParseResult<Pattern>;
+    fn parse_if_clause(&mut self) -> ParseResult<IfClause>;
+    fn parse_else_part(&mut self) -> ParseResult<ElsePart>;
+    fn parse_while_clause(&mut self) -> ParseResult<WhileClause>;
+    fn parse_until_clause(&mut self) -> ParseResult<UntilClause>;
+    fn parse_function_definition(&mut self) -> ParseResult<FunctionDefinition>;
+    fn parse_function_body(&mut self) -> ParseResult<FunctionBody>;
+    fn parse_brace_group(&mut self) -> ParseResult<BraceGroup>;
+    fn parse_do_group(&mut self) -> ParseResult<DoGroup>;
+    fn parse_simple_command(&mut self) -> ParseResult<SimpleCommand>;
+    fn parse_cmd_prefix(&mut self) -> ParseResult<CmdPrefix>;
+    fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> ParseResult<CmdSuffix>;
+    fn parse_newline_list(&mut self) -> ParseResult<NewlineList>;
     fn parse_linebreak(&mut self) -> Linebreak;
-    fn parse_separator_op(&mut self) -> Option<SeparatorOp>;
-    fn parse_separator(&mut self) -> Option<Separator>;
-    fn parse_sequential_separator(&mut self) -> Option<SequentialSeparator>;
+    fn parse_separator_op(&mut self) -> ParseResult<SeparatorOp>;
+    fn parse_separator(&mut self) -> ParseResult<Separator>;
+    fn parse_sequential_separator(&mut self) -> ParseResult<SequentialSeparator>;
 
-    fn parse_name(&mut self) -> Option<Name>;
+    fn parse_name(&mut self) -> ParseResult<Name>;
     fn parse_redirection_list(&mut self) -> Vec<Redirection>;
-    fn parse_redirection(&mut self) -> Option<Redirection>;
-    fn parse_file_descriptor(&mut self) -> Option<FileDescriptor>;
-    fn parse_file_redirection(&mut self) -> Option<Redirection>;
-    fn parse_here_redirection(&mut self) -> Option<Redirection>;
-    fn parse_redirection_type(&mut self) -> Option<RedirectionType>;
-    fn parse_here_doc_type(&mut self) -> Option<HereDocType>;
-    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment>;
-    fn parse_word(&mut self, allow_reserved_words: bool) -> Option<Word>;
-    fn parse_comment(&mut self) -> Option<Comment>;
-    fn parse_pipe(&mut self) -> Option<Pipe>;
-    fn parse_bang(&mut self) -> Option<Bang>;
-    fn parse_logical_op(&mut self) -> Option<LogicalOp>;
+    fn parse_redirection(&mut self) -> ParseResult<Redirection>;
+    fn parse_file_descriptor(&mut self) -> ParseResult<FileDescriptor>;
+    fn parse_file_redirection(&mut self) -> ParseResult<Redirection>;
+    fn parse_here_redirection(&mut self) -> ParseResult<Redirection>;
+    fn parse_redirection_type(&mut self) -> ParseResult<RedirectionType>;
+    fn parse_here_doc_type(&mut self) -> ParseResult<HereDocType>;
+    fn parse_variable_assignment(&mut self) -> ParseResult<VariableAssignment>;
+    fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word>;
+    fn parse_comment(&mut self) -> ParseResult<Comment>;
+    fn parse_pipe(&mut self) -> ParseResult<Pipe>;
+    fn parse_bang(&mut self) -> ParseResult<Bang>;
+    fn parse_logical_op(&mut self) -> ParseResult<LogicalOp>;
 
     fn swallow_whitespace(&mut self) -> LeadingWhitespace;
 }
@@ -119,203 +121,262 @@ impl<T> Parser for Peekable<T>
 where
     T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
 {
-    fn parse_complete_commands(&mut self) -> Option<CompleteCommands> {
-        let Some(head) = self.parse_complete_command() else {
-            return None;
+    fn parse_complete_commands(&mut self) -> ParseResult<CompleteCommands> {
+        let head = match self.parse_complete_command() {
+            Ok(cmd) => cmd,
+            Err(ParseError::UnfinishedCompleteCommand(ws, head)) => {
+                return Err(ParseError::UnfinishedCompleteCommands(
+                    ws,
+                    CompleteCommands {
+                        head,
+                        tail: Default::default(),
+                    },
+                ));
+            }
+            Err(e) => return Err(e),
         };
 
         let mut tail = Vec::new();
 
-        while let Some((newlines, cmd)) = self
+        while let Ok(thing) = self
             .parse_newline_list()
             .and_then(|n| self.parse_complete_command().map(|c| (n, c)))
         {
-            tail.push((newlines, cmd));
+            tail.push(thing);
         }
 
-        Some(CompleteCommands { head, tail })
+        Ok(CompleteCommands { head, tail })
     }
 
-    fn parse_complete_command(&mut self) -> Option<CompleteCommand> {
-        let initial = self.clone();
-
+    fn parse_complete_command(&mut self) -> ParseResult<CompleteCommand> {
         let list_and_separator = self
             .parse_list()
             .map(|list| (list, self.parse_separator_op()));
 
         let comment = self.parse_comment();
 
-        if let Some((list, separator_op)) = list_and_separator {
-            Some(CompleteCommand::List(list, separator_op, comment))
-        } else if let Some(comment) = comment {
-            Some(CompleteCommand::Comment(comment))
+        if let Ok((list, separator_op)) = list_and_separator {
+            Ok(CompleteCommand::List(list, separator_op.ok(), comment.ok()))
+        } else if let Ok(comment) = comment {
+            Ok(CompleteCommand::Comment(comment))
+        } else if let Err(ParseError::UnfinishedList(ws, list)) = list_and_separator {
+            Err(ParseError::UnfinishedCompleteCommand(
+                ws,
+                CompleteCommand::List(list, None, None),
+            ))
         } else {
-            *self = initial;
-            None
+            Err(ParseError::Invalid)
         }
     }
 
-    fn parse_list(&mut self) -> Option<List> {
-        let Some(head) = self.parse_and_or_list() else {
-            return None;
+    fn parse_list(&mut self) -> ParseResult<List> {
+        let head = match self.parse_and_or_list() {
+            Ok(list) => list,
+            Err(ParseError::UnfinishedAndOrList(ws, head)) => {
+                return Err(ParseError::UnfinishedList(
+                    ws,
+                    List {
+                        head,
+                        tail: Default::default(),
+                    },
+                ));
+            }
+            Err(e) => return Err(e),
         };
 
         let mut prev = self.clone();
         let mut tail = Vec::new();
 
-        while let Some(thing) = self
+        while let Ok(thing) = self
             .parse_separator_op()
             .and_then(|s| self.parse_and_or_list().map(|a| (s, a)))
-            .or_else(|| {
+            .map_err(|_| {
                 *self = prev.clone();
-                None
+                ParseError::Done
             })
         {
             tail.push(thing);
             prev = self.clone();
         }
 
-        Some(List { head, tail })
+        Ok(List { head, tail })
     }
 
-    fn parse_and_or_list(&mut self) -> Option<AndOrList> {
-        let Some(head) = self.parse_pipeline() else {
-            return None;
+    fn parse_and_or_list(&mut self) -> ParseResult<AndOrList> {
+        let head = match self.parse_pipeline() {
+            Ok(pipeline) => pipeline,
+            Err(ParseError::UnfinishedPipeline(ws, head)) => {
+                return Err(ParseError::UnfinishedAndOrList(
+                    ws,
+                    AndOrList {
+                        head,
+                        tail: Default::default(),
+                    },
+                ));
+            }
+            Err(e) => return Err(e),
         };
 
-        let mut prev = self.clone();
         let mut tail = Vec::new();
 
-        while let Some(thing) = self
-            .parse_logical_op()
-            .map(|op| (op, self.parse_linebreak()))
-            .and_then(|(op, l)| self.parse_pipeline().map(|c| (op, l, c)))
-            .or_else(|| {
-                *self = prev.clone();
-                None
-            })
-        {
-            tail.push(thing);
-            prev = self.clone();
+        loop {
+            let Ok(logical_op) = self.parse_logical_op() else { break; };
+            let linebreak = self.parse_linebreak();
+            let pipeline = match self.parse_pipeline() {
+                Ok(pipeline) => pipeline,
+                Err(ParseError::UnfinishedPipeline(ws, pipeline)) => {
+                    tail.push((logical_op, linebreak, pipeline));
+                    return Err(ParseError::UnfinishedAndOrList(
+                        ws,
+                        AndOrList { head, tail },
+                    ));
+                }
+                Err(e) => return Err(e),
+            };
+            tail.push((logical_op, linebreak, pipeline));
         }
 
-        Some(AndOrList { head, tail })
+        Ok(AndOrList { head, tail })
     }
 
-    fn parse_pipeline(&mut self) -> Option<Pipeline> {
+    fn parse_pipeline(&mut self) -> ParseResult<Pipeline> {
         let initial = self.clone();
-        let bang = self.parse_bang();
+        let bang = self.parse_bang().ok();
 
-        let Some(sequence) = self.parse_pipe_sequence() else {
-            *self = initial;
-            return None;
-        };
-
-        Some(Pipeline { bang, sequence })
+        match self.parse_pipe_sequence() {
+            Ok(sequence) => Ok(Pipeline { bang, sequence }),
+            Err(ParseError::UnfinishedPipeSequence(ws, sequence)) => Err(
+                ParseError::UnfinishedPipeline(ws, Pipeline { bang, sequence }),
+            ),
+            Err(e) => {
+                *self = initial;
+                Err(e)
+            }
+        }
     }
 
-    fn parse_pipe_sequence(&mut self) -> Option<PipeSequence> {
-        let Some(head) = self.parse_command() else {
-            return None;
+    fn parse_pipe_sequence(&mut self) -> ParseResult<PipeSequence> {
+        let head = match self.parse_command() {
+            Ok(cmd) => cmd,
+            Err(ParseError::UnfinishedCommand(cmd)) => {
+                let seq = PipeSequence {
+                    head: Box::new(cmd),
+                    tail: Default::default(),
+                };
+                return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
+            }
+            Err(ParseError::Invalid) => {
+                let ws = self.swallow_whitespace();
+                return Err(ParseError::UnfinishedPipeSequence(ws, PipeSequence::noop()));
+            }
+            Err(e) => return Err(e),
         };
 
-        let mut prev = self.clone();
         let mut tail = Vec::new();
 
-        while let Some(part) = self
-            .parse_pipe()
-            .map(|pipe| (pipe, self.parse_linebreak()))
-            .and_then(|(pipe, l)| self.parse_command().map(|cmd| (pipe, l, cmd)))
-            .or_else(|| {
-                *self = prev;
-                None
-            })
-        {
-            tail.push(part);
-            prev = self.clone();
+        loop {
+            let Ok(pipe) = self.parse_pipe() else { break; };
+            let linebreak = self.parse_linebreak();
+            let Ok(cmd) = self.parse_command() else {
+                let ws = self.swallow_whitespace();
+                tail.push((pipe, linebreak, Command::noop()));
+                let seq = PipeSequence {
+                    head: Box::new(head),
+                    tail,
+                };
+                return Err(ParseError::UnfinishedPipeSequence(ws, seq));
+            };
+            tail.push((pipe, linebreak, cmd));
         }
 
-        Some(PipeSequence {
+        Ok(PipeSequence {
             head: Box::new(head),
             tail,
         })
     }
 
-    fn parse_command(&mut self) -> Option<Command> {
+    fn parse_command(&mut self) -> ParseResult<Command> {
         self.parse_function_definition()
             .map(Command::FunctionDefinition)
-            .or_else(|| {
+            .or_else(|_| {
                 self.parse_compound_command()
                     .map(|c| (c, self.parse_redirection_list()))
                     .map(|(c, r)| Command::Compound(c, r))
             })
-            .or_else(|| self.parse_simple_command().map(Command::Simple))
+            .or_else(|_| {
+                self.parse_simple_command()
+                    .map(Command::Simple)
+                    .map_err(|e| match e {
+                        ParseError::UnfinishedSimpleCommand(cmd) => {
+                            ParseError::UnfinishedCommand(Command::Simple(cmd))
+                        }
+                        e => e,
+                    })
+            })
     }
 
-    fn parse_compound_command(&mut self) -> Option<CompoundCommand> {
+    fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand> {
         self.parse_brace_group()
             .map(CompoundCommand::Brace)
-            .or_else(|| self.parse_subshell().map(CompoundCommand::Subshell))
-            .or_else(|| self.parse_for_clause().map(CompoundCommand::For))
-            .or_else(|| self.parse_case_clause().map(CompoundCommand::Case))
-            .or_else(|| self.parse_if_clause().map(CompoundCommand::If))
-            .or_else(|| self.parse_while_clause().map(CompoundCommand::While))
-            .or_else(|| self.parse_until_clause().map(CompoundCommand::Until))
+            .or_else(|_| self.parse_subshell().map(CompoundCommand::Subshell))
+            .or_else(|_| self.parse_for_clause().map(CompoundCommand::For))
+            .or_else(|_| self.parse_case_clause().map(CompoundCommand::Case))
+            .or_else(|_| self.parse_if_clause().map(CompoundCommand::If))
+            .or_else(|_| self.parse_while_clause().map(CompoundCommand::While))
+            .or_else(|_| self.parse_until_clause().map(CompoundCommand::Until))
     }
 
-    fn parse_subshell(&mut self) -> Option<Subshell> {
+    fn parse_subshell(&mut self) -> ParseResult<Subshell> {
         let initial = self.clone();
 
         let lparen_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::LParen) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        let Some(body) = self.parse_compound_list() else {
+        let Ok(body) = self.parse_compound_list() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
         let rparen_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::RParen) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        Some(Subshell {
+        Ok(Subshell {
             lparen_ws,
             body,
             rparen_ws,
         })
     }
 
-    fn parse_compound_list(&mut self) -> Option<CompoundList> {
+    fn parse_compound_list(&mut self) -> ParseResult<CompoundList> {
         let initial = self.clone();
         let linebreak = self.parse_linebreak();
 
-        let Some(term) = self.parse_term() else {
+        let Ok(term) = self.parse_term() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        let separator = self.parse_separator();
+        let separator = self.parse_separator().ok();
 
-        Some(CompoundList {
+        Ok(CompoundList {
             linebreak,
             term,
             separator,
         })
     }
 
-    fn parse_term(&mut self) -> Option<Term> {
-        let Some(head) = self.parse_and_or_list() else {
-            return None;
-        };
+    fn parse_term(&mut self) -> ParseResult<Term> {
+        let head = self.parse_and_or_list()?;
 
         let mut prev = self.clone();
         let mut tail = Vec::new();
-        while let Some((sep, and_or)) = self
+        while let Ok((sep, and_or)) = self
             .parse_separator()
             .and_then(|sep| self.parse_and_or_list().map(|a| (sep, a)))
         {
@@ -325,58 +386,62 @@ where
 
         *self = prev;
 
-        Some(Term { head, tail })
+        Ok(Term { head, tail })
     }
 
-    fn parse_for_clause(&mut self) -> Option<ForClause> {
-        None
+    fn parse_for_clause(&mut self) -> ParseResult<ForClause> {
+        Err(ParseError::Unimplemented("for clause".to_string()))
     }
 
-    fn parse_case_clause(&mut self) -> Option<CaseClause> {
-        None
+    fn parse_case_clause(&mut self) -> ParseResult<CaseClause> {
+        Err(ParseError::Unimplemented("case clause".to_string()))
     }
 
-    fn parse_case_list_ns(&mut self) -> Option<CaseListNs> {
-        None
+    fn parse_case_list_ns(&mut self) -> ParseResult<CaseListNs> {
+        Err(ParseError::Unimplemented("case list NS".to_string()))
     }
 
-    fn parse_case_list(&mut self) -> Option<CaseList> {
-        None
+    fn parse_case_list(&mut self) -> ParseResult<CaseList> {
+        Err(ParseError::Unimplemented("case list".to_string()))
     }
 
-    fn parse_case_item_ns(&mut self) -> Option<CaseItemNs> {
-        None
+    fn parse_case_item_ns(&mut self) -> ParseResult<CaseItemNs> {
+        Err(ParseError::Unimplemented("case item NS".to_string()))
     }
 
-    fn parse_case_item(&mut self) -> Option<CaseItem> {
-        None
+    fn parse_case_item(&mut self) -> ParseResult<CaseItem> {
+        Err(ParseError::Unimplemented("case item".to_string()))
     }
 
-    fn parse_pattern(&mut self) -> Option<Pattern> {
-        None
+    fn parse_pattern(&mut self) -> ParseResult<Pattern> {
+        Err(ParseError::Unimplemented("pattern".to_string()))
     }
 
-    fn parse_if_clause(&mut self) -> Option<IfClause> {
-        None
+    fn parse_if_clause(&mut self) -> ParseResult<IfClause> {
+        Err(ParseError::Unimplemented("if clause".to_string()))
     }
 
-    fn parse_else_part(&mut self) -> Option<ElsePart> {
-        None
+    fn parse_else_part(&mut self) -> ParseResult<ElsePart> {
+        Err(ParseError::Unimplemented("else part".to_string()))
     }
 
-    fn parse_while_clause(&mut self) -> Option<WhileClause> {
-        None
+    fn parse_while_clause(&mut self) -> ParseResult<WhileClause> {
+        Err(ParseError::Unimplemented("while clause".to_string()))
     }
 
-    fn parse_until_clause(&mut self) -> Option<UntilClause> {
-        None
+    fn parse_until_clause(&mut self) -> ParseResult<UntilClause> {
+        Err(ParseError::Unimplemented("until clause".to_string()))
     }
 
-    fn parse_function_definition(&mut self) -> Option<FunctionDefinition> {
+    fn parse_function_definition(&mut self) -> ParseResult<FunctionDefinition> {
         let initial = self.clone();
 
-        let Some(name) = self.parse_name() else {
-            return None;
+        let name = match self.parse_name() {
+            Ok(name) => name,
+            Err(e) => {
+                *self = initial;
+                return Err(e);
+            }
         };
 
         let mut parens = String::new();
@@ -386,19 +451,19 @@ where
                 Some(token) => parens.push_str(&token.to_string()),
                 None => {
                     *self = initial;
-                    return None;
+                    return Err(ParseError::Invalid);
                 }
             };
         }
 
         let linebreak = self.parse_linebreak();
 
-        let Some(body) = self.parse_function_body() else {
+        let Ok(body) = self.parse_function_body() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Unimplemented("function definition".to_string()));
         };
 
-        Some(FunctionDefinition {
+        Ok(FunctionDefinition {
             name,
             parens,
             linebreak,
@@ -406,84 +471,107 @@ where
         })
     }
 
-    fn parse_function_body(&mut self) -> Option<FunctionBody> {
-        let Some(command) = self.parse_compound_command() else {
-            return None;
-        };
+    fn parse_function_body(&mut self) -> ParseResult<FunctionBody> {
+        let command = self.parse_compound_command()?;
 
         let redirections = self.parse_redirection_list();
 
-        Some(FunctionBody {
+        Ok(FunctionBody {
             command,
             redirections,
         })
     }
 
-    fn parse_brace_group(&mut self) -> Option<BraceGroup> {
+    fn parse_brace_group(&mut self) -> ParseResult<BraceGroup> {
         let initial = self.clone();
 
         let lbrace_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::LBrace)) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        let Some(body) = self.parse_compound_list() else {
+        let Ok(body) = self.parse_compound_list() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
         let rbrace_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::RBrace)) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        Some(BraceGroup {
+        Ok(BraceGroup {
             lbrace_ws,
             body,
             rbrace_ws,
         })
     }
 
-    fn parse_do_group(&mut self) -> Option<DoGroup> {
+    fn parse_do_group(&mut self) -> ParseResult<DoGroup> {
         let initial = self.clone();
 
         // FIXME: whitespace
         self.consume_single(SemanticToken::Reserved(ReservedWord::Do))
+            .ok_or_else(|| ParseError::Unimplemented("do group (do)".to_string()))
             .and_then(|_| self.parse_compound_list())
             .and_then(|list| {
                 self.consume_single(SemanticToken::Reserved(ReservedWord::Done))
                     .map(|_| list)
+                    .ok_or_else(|| ParseError::Unimplemented("do group (done)".to_string()))
             })
             .map(|body| DoGroup { body })
-            .or_else(|| {
+            .map_err(|_| {
                 *self = initial;
-                None
+                ParseError::Invalid
             })
     }
 
-    fn parse_simple_command(&mut self) -> Option<SimpleCommand> {
+    fn parse_simple_command(&mut self) -> ParseResult<SimpleCommand> {
         let initial = self.clone();
 
         let mut prefixes = Vec::new();
         let mut suffixes = Vec::new();
 
-        while let Some(prefix) = self.parse_cmd_prefix() {
+        while let Ok(prefix) = self.parse_cmd_prefix() {
             prefixes.push(prefix);
         }
 
-        let name = self.parse_word(false);
+        let name = match self.parse_word(false) {
+            Ok(word) => Some(word),
+            Err(ParseError::UnfinishedWord(word)) => {
+                let cmd = SimpleCommand {
+                    prefixes,
+                    name: Some(word),
+                    suffixes,
+                };
+                return Err(ParseError::UnfinishedSimpleCommand(cmd));
+            }
+            Err(_) => None,
+        };
 
-        while let Some(suffix) = self.parse_cmd_suffix(name.is_some()) {
-            suffixes.push(suffix);
+        loop {
+            match self.parse_cmd_suffix(name.is_some()) {
+                Ok(suffix) => suffixes.push(suffix),
+                Err(ParseError::UnfinishedWord(word)) => {
+                    suffixes.push(CmdSuffix::Word(word));
+                    let cmd = SimpleCommand {
+                        prefixes,
+                        name,
+                        suffixes,
+                    };
+                    return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                }
+                _ => break,
+            }
         }
 
         if name.is_none() && prefixes.is_empty() && suffixes.is_empty() {
             *self = initial;
-            None
+            Err(ParseError::Invalid)
         } else {
-            Some(SimpleCommand {
+            Ok(SimpleCommand {
                 name,
                 prefixes,
                 suffixes,
@@ -491,30 +579,27 @@ where
         }
     }
 
-    fn parse_cmd_prefix(&mut self) -> Option<CmdPrefix> {
+    fn parse_cmd_prefix(&mut self) -> ParseResult<CmdPrefix> {
         self.parse_redirection()
             .map(CmdPrefix::Redirection)
-            .or_else(|| self.parse_variable_assignment().map(CmdPrefix::Assignment))
+            .or_else(|_| self.parse_variable_assignment().map(CmdPrefix::Assignment))
     }
 
-    fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> Option<CmdSuffix> {
+    fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> ParseResult<CmdSuffix> {
         self.parse_redirection()
             .map(CmdSuffix::Redirection)
-            .or_else(|| self.parse_word(allow_reserved_words).map(CmdSuffix::Word))
+            .or_else(|_| self.parse_word(allow_reserved_words).map(CmdSuffix::Word))
     }
 
-    fn parse_newline_list(&mut self) -> Option<NewlineList> {
-        let mut prev = self.clone();
+    fn parse_newline_list(&mut self) -> ParseResult<NewlineList> {
         let mut whitespace = String::new();
+        let mut prev = self.clone();
 
         loop {
             let ws = self.swallow_whitespace();
-            if self
-                .consume_single(SemanticToken::Whitespace('\n'))
-                .is_some()
-            {
+            if let Some(SemanticToken::Whitespace(c @ '\n')) = self.next() {
                 whitespace.push_str(&ws);
-                whitespace.push('\n');
+                whitespace.push(c);
                 prev = self.clone();
             } else {
                 *self = prev;
@@ -523,60 +608,61 @@ where
         }
 
         if whitespace.is_empty() {
-            None
+            Err(ParseError::Invalid)
         } else {
-            Some(NewlineList { whitespace })
+            Ok(NewlineList { whitespace })
         }
     }
 
     fn parse_linebreak(&mut self) -> Linebreak {
-        let newlines = self.parse_newline_list();
+        let newlines = self.parse_newline_list().ok();
         Linebreak { newlines }
     }
 
-    fn parse_separator_op(&mut self) -> Option<SeparatorOp> {
+    fn parse_separator_op(&mut self) -> ParseResult<SeparatorOp> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
         self.consume_single(SemanticToken::SyncSeparator)
             .or_else(|| self.consume_single(SemanticToken::AsyncSeparator))
+            .ok_or(ParseError::Invalid)
             .map(|t| match t {
                 SemanticToken::SyncSeparator => SeparatorOp::Sync(ws),
                 SemanticToken::AsyncSeparator => SeparatorOp::Async(ws),
                 _ => unreachable!(),
             })
-            .or_else(|| {
+            .map_err(|_| {
                 *self = initial;
-                None
+                ParseError::Invalid
             })
     }
 
-    fn parse_separator(&mut self) -> Option<Separator> {
+    fn parse_separator(&mut self) -> ParseResult<Separator> {
         let initial = self.clone();
 
-        if let Some((separator_op, linebreak)) = self
+        if let Ok((separator_op, linebreak)) = self
             .parse_separator_op()
             .map(|op| (op, self.parse_linebreak()))
         {
-            return Some(Separator::Explicit(separator_op, linebreak));
+            return Ok(Separator::Explicit(separator_op, linebreak));
         }
 
         *self = initial;
         self.parse_newline_list().map(Separator::Implicit)
     }
 
-    fn parse_sequential_separator(&mut self) -> Option<SequentialSeparator> {
+    fn parse_sequential_separator(&mut self) -> ParseResult<SequentialSeparator> {
         let initial = self.clone();
 
         if self.consume_single(SemanticToken::SyncSeparator).is_some() {
             let linebreak = self.parse_linebreak();
-            return Some(SequentialSeparator::Semi(linebreak));
+            return Ok(SequentialSeparator::Semi(linebreak));
         }
 
         *self = initial;
         self.parse_newline_list().map(SequentialSeparator::Implicit)
     }
 
-    fn parse_name(&mut self) -> Option<Name> {
+    fn parse_name(&mut self) -> ParseResult<Name> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
@@ -584,50 +670,50 @@ where
             self.consume_if(|t| matches!(t, SemanticToken::Word(_)))
         {
             if is_name(&word) {
-                Some(Name {
+                Ok(Name {
                     whitespace: ws,
                     name: word,
                 })
             } else {
                 *self = initial;
-                None
+                Err(ParseError::Invalid)
             }
         } else {
-            None
+            Err(ParseError::Invalid)
         }
     }
 
     fn parse_redirection_list(&mut self) -> Vec<Redirection> {
         let mut redirs = Vec::new();
-        while let Some(redir) = self.parse_redirection() {
+        while let Ok(redir) = self.parse_redirection() {
             redirs.push(redir);
         }
         redirs
     }
 
-    fn parse_redirection(&mut self) -> Option<Redirection> {
+    fn parse_redirection(&mut self) -> ParseResult<Redirection> {
         self.parse_file_redirection()
-            .or_else(|| self.parse_here_redirection())
+            .or_else(|_| self.parse_here_redirection())
     }
 
-    fn parse_file_redirection(&mut self) -> Option<Redirection> {
+    fn parse_file_redirection(&mut self) -> ParseResult<Redirection> {
         let initial = self.clone();
 
         let ws = self.swallow_whitespace();
 
-        let input_fd = self.parse_file_descriptor();
+        let input_fd = self.parse_file_descriptor().ok();
 
-        let Some(ty) = self.parse_redirection_type() else {
+        let Ok(ty) = self.parse_redirection_type() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        let Some(target) = self.parse_word(true) else {
+        let Ok(target) = self.parse_word(true) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        Some(Redirection::File {
+        Ok(Redirection::File {
             whitespace: ws,
             input_fd,
             ty,
@@ -635,27 +721,27 @@ where
         })
     }
 
-    fn parse_here_redirection(&mut self) -> Option<Redirection> {
+    fn parse_here_redirection(&mut self) -> ParseResult<Redirection> {
         let initial = self.clone();
 
         let ws = self.swallow_whitespace();
 
-        let input_fd = self.parse_file_descriptor();
+        let input_fd = self.parse_file_descriptor().ok();
 
-        let Some(ty) = self.parse_here_doc_type() else {
+        let Ok(ty) = self.parse_here_doc_type() else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
-        let Some(end) = self.parse_word(true) else {
+        let Ok(end) = self.parse_word(true) else {
             *self = initial;
-            return None;
+            return Err(ParseError::Invalid);
         };
 
         // FIXME: actually parse content
         let content = Word::new("", "");
 
-        Some(Redirection::Here {
+        Ok(Redirection::Here {
             whitespace: ws,
             input_fd,
             ty,
@@ -664,43 +750,43 @@ where
         })
     }
 
-    fn parse_redirection_type(&mut self) -> Option<RedirectionType> {
+    fn parse_redirection_type(&mut self) -> ParseResult<RedirectionType> {
         use SemanticToken::*;
         let initial = self.clone();
 
         match (self.next(), self.peek()) {
             (Some(RedirectInput), Some(AsyncSeparator)) => {
                 self.next();
-                Some(RedirectionType::InputFd)
+                Ok(RedirectionType::InputFd)
             }
             (Some(RedirectInput), Some(RedirectOutput)) => {
                 self.next();
-                Some(RedirectionType::ReadWrite)
+                Ok(RedirectionType::ReadWrite)
             }
-            (Some(RedirectInput), _) => Some(RedirectionType::Input),
+            (Some(RedirectInput), _) => Ok(RedirectionType::Input),
 
             (Some(RedirectOutput), Some(AsyncSeparator)) => {
                 self.next();
-                Some(RedirectionType::OutputFd)
+                Ok(RedirectionType::OutputFd)
             }
             (Some(RedirectOutput), Some(RedirectOutput)) => {
                 self.next();
-                Some(RedirectionType::OutputAppend)
+                Ok(RedirectionType::OutputAppend)
             }
             (Some(RedirectOutput), Some(Pipe)) => {
                 self.next();
-                Some(RedirectionType::OutputClobber)
+                Ok(RedirectionType::OutputClobber)
             }
-            (Some(RedirectOutput), _) => Some(RedirectionType::Output),
+            (Some(RedirectOutput), _) => Ok(RedirectionType::Output),
 
             _ => {
                 *self = initial;
-                None
+                Err(ParseError::Invalid)
             }
         }
     }
 
-    fn parse_here_doc_type(&mut self) -> Option<HereDocType> {
+    fn parse_here_doc_type(&mut self) -> ParseResult<HereDocType> {
         use SemanticToken::*;
         let initial = self.clone();
 
@@ -709,22 +795,22 @@ where
                 if w.to_string().as_str() == "-" =>
             {
                 self.next();
-                Some(HereDocType::StripTabs)
+                Ok(HereDocType::StripTabs)
             }
 
-            (Some(RedirectInput), Some(RedirectInput), _) => Some(HereDocType::Normal),
+            (Some(RedirectInput), Some(RedirectInput), _) => Ok(HereDocType::Normal),
 
             _ => {
                 *self = initial;
-                None
+                Err(ParseError::Invalid)
             }
         }
     }
 
-    fn parse_variable_assignment(&mut self) -> Option<VariableAssignment> {
+    fn parse_variable_assignment(&mut self) -> ParseResult<VariableAssignment> {
         let initial = self.clone();
 
-        if let Some(Word {
+        if let Ok(Word {
             whitespace, name, ..
         }) = self.parse_word(false)
         {
@@ -742,98 +828,102 @@ where
                     };
 
                     let var_assg = VariableAssignment::new(lhs, rhs, whitespace);
-                    return Some(var_assg);
+                    return Ok(var_assg);
                 }
                 _ => {}
             }
         }
 
         *self = initial;
-        None
+        Err(ParseError::Invalid)
     }
 
-    fn parse_word(&mut self, allow_reserved_words: bool) -> Option<Word> {
+    fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
         match self.next() {
             Some(SemanticToken::Word(xs)) => {
                 let word = Word::new(&xs, ws);
-                Some(word)
+                if word.is_finished() {
+                    Ok(word)
+                } else {
+                    Err(ParseError::UnfinishedWord(word))
+                }
             }
 
             Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
                 let word = Word::new(&reserved.to_string(), ws);
-                Some(word)
+                Ok(word)
             }
 
             _ => {
                 *self = initial;
-                None
+                Err(ParseError::Invalid)
             }
         }
     }
 
-    fn parse_file_descriptor(&mut self) -> Option<FileDescriptor> {
+    fn parse_file_descriptor(&mut self) -> ParseResult<FileDescriptor> {
         let initial = self.clone();
 
         if let Some(SemanticToken::Word(word)) = self.next() {
             match word.as_str() {
-                "0" => return Some(FileDescriptor::Stdin),
-                "1" => return Some(FileDescriptor::Stdout),
-                "2" => return Some(FileDescriptor::Stderr),
+                "0" => return Ok(FileDescriptor::Stdin),
+                "1" => return Ok(FileDescriptor::Stdout),
+                "2" => return Ok(FileDescriptor::Stderr),
                 n => {
                     if let Ok(n) = n.parse::<i32>() {
-                        return Some(FileDescriptor::Other(n));
+                        return Ok(FileDescriptor::Other(n));
                     }
                 }
             }
         }
 
         *self = initial;
-        None
+        Err(ParseError::Invalid)
     }
 
-    fn parse_comment(&mut self) -> Option<Comment> {
+    fn parse_comment(&mut self) -> ParseResult<Comment> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
         if let Some(SemanticToken::Comment(comment)) = self.next() {
-            Some(Comment {
+            Ok(Comment {
                 whitespace: ws,
                 content: comment,
             })
         } else {
             *self = initial;
-            None
+            Err(ParseError::Invalid)
         }
     }
 
-    fn parse_pipe(&mut self) -> Option<Pipe> {
+    fn parse_pipe(&mut self) -> ParseResult<Pipe> {
         let initial = self.clone();
         let whitespace = self.swallow_whitespace();
 
         self.consume_single(SemanticToken::Pipe)
             .map(|_| Pipe { whitespace })
-            .or_else(|| {
+            .ok_or_else(|| {
                 *self = initial;
-                None
+                ParseError::Invalid
             })
     }
 
-    fn parse_bang(&mut self) -> Option<Bang> {
+    fn parse_bang(&mut self) -> ParseResult<Bang> {
         let initial = self.clone();
         let whitespace = self.swallow_whitespace();
 
         self.consume_single(SemanticToken::Reserved(ReservedWord::Bang))
             .map(|_| Bang { whitespace })
-            .or_else(|| {
+            .ok_or_else(|| {
                 *self = initial;
-                None
+                ParseError::Invalid
             })
     }
 
-    fn parse_logical_op(&mut self) -> Option<LogicalOp> {
+    fn parse_logical_op(&mut self) -> ParseResult<LogicalOp> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
@@ -844,9 +934,9 @@ where
                 SemanticToken::Or => LogicalOp::Or(ws),
                 _ => unreachable!(),
             })
-            .or_else(|| {
+            .ok_or_else(|| {
                 *self = initial;
-                None
+                ParseError::Invalid
             })
     }
 

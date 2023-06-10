@@ -9,19 +9,29 @@ pub use super::Parser;
 /// Type alias used in data structures that keep track of whitespace.
 pub type LeadingWhitespace = String;
 
+/// ```[no_run]
 /// program : linebreak complete_commands linebreak
 ///         | linebreak
 ///         ;
-#[derive(Debug, PartialEq, Eq)]
+/// ```
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct SyntaxTree {
     pub leading: Linebreak,
     pub commands: Option<(CompleteCommands, Linebreak)>,
     pub unparsed: String,
 }
 
-/// complete_commands: complete_commands newline_list complete_command
-///                  |                                complete_command
-///                  ;
+impl SyntaxTree {
+    pub fn is_ok(&self) -> bool {
+        self.unparsed.chars().all(char::is_whitespace)
+    }
+}
+
+/// ```[no_run]
+/// complete_commands : complete_commands newline_list complete_command
+///                   |                                complete_command
+///                   ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompleteCommands {
     pub head: CompleteCommand,
@@ -38,9 +48,11 @@ impl CompleteCommands {
     }
 }
 
+/// ```[no_run]
 /// complete_command : list separator_op
 ///                  | list
 ///                  ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CompleteCommand {
     List(List, Option<SeparatorOp>, Option<Comment>),
@@ -80,19 +92,23 @@ impl CompleteCommand {
     }
 }
 
+/// ```[no_run]
 /// list : list separator_op and_or
 ///      |                   and_or
 ///      ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct List {
     pub head: AndOrList,
     pub tail: Vec<(SeparatorOp, AndOrList)>,
 }
 
+/// ```[no_run]
 /// and_or :                         pipeline
 ///        | and_or AND_IF linebreak pipeline
 ///        | and_or OR_IF  linebreak pipeline
 ///        ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
     pub head: Pipeline,
@@ -113,9 +129,11 @@ impl AndOrList {
     }
 }
 
+/// ```[no_run]
 /// pipeline :      pipe_sequence
 ///          | Bang pipe_sequence
 ///          ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pipeline {
     pub bang: Option<Bang>,
@@ -135,22 +153,42 @@ impl Pipeline {
     pub fn has_bang(&self) -> bool {
         self.bang.is_some()
     }
+
+    pub fn noop() -> Self {
+        Self {
+            bang: None,
+            sequence: PipeSequence::noop(),
+        }
+    }
 }
 
+/// ```[no_run]
 /// pipe_sequence :                             command
 ///               | pipe_sequence '|' linebreak command
 ///               ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct PipeSequence {
     pub head: Box<Command>,
     pub tail: Vec<(Pipe, Linebreak, Command)>,
 }
 
+impl PipeSequence {
+    pub fn noop() -> Self {
+        Self {
+            head: Box::new(Command::noop()),
+            tail: Default::default(),
+        }
+    }
+}
+
+/// ```[no_run]
 /// command : simple_command
 ///         | compound_command
 ///         | compound_command redirect_list
 ///         | function_definition
 ///         ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Simple(SimpleCommand),
@@ -158,6 +196,13 @@ pub enum Command {
     FunctionDefinition(FunctionDefinition),
 }
 
+impl Command {
+    pub fn noop() -> Self {
+        Self::Simple(SimpleCommand::noop())
+    }
+}
+
+/// ```[no_run]
 /// compound_command : brace_group
 ///                  | subshell
 ///                  | for_clause
@@ -166,6 +211,7 @@ pub enum Command {
 ///                  | while_clause
 ///                  | until_clause
 ///                  ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CompoundCommand {
     Brace(BraceGroup),
@@ -177,8 +223,10 @@ pub enum CompoundCommand {
     Until(UntilClause),
 }
 
+/// ```[no_run]
 /// subshell : '(' compound_list ')'
 ///          ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Subshell {
     pub lparen_ws: LeadingWhitespace,
@@ -186,9 +234,11 @@ pub struct Subshell {
     pub rparen_ws: LeadingWhitespace,
 }
 
+/// ```[no_run]
 /// compound_list : linebreak term
 ///               | linebreak term separator
 ///               ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct CompoundList {
     pub linebreak: Linebreak,
@@ -196,20 +246,24 @@ pub struct CompoundList {
     pub separator: Option<Separator>,
 }
 
+/// ```[no_run]
 /// term : term separator and_or
 ///      |                and_or
 ///      ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Term {
     pub head: AndOrList,
     pub tail: Vec<(Separator, AndOrList)>,
 }
 
+/// ```[no_run]
 /// for_clause : For name                                      do_group
 ///            | For name                       sequential_sep do_group
 ///            | For name linebreak in          sequential_sep do_group
 ///            | For name linebreak in wordlist sequential_sep do_group
 ///            ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum ForClause {
     Simple(Name, DoGroup),
@@ -217,18 +271,22 @@ pub enum ForClause {
     Full(Name, Linebreak, Vec<Word>, SequentialSeparator, DoGroup),
 }
 
+/// ```[no_run]
 /// name : NAME /* Apply rule 5 */
 ///      ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Name {
     pub whitespace: LeadingWhitespace,
     pub name: String,
 }
 
+/// ```[no_run]
 /// case_clause : Case WORD linebreak in linebreak case_list    Esac
 ///             | Case WORD linebreak in linebreak case_list_ns Esac
 ///             | Case WORD linebreak in linebreak              Esac
 ///             ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CaseClause {
     Normal(Word, Linebreak, Linebreak, CaseList),
@@ -236,58 +294,70 @@ pub enum CaseClause {
     Empty(Word, Linebreak, Linebreak),
 }
 
+/// ```[no_run]
 /// case_list_ns : case_list case_item_ns
 ///              |           case_item_ns
 ///              ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct CaseListNs {
     pub case_list: Option<CaseList>,
     pub last: CaseItemNs,
 }
 
+/// ```[no_run]
 /// case_list : case_list case_item
 ///           |           case_item
 ///           ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct CaseList {
     pub head: CaseItem,
     pub tail: Vec<CaseItem>,
 }
 
+/// ```[no_run]
 /// case_item_ns :     pattern ')' linebreak
 ///              |     pattern ')' compound_list
 ///              | '(' pattern ')' linebreak
 ///              | '(' pattern ')' compound_list
 ///              ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CaseItemNs {
     Empty(bool, Pattern, Linebreak),
     List(bool, Pattern, CompoundList),
 }
 
+/// ```[no_run]
 /// case_item :     pattern ')' linebreak     DSEMI linebreak
 ///           |     pattern ')' compound_list DSEMI linebreak
 ///           | '(' pattern ')' linebreak     DSEMI linebreak
 ///           | '(' pattern ')' compound_list DSEMI linebreak
 ///           ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CaseItem {
     Empty(bool, Pattern, Linebreak, Linebreak),
     List(bool, Pattern, CompoundList, Linebreak),
 }
 
+/// ```[no_run]
 /// pattern :             WORD /* Apply rule 4 */
 ///         | pattern '|' WORD /* Do not apply rule 4 */
 ///         ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct Pattern {
     pub head: Word,
     pub tail: Vec<Word>,
 }
 
+/// ```[no_run]
 /// if_clause : If compound_list Then compound_list else_part Fi
 ///           | If compound_list Then compound_list           Fi
 ///           ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct IfClause {
     pub predicate: CompoundList,
@@ -295,34 +365,42 @@ pub struct IfClause {
     pub else_part: Option<ElsePart>,
 }
 
+/// ```[no_run]
 /// else_part : Elif compound_list Then compound_list
 ///           | Elif compound_list Then compound_list else_part
 ///           | Else compound_list
 ///           ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct ElsePart {
     pub elseifs: Vec<(CompoundList, CompoundList)>,
     pub else_part: Option<CompoundList>,
 }
 
+/// ```[no_run]
 /// while_clause : While compound_list do_group
 ///              ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct WhileClause {
     pub predicate: CompoundList,
     pub body: DoGroup,
 }
 
+/// ```[no_run]
 /// until_clause : Until compound_list do_group
 ///              ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct UntilClause {
     pub predicate: CompoundList,
     pub body: DoGroup,
 }
 
+/// ```[no_run]
 /// function_definition : fname '(' ')' linebreak function_body
-///                  ;
+///                     ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionDefinition {
     pub name: Name,
@@ -331,16 +409,20 @@ pub struct FunctionDefinition {
     pub body: FunctionBody,
 }
 
+/// ```[no_run]
 /// function_body : compound_command               /* Apply rule 9 */
 ///               | compound_command redirect_list /* Apply rule 9 */
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct FunctionBody {
     pub command: CompoundCommand,
     pub redirections: Vec<Redirection>,
 }
 
-/// brace_group  : Lbrace compound_list Rbrace
-///              ;
+/// ```[no_run]
+/// brace_group : Lbrace compound_list Rbrace
+///             ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct BraceGroup {
     pub lbrace_ws: LeadingWhitespace,
@@ -348,19 +430,23 @@ pub struct BraceGroup {
     pub rbrace_ws: LeadingWhitespace,
 }
 
+/// ```[no_run]
 /// do_group : Do compound_list Done /* Apply rule 6 */
 ///          ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct DoGroup {
     pub body: CompoundList,
 }
 
+/// ```[no_run]
 /// simple_command : cmd_prefix cmd_word cmd_suffix
 ///                | cmd_prefix cmd_word
 ///                | cmd_prefix
 ///                | cmd_name cmd_suffix
 ///                | cmd_name
 ///                ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub struct SimpleCommand {
     pub name: Option<Word>,
@@ -374,6 +460,14 @@ impl SimpleCommand {
             Some(&word.name)
         } else {
             None
+        }
+    }
+
+    pub fn noop() -> Self {
+        Self {
+            name: None,
+            prefixes: Default::default(),
+            suffixes: Default::default(),
         }
     }
 
@@ -408,22 +502,26 @@ impl SimpleCommand {
     }
 }
 
+/// ```[no_run]
 /// cmd_prefix :            io_redirect
 ///            | cmd_prefix io_redirect
 ///            |            ASSIGNMENT_WORD
 ///            | cmd_prefix ASSIGNMENT_WORD
 ///            ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CmdPrefix {
     Redirection(Redirection),
     Assignment(VariableAssignment),
 }
 
+/// ```[no_run]
 /// cmd_suffix :            io_redirect
 ///            | cmd_suffix io_redirect
 ///            |            WORD
 ///            | cmd_suffix WORD
 ///            ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum CmdSuffix {
     Redirection(Redirection),
@@ -480,6 +578,7 @@ pub enum HereDocType {
     StripTabs,
 }
 
+/// ```[no_run]
 /// io_redirect :           io_file
 ///             | IO_NUMBER io_file
 ///             |           io_here
@@ -498,6 +597,7 @@ pub enum HereDocType {
 /// io_here : DLESS     here_end
 ///         | DLESSDASH here_end
 ///         ;
+/// ```
 #[derive(Debug, PartialEq, Eq)]
 pub enum Redirection {
     File {
@@ -619,6 +719,14 @@ impl Word {
             whitespace: whitespace.into(),
             expansions,
         }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        let single_quotes =
+            Self::find_all(&[QuoteState::None, QuoteState::Single], &self.name, '\'').len();
+        let double_quotes =
+            Self::find_all(&[QuoteState::None, QuoteState::Double], &self.name, '"').len();
+        single_quotes % 2 == 0 && double_quotes % 2 == 0
     }
 
     fn find_expansions(input: &str) -> Vec<Expansion> {
@@ -764,18 +872,16 @@ impl Word {
         }
     }
 
-    pub fn find(
-        target_state: QuoteState,
-        haystack: &str,
-        needle: char,
-        first: bool,
-    ) -> Option<usize> {
+    pub fn find_all(target_states: &[QuoteState], haystack: &str, needle: char) -> Vec<usize> {
         let mut state = QuoteState::None;
         let mut is_escaped = false;
 
-        let mut found = None;
+        let mut found = Vec::new();
 
         for (i, c) in haystack.chars().enumerate() {
+            if target_states.contains(&state) && needle == c && (!is_escaped || needle == '\'') {
+                found.push(i);
+            }
             match (c, state) {
                 ('\'', QuoteState::Single) => {
                     state = QuoteState::None;
@@ -793,15 +899,53 @@ impl Word {
 
                 ('\\', _) if !is_escaped => is_escaped = true,
 
-                (c, _) => {
+                (_, _) => {
                     is_escaped = false;
-                    if state == target_state && c == needle {
-                        found = Some(i);
-                        if first {
-                            break;
-                        }
-                    }
                 }
+            }
+        }
+
+        found
+    }
+
+    pub fn find(
+        target_state: QuoteState,
+        haystack: &str,
+        needle: char,
+        first: bool,
+    ) -> Option<usize> {
+        let mut state = QuoteState::None;
+        let mut is_escaped = false;
+
+        let mut found = None;
+
+        for (i, c) in haystack.chars().enumerate() {
+            if target_state == state && needle == c {
+                found = Some(i);
+            }
+            match (c, state) {
+                ('\'', QuoteState::Single) => {
+                    state = QuoteState::None;
+                }
+                ('\'', QuoteState::None) => {
+                    state = QuoteState::Single;
+                }
+
+                ('"', QuoteState::Double) if !is_escaped => {
+                    state = QuoteState::None;
+                }
+                ('"', QuoteState::None) => {
+                    state = QuoteState::Double;
+                }
+
+                ('\\', _) if !is_escaped => is_escaped = true,
+
+                (_, _) => {
+                    is_escaped = false;
+                }
+            }
+            if found.is_some() && first {
+                break;
             }
         }
 
@@ -862,7 +1006,7 @@ pub struct NewlineList {
 /// linebreak : newline_list
 ///           | /* empty */
 ///           ;
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Linebreak {
     pub newlines: Option<NewlineList>,
 }

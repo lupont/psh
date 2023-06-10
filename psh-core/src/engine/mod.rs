@@ -12,6 +12,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
+use self::expand::remove_quotes;
 use self::parser::ast::prelude::*;
 use crate::engine::expand::Expand;
 pub use crate::engine::history::{FileHistory, History};
@@ -81,8 +82,8 @@ impl<W: Write> Engine<W> {
         }
     }
 
-    pub fn has_builtin(&self, s: impl AsRef<str>) -> bool {
-        let name = s.as_ref();
+    pub fn has_builtin(&self, s: &Word) -> bool {
+        let name = s.name.replace(['\'', '"'], "");
         let has = |s| name == s || name.starts_with(&format!("{s} "));
         has("cd") || has("exit") || has(":") || has("debug")
     }
@@ -90,8 +91,8 @@ impl<W: Write> Engine<W> {
     pub fn is_builtin(&self, cmd: &Command) -> bool {
         match cmd {
             Command::Simple(cmd) => {
-                if let Some(name) = cmd.name() {
-                    self.has_builtin(name)
+                if let Some(word) = &cmd.name {
+                    self.has_builtin(word)
                 } else {
                     false
                 }
@@ -147,17 +148,17 @@ impl<W: Write> Engine<W> {
         }
     }
 
-    pub fn has_command(&self, cmd: impl AsRef<str>) -> bool {
-        let cmd = cmd.as_ref();
-        path::has_relative_command(cmd)
+    pub fn has_command(&self, cmd: &Word) -> bool {
+        let cmd = remove_quotes(&cmd.name); //.replace(['\'', '"'], "");
+        path::has_relative_command(&cmd)
             || self
                 .commands
                 .iter()
-                .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
+                .any(|c| c == &cmd || c.ends_with(&format!("/{}", cmd)))
     }
 
-    fn has_executable(&self, cmd: impl AsRef<str>) -> bool {
-        self.has_command(&cmd) || self.has_builtin(&cmd)
+    pub fn has_executable(&self, cmd: &Word) -> bool {
+        self.has_command(cmd) || self.has_builtin(cmd)
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
@@ -195,7 +196,9 @@ impl<W: Write> Engine<W> {
             return Ok(None);
         };
 
-        if !self.has_executable(name) {
+        // unwrap is OK since we exit early above if None
+        let word = cmd.name.as_ref().unwrap();
+        if !self.has_executable(word) {
             return Err(Error::UnknownCommand(name.to_string()));
         }
 
@@ -291,7 +294,7 @@ impl<W: Write> Engine<W> {
                         .read(false)
                         .write(true)
                         .create(true)
-                        .append(true)
+                        .append(false)
                         .open(&target.name)?;
                     match input_fd {
                         None | Some(FileDescriptor::Stdout) => {

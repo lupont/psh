@@ -28,48 +28,48 @@ fn parse_variable_assignment() {
     let mut tokens = tokenize("foo=bar");
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), Some(Word::new("bar", "")), "");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("  foo='bar baz'");
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), Some(Word::new("'bar baz'", "")), "  ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(" foo=bar\\ baz");
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), Some(Word::new("bar\\ baz", "")), " ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(r#"foo="bar baz""#);
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), Some(Word::new("\"bar baz\"", "")), "");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("foo=");
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), None, "");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("  foo=");
     let actual = tokens.parse_variable_assignment();
     let expected = VariableAssignment::new(name("foo"), None, "  ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("'foo'=");
     let actual = tokens.parse_variable_assignment();
-    assert!(actual.is_none());
+    assert!(actual.is_err());
 
     let mut tokens = tokenize("'foo=bar'");
     let actual = tokens.parse_variable_assignment();
-    assert!(actual.is_none());
+    assert!(actual.is_err());
 
     let mut tokens = tokenize(r#""foo"="#);
     let actual = tokens.parse_variable_assignment();
-    assert!(actual.is_none());
+    assert!(actual.is_err());
 
     let mut tokens = tokenize(r#""foo=bar""#);
     let actual = tokens.parse_variable_assignment();
-    assert!(actual.is_none());
+    assert!(actual.is_err());
 }
 
 #[test]
@@ -83,7 +83,7 @@ fn parse_simple_command() {
         suffixes: Vec::new(),
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     for item in &["{", "}", "!"] {
@@ -96,7 +96,7 @@ fn parse_simple_command() {
             suffixes: vec![CmdSuffix::Word(Word::new(item, " "))],
         };
 
-        assert_eq!(Some(expected), actual);
+        assert_eq!(Ok(expected), actual);
         assert!(tokens.next().is_none());
     }
 
@@ -113,7 +113,7 @@ fn parse_simple_command() {
         suffixes: Vec::new(),
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("   echo foo bar baz");
@@ -129,7 +129,7 @@ fn parse_simple_command() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens =
@@ -175,7 +175,7 @@ fn parse_simple_command() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("foo=bar echo bar=baz");
@@ -191,7 +191,7 @@ fn parse_simple_command() {
         suffixes: vec![CmdSuffix::Word(Word::new("bar=baz", " "))],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 }
 
@@ -249,7 +249,7 @@ fn parse_simple_pipeline() {
     //     },
     // };
 
-    // assert_eq!(Some(expected), actual);
+    // assert_eq!(Ok(expected), actual);
     // assert!(tokens.next().is_none());
 }
 
@@ -314,7 +314,7 @@ fn parse_simple_and_or_list() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 }
 
@@ -417,7 +417,7 @@ fn parse_simple_list() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 }
 
@@ -448,7 +448,7 @@ fn parse_complete_command() {
         None,
     );
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo foo ;");
@@ -476,7 +476,7 @@ fn parse_complete_command() {
         None,
     );
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo foo&");
@@ -504,7 +504,7 @@ fn parse_complete_command() {
         None,
     );
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo foo& true ;");
@@ -548,7 +548,7 @@ fn parse_complete_command() {
         None,
     );
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo foo;true&");
@@ -592,7 +592,7 @@ fn parse_complete_command() {
         None,
     );
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 }
 
@@ -707,49 +707,49 @@ fn parse_word() {
     let mut tokens = tokenize("  echo");
     let actual = tokens.parse_word(false);
     let expected = Word::new("echo", "  ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize(" 	'echo yo'");
     let actual = tokens.parse_word(false);
     let expected = Word::new("'echo yo'", " 	");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize(r#" "echo yo""#);
     let actual = tokens.parse_word(false);
     let expected = Word::new(r#""echo yo""#, " ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize(" echo\\ yo");
     let actual = tokens.parse_word(false);
     let expected = Word::new("echo\\ yo", " ");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo");
     let actual = tokens.parse_word(false);
     let expected = Word::new("echo", "");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize("echo foo");
     let actual = tokens.parse_word(false);
     let expected = Word::new("echo", "");
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
     assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
     assert_eq!(Some(SemanticToken::Word("foo".to_string())), tokens.next());
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize(">foo");
     let actual = tokens.parse_word(false);
-    assert!(actual.is_none());
+    assert!(actual.is_err());
     assert_eq!(Some(SemanticToken::RedirectOutput), tokens.next());
 
     let mut tokens = tokenize("  >foo");
     let actual = tokens.parse_word(false);
-    assert!(actual.is_none());
+    assert!(actual.is_err());
     assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
     assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
 }
@@ -758,63 +758,57 @@ fn parse_word() {
 fn parse_file_descriptor() {
     let mut tokens = tokenize("0");
     let actual = tokens.parse_file_descriptor();
-    assert_eq!(Some(FileDescriptor::Stdin), actual);
+    assert_eq!(Ok(FileDescriptor::Stdin), actual);
 
     let mut tokens = tokenize("1");
     let actual = tokens.parse_file_descriptor();
-    assert_eq!(Some(FileDescriptor::Stdout), actual);
+    assert_eq!(Ok(FileDescriptor::Stdout), actual);
 
     let mut tokens = tokenize("2");
     let actual = tokens.parse_file_descriptor();
-    assert_eq!(Some(FileDescriptor::Stderr), actual);
+    assert_eq!(Ok(FileDescriptor::Stderr), actual);
 
     let mut tokens = tokenize("3a");
     let actual = tokens.parse_file_descriptor();
-    assert!(actual.is_none());
+    assert!(actual.is_err());
 }
 
 #[test]
 fn parse_redirection_type() {
     let mut tokens = tokenize("< <& > >> >& >| <>");
 
+    assert_eq!(Ok(RedirectionType::Input), tokens.parse_redirection_type());
+
+    tokens.swallow_whitespace();
     assert_eq!(
-        Some(RedirectionType::Input),
+        Ok(RedirectionType::InputFd),
+        tokens.parse_redirection_type()
+    );
+
+    tokens.swallow_whitespace();
+    assert_eq!(Ok(RedirectionType::Output), tokens.parse_redirection_type());
+
+    tokens.swallow_whitespace();
+    assert_eq!(
+        Ok(RedirectionType::OutputAppend),
         tokens.parse_redirection_type()
     );
 
     tokens.swallow_whitespace();
     assert_eq!(
-        Some(RedirectionType::InputFd),
+        Ok(RedirectionType::OutputFd),
         tokens.parse_redirection_type()
     );
 
     tokens.swallow_whitespace();
     assert_eq!(
-        Some(RedirectionType::Output),
+        Ok(RedirectionType::OutputClobber),
         tokens.parse_redirection_type()
     );
 
     tokens.swallow_whitespace();
     assert_eq!(
-        Some(RedirectionType::OutputAppend),
-        tokens.parse_redirection_type()
-    );
-
-    tokens.swallow_whitespace();
-    assert_eq!(
-        Some(RedirectionType::OutputFd),
-        tokens.parse_redirection_type()
-    );
-
-    tokens.swallow_whitespace();
-    assert_eq!(
-        Some(RedirectionType::OutputClobber),
-        tokens.parse_redirection_type()
-    );
-
-    tokens.swallow_whitespace();
-    assert_eq!(
-        Some(RedirectionType::ReadWrite),
+        Ok(RedirectionType::ReadWrite),
         tokens.parse_redirection_type()
     );
 
@@ -823,19 +817,16 @@ fn parse_redirection_type() {
     // This should be parsed as a here-doc delimiter before attempting
     // to parse as a redirection type
     let mut tokens = tokenize("<<");
-    assert_eq!(
-        Some(RedirectionType::Input),
-        tokens.parse_redirection_type()
-    );
+    assert_eq!(Ok(RedirectionType::Input), tokens.parse_redirection_type());
 }
 
 #[test]
 fn parse_here_doc_type() {
     let mut tokens = tokenize("<< <<-");
-    assert_eq!(Some(HereDocType::Normal), tokens.parse_here_doc_type());
+    assert_eq!(Ok(HereDocType::Normal), tokens.parse_here_doc_type());
 
     tokens.swallow_whitespace();
-    assert_eq!(Some(HereDocType::StripTabs), tokens.parse_here_doc_type());
+    assert_eq!(Ok(HereDocType::StripTabs), tokens.parse_here_doc_type());
 
     assert!(tokens.next().is_none());
 }
@@ -850,7 +841,7 @@ fn parse_file_redirection() {
         target: Word::new("file", " "),
     };
     let actual = tokens.parse_file_redirection();
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("  1<> 'file'");
     let expected = Redirection::File {
@@ -860,7 +851,7 @@ fn parse_file_redirection() {
         target: Word::new("'file'", " "),
     };
     let actual = tokens.parse_file_redirection();
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("0>'file'");
     let expected = Redirection::File {
@@ -870,30 +861,30 @@ fn parse_file_redirection() {
         target: Word::new("'file'", ""),
     };
     let actual = tokens.parse_file_redirection();
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 }
 
 // #[test]
 // fn parse_redirection_fd() {
 //     let mut tokens = tokenize(" >");
 //     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Some(Word::new("", " ")), actual);
+//     assert_eq!(Ok(Word::new("", " ")), actual);
 
 //     let mut tokens = tokenize(">>");
 //     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Some(Word::new("", "")), actual);
+//     assert_eq!(Ok(Word::new("", "")), actual);
 
 //     let mut tokens = tokenize(" <");
 //     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Some(Word::new("", " ")), actual);
+//     assert_eq!(Ok(Word::new("", " ")), actual);
 
 //     let mut tokens = tokenize("2>");
 //     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Some(Word::new("2", "")), actual);
+//     assert_eq!(Ok(Word::new("2", "")), actual);
 
 //     let mut tokens = tokenize(" 2");
 //     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Some(Word::new("2", " ")), actual);
+//     assert_eq!(Ok(Word::new("2", " ")), actual);
 
 //     let mut tokens = tokenize("a");
 //     let actual = tokens.parse_redirection_fd();
@@ -969,7 +960,7 @@ fn word_with_parameter_expansions() {
         }],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(r#""$foo""#);
     let actual = tokens.parse_word(false);
@@ -983,7 +974,7 @@ fn word_with_parameter_expansions() {
         }],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize("'$foo'");
     let actual = tokens.parse_word(false);
@@ -994,7 +985,7 @@ fn word_with_parameter_expansions() {
         expansions: vec![],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(r#""$foo..$bar_-""#);
     let actual = tokens.parse_word(false);
@@ -1014,7 +1005,7 @@ fn word_with_parameter_expansions() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(r#"$FOO\ $_"#);
     println!("tokens: {tokens:?}");
@@ -1035,7 +1026,7 @@ fn word_with_parameter_expansions() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 
     let mut tokens = tokenize(r#"$a"$FOO\ $_foo"$b'$c'"#);
     let actual = tokens.parse_word(false);
@@ -1063,5 +1054,5 @@ fn word_with_parameter_expansions() {
         ],
     };
 
-    assert_eq!(Some(expected), actual);
+    assert_eq!(Ok(expected), actual);
 }
