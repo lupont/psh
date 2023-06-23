@@ -15,10 +15,12 @@ use psh_core::ExitStatus;
 fn main() {
     let args = args::Args::parse();
 
-    if let Some(command) = args.command {
-        run_command(&command, args.tokenize, args.lex, args.ast);
-    } else if let Some(file) = args.file {
-        run_file(&file, args.tokenize, args.lex, args.ast);
+    if let Some(target) = args.target {
+        if args.command {
+            run_command(&target, args.tokenize, args.lex, args.ast);
+        } else {
+            run_file(&target, args.tokenize, args.lex, args.ast);
+        }
     } else {
         let mut repl = repl::Repl::new();
 

@@ -1,13 +1,8 @@
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
-    #[arg(
-        short,
-        long,
-        help("Run the specified command and exit"),
-        value_name("cmd")
-    )]
-    pub command: Option<String>,
+    #[arg(short, long, help("Run the specified command and exit"))]
+    pub command: bool,
 
     #[arg(long, help("Only tokenize the input"))]
     pub tokenize: bool,
@@ -18,6 +13,6 @@ pub struct Args {
     #[arg(long, help("Only produce the AST of the input"))]
     pub ast: bool,
 
-    #[arg(help("Run the given file"), value_name("file"))]
-    pub file: Option<String>,
+    #[arg(help("The file or command (if `-c`) to run"), value_name("target"))]
+    pub target: Option<String>,
 }
