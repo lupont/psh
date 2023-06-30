@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 psh-core = { path = "../psh-core/" }
-clap = { version = "4.0.19", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
 crossterm = { version = "0.25.0", features = ["bracketed-paste"] }
 ctrlc = "3.2.5"
+serde_json = "1.0"

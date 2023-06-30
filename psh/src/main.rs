@@ -42,7 +42,7 @@ fn run_command(command: &String, tokenize: bool, lex: bool, ast: bool) {
         }
     } else if ast {
         let ast = parse(command, true);
-        println!("{ast:#?}");
+        println!("{}", serde_json::to_string(&ast.unwrap()).unwrap());
     } else {
         let code = match Engine::default().execute_line(command) {
             Ok(codes) if codes.is_empty() => 0,
