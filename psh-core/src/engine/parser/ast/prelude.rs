@@ -744,9 +744,18 @@ impl Word {
     pub fn is_finished(&self) -> bool {
         let single_quotes =
             Self::find_all(&[QuoteState::None, QuoteState::Single], &self.name, '\'').len();
+
         let double_quotes =
             Self::find_all(&[QuoteState::None, QuoteState::Double], &self.name, '"').len();
-        single_quotes % 2 == 0 && double_quotes % 2 == 0
+
+        let mut trailing_backslash = false;
+
+        let mut iter = self.name.chars().rev();
+        while let Some('\\') = iter.next() {
+            trailing_backslash ^= true;
+        }
+
+        single_quotes % 2 == 0 && double_quotes % 2 == 0 && !trailing_backslash
     }
 
     fn find_expansions(input: &str) -> Vec<Expansion> {
@@ -899,27 +908,37 @@ impl Word {
         let mut found = Vec::new();
 
         for (i, c) in haystack.chars().enumerate() {
-            if target_states.contains(&state) && needle == c && (!is_escaped || needle == '\'') {
+            if needle == c && target_states.contains(&state) && !is_escaped {
                 found.push(i);
             }
-            match (c, state) {
-                ('\'', QuoteState::Single) => {
+            match (c, state, is_escaped) {
+                ('\'', QuoteState::Single, _) => {
                     state = QuoteState::None;
+                    is_escaped = false;
                 }
-                ('\'', QuoteState::None) => {
+                ('\'', QuoteState::None, false) => {
                     state = QuoteState::Single;
+                    is_escaped = false;
+                }
+                (_, QuoteState::Single, _) => {
+                    is_escaped = false;
                 }
 
-                ('"', QuoteState::Double) if !is_escaped => {
+                ('"', QuoteState::Double, false) => {
                     state = QuoteState::None;
+                    is_escaped = false;
                 }
-                ('"', QuoteState::None) => {
+
+                ('"', QuoteState::None, false) => {
                     state = QuoteState::Double;
+                    is_escaped = false;
                 }
 
-                ('\\', _) if !is_escaped => is_escaped = true,
+                ('\\', _, false) => {
+                    is_escaped = true;
+                }
 
-                (_, _) => {
+                (_, _, _) => {
                     is_escaped = false;
                 }
             }
@@ -940,27 +959,37 @@ impl Word {
         let mut found = None;
 
         for (i, c) in haystack.chars().enumerate() {
-            if target_state == state && needle == c {
+            if needle == c && target_state == state && !is_escaped {
                 found = Some(i);
             }
-            match (c, state) {
-                ('\'', QuoteState::Single) => {
+            match (c, state, is_escaped) {
+                ('\'', QuoteState::Single, _) => {
                     state = QuoteState::None;
+                    is_escaped = false;
                 }
-                ('\'', QuoteState::None) => {
+                ('\'', QuoteState::None, false) => {
                     state = QuoteState::Single;
+                    is_escaped = false;
+                }
+                (_, QuoteState::Single, _) => {
+                    is_escaped = false;
                 }
 
-                ('"', QuoteState::Double) if !is_escaped => {
+                ('"', QuoteState::Double, false) => {
                     state = QuoteState::None;
+                    is_escaped = false;
                 }
-                ('"', QuoteState::None) => {
+
+                ('"', QuoteState::None, false) => {
                     state = QuoteState::Double;
+                    is_escaped = false;
                 }
 
-                ('\\', _) if !is_escaped => is_escaped = true,
+                ('\\', _, false) => {
+                    is_escaped = true;
+                }
 
-                (_, _) => {
+                (_, _, _) => {
                     is_escaped = false;
                 }
             }

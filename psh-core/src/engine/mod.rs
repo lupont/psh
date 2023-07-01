@@ -83,7 +83,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn has_builtin(&self, s: &Word) -> bool {
-        let name = s.name.replace(['\'', '"'], "");
+        let name = remove_quotes(&s.name);
         let has = |s| name == s || name.starts_with(&format!("{s} "));
         has("cd") || has("exit") || has(":") || has("debug")
     }
@@ -149,7 +149,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn has_command(&self, cmd: &Word) -> bool {
-        let cmd = remove_quotes(&cmd.name); //.replace(['\'', '"'], "");
+        let cmd = remove_quotes(&cmd.name);
         path::has_relative_command(&cmd)
             || self
                 .commands

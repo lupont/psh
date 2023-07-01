@@ -249,29 +249,35 @@ pub fn remove_quotes(s: &str) -> String {
     let mut is_escaped = false;
 
     for c in s.chars() {
-        match (c, state) {
-            ('\'', QuoteState::Single) => {
+        match (c, state, is_escaped) {
+            ('\'', QuoteState::Single, _) => {
                 state = QuoteState::None;
+                is_escaped = false;
             }
-            ('\'', QuoteState::None) => {
+            ('\'', QuoteState::None, false) => {
                 state = QuoteState::Single;
+                is_escaped = false;
             }
-            (c, QuoteState::Single) => name.push(c),
-
-            ('"', QuoteState::Double) if !is_escaped => {
-                state = QuoteState::None;
-            }
-            ('"', QuoteState::None) => {
-                state = QuoteState::Double;
-            }
-
-            (c, QuoteState::Double) if !is_escaped => {
+            (c, QuoteState::Single, _) => {
                 name.push(c);
+                is_escaped = false;
             }
 
-            ('\\', _) if !is_escaped => is_escaped = true,
+            ('"', QuoteState::Double, false) => {
+                state = QuoteState::None;
+                is_escaped = false;
+            }
 
-            (c, _) => {
+            ('"', QuoteState::None, false) => {
+                state = QuoteState::Double;
+                is_escaped = false;
+            }
+
+            ('\\', _, false) => {
+                is_escaped = true;
+            }
+
+            (c, _, _) => {
                 name.push(c);
                 is_escaped = false;
             }
