@@ -26,20 +26,20 @@ impl Repl {
     }
 
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
-        let ps1 = match is_root() {
-            true => config::PS1_ROOT_PROMPT,
-            false => config::PS1_USER_PROMPT,
-        };
-        let ps2 = config::PS2_PROMPT;
-
         if env::var("PS1").is_err() {
-            env::set_var("PS1", ps1);
+            env::set_var(
+                "PS1",
+                match is_root() {
+                    true => config::PS1_ROOT_PROMPT,
+                    false => config::PS1_USER_PROMPT,
+                },
+            );
         }
         if env::var("PS2").is_err() {
-            env::set_var("PS2", ps2);
+            env::set_var("PS2", config::PS2_PROMPT);
         }
 
-        ctrlc::set_handler(|| {}).expect("psh: Error setting ctrl-c handler");
+        ctrlc::set_handler(|| {}).expect("psh: Error setting ^C handler");
 
         loop {
             self.prompt(false)?;
@@ -92,14 +92,11 @@ impl Repl {
     pub fn prompt(&mut self, ps2: bool) -> Result<()> {
         let _raw = RawMode::init()?;
 
-        let prompt = format!(
-            "{} ",
-            if ps2 {
-                env::var("PS2").unwrap()
-            } else {
-                env::var("PS1").unwrap()
-            }
-        );
+        let prompt = if ps2 {
+            env::var("PS2").unwrap()
+        } else {
+            env::var("PS1").unwrap()
+        };
 
         Ok(execute!(
             self.engine.writer,
