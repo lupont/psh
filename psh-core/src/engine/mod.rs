@@ -233,6 +233,7 @@ impl<W: Write> Engine<W> {
                         .write(true)
                         .create(true)
                         .append(false)
+                        .truncate(true)
                         .open(&target.name)?;
                     match input_fd {
                         None | Some(FileDescriptor::Stdout) => {
