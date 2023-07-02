@@ -102,14 +102,18 @@ run-tests() {
     expect '' \
         '! : | : && echo foo'
 
-    # expect $'\n'$'\n' \
-    #     'foo=bar echo $foo; echo $foo'
+    expect 'foo ' \
+        'echo "foo'$'\n''"'
+
+    expect 'oof' \
+        'echo foo|'$'\n\n\n''rev'
+
     # expect foo \
     #     'foo=bar; echo $foo'
 }
 
 run() {
-    "$TARGET" -c "$*"
+    "$TARGET" -c "$*" 2>&1
 }
 
 success() {
