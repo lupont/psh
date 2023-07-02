@@ -44,11 +44,11 @@ impl Repl {
         loop {
             self.prompt(false)?;
 
-            let mut line = read_line(&mut self.engine, false)?;
+            let mut line = read_line(&mut self.engine, true)?;
 
             while let Err(Error::Incomplete(_)) = parse(&line, false) {
                 self.prompt(true)?;
-                match read_line(&mut self.engine, true) {
+                match read_line(&mut self.engine, false) {
                     Ok(l) => line += &l,
                     Err(Error::CancelledLine) => {
                         line = String::new();

@@ -64,7 +64,7 @@ impl State {
     }
 }
 
-pub fn read_line<W: Write>(engine: &mut Engine<W>, ps2: bool) -> Result<String> {
+pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> {
     let _raw = RawMode::init()?;
 
     let mut state = State {
@@ -109,7 +109,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps2: bool) -> Result<String> 
 
         match (code, modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-                if !ps2 && state.line.is_empty() {
+                if ps1 && state.line.is_empty() {
                     continue;
                 }
 
@@ -125,7 +125,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps2: bool) -> Result<String> 
             }
 
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                if state.line.is_empty() {
+                if ps1 && state.line.is_empty() {
                     state.about_to_exit = true;
                     state.line = "exit".to_string();
                 }
@@ -286,9 +286,9 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps2: bool) -> Result<String> 
         execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
     }
 
-    match (state.cancelled, ps2) {
-        (true, true) => Err(Error::CancelledLine),
-        (true, false) => Ok("".to_string()),
+    match (state.cancelled, ps1) {
+        (true, false) => Err(Error::CancelledLine),
+        (true, true) => Ok("".to_string()),
         (false, _) => Ok(state.line),
     }
 }
@@ -303,7 +303,6 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         terminal::Clear(terminal::ClearType::UntilNewLine),
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
-
     let Ok(ast) = psh_core::parse(&state.line, true) else { return Ok(()); };
     ast.write_highlighted(engine)?;
     engine.writer.flush()?;
