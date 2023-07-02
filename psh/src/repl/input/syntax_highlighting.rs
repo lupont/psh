@@ -50,23 +50,39 @@ impl Highlighter for CompleteCommands {
 impl Highlighter for CompleteCommand {
     fn write_highlighted(&self, engine: &mut Engine<impl Write>) -> Result<()> {
         match self {
-            Self::List(list, None, None) => {
+            Self::List {
+                list,
+                separator_op: None,
+                comment: None,
+            } => {
                 list.write_highlighted(engine)?;
             }
-            Self::List(list, Some(separator_op), None) => {
+            Self::List {
+                list,
+                separator_op: Some(separator_op),
+                comment: None,
+            } => {
                 list.write_highlighted(engine)?;
                 separator_op.write_highlighted(engine)?;
             }
-            Self::List(list, None, Some(comment)) => {
+            Self::List {
+                list,
+                separator_op: None,
+                comment: Some(comment),
+            } => {
                 list.write_highlighted(engine)?;
                 comment.write_highlighted(engine)?;
             }
-            Self::List(list, Some(separator_op), Some(comment)) => {
+            Self::List {
+                list,
+                separator_op: Some(separator_op),
+                comment: Some(comment),
+            } => {
                 list.write_highlighted(engine)?;
                 separator_op.write_highlighted(engine)?;
                 comment.write_highlighted(engine)?;
             }
-            Self::Comment(comment) => {
+            Self::Comment { comment } => {
                 comment.write_highlighted(engine)?;
             }
         }

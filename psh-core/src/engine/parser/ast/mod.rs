@@ -156,13 +156,21 @@ where
         let comment = self.parse_comment();
 
         if let Ok((list, separator_op)) = list_and_separator {
-            Ok(CompleteCommand::List(list, separator_op.ok(), comment.ok()))
+            Ok(CompleteCommand::List {
+                list,
+                separator_op: separator_op.ok(),
+                comment: comment.ok()
+            })
         } else if let Ok(comment) = comment {
-            Ok(CompleteCommand::Comment(comment))
+            Ok(CompleteCommand::Comment { comment })
         } else if let Err(ParseError::UnfinishedList(ws, list)) = list_and_separator {
             Err(ParseError::UnfinishedCompleteCommand(
                 ws,
-                CompleteCommand::List(list, None, None),
+                CompleteCommand::List {
+                    list,
+                    separator_op: None,
+                    comment: None
+                },
             ))
         } else {
             Err(ParseError::Invalid)

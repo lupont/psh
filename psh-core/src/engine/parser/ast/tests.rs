@@ -426,8 +426,8 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand::List(
-        List {
+    let expected = CompleteCommand::List {
+        list: List {
             head: AndOrList {
                 head: Pipeline {
                     bang: None,
@@ -444,9 +444,9 @@ fn parse_complete_command() {
             },
             tail: Vec::new(),
         },
-        None,
-        None,
-    );
+        separator_op: None,
+        comment: None,
+    };
 
     assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
@@ -454,8 +454,8 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo ;");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand::List(
-        List {
+    let expected = CompleteCommand::List {
+        list: List {
             head: AndOrList {
                 head: Pipeline {
                     bang: None,
@@ -472,9 +472,9 @@ fn parse_complete_command() {
             },
             tail: Vec::new(),
         },
-        Some(SeparatorOp::Sync(" ".to_string())),
-        None,
-    );
+        separator_op: Some(SeparatorOp::Sync(" ".to_string())),
+        comment: None,
+    };
 
     assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
@@ -482,8 +482,8 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo&");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand::List(
-        List {
+    let expected = CompleteCommand::List {
+        list: List {
             head: AndOrList {
                 head: Pipeline {
                     bang: None,
@@ -500,9 +500,9 @@ fn parse_complete_command() {
             },
             tail: Vec::new(),
         },
-        Some(SeparatorOp::Async("".to_string())),
-        None,
-    );
+        separator_op: Some(SeparatorOp::Async("".to_string())),
+        comment: None,
+    };
 
     assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
@@ -510,8 +510,8 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo& true ;");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand::List(
-        List {
+    let expected = CompleteCommand::List {
+        list: List {
             head: AndOrList {
                 head: Pipeline {
                     bang: None,
@@ -544,9 +544,9 @@ fn parse_complete_command() {
                 },
             )],
         },
-        Some(SeparatorOp::Sync(" ".to_string())),
-        None,
-    );
+        separator_op: Some(SeparatorOp::Sync(" ".to_string())),
+        comment: None,
+    };
 
     assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
@@ -554,8 +554,8 @@ fn parse_complete_command() {
     let mut tokens = tokenize("echo foo;true&");
     let actual = tokens.parse_complete_command();
 
-    let expected = CompleteCommand::List(
-        List {
+    let expected = CompleteCommand::List {
+        list: List {
             head: AndOrList {
                 head: Pipeline {
                     bang: None,
@@ -588,9 +588,9 @@ fn parse_complete_command() {
                 },
             )],
         },
-        Some(SeparatorOp::Async("".to_string())),
-        None,
-    );
+        separator_op: Some(SeparatorOp::Async("".to_string())),
+        comment: None,
+    };
 
     assert_eq!(Ok(expected), actual);
     assert!(tokens.next().is_none());
@@ -909,8 +909,8 @@ fn parse_with_comment() {
         leading: Linebreak { newlines: None },
         commands: Some((
             CompleteCommands {
-                head: CompleteCommand::List(
-                    List {
+                head: CompleteCommand::List {
+                    list: List {
                         head: AndOrList {
                             head: Pipeline {
                                 bang: None,
@@ -930,12 +930,12 @@ fn parse_with_comment() {
                         },
                         tail: Vec::new(),
                     },
-                    None,
-                    Some(Comment {
+                    separator_op: None,
+                    comment: Some(Comment {
                         whitespace: " ".to_string(),
                         content: "this is a comment ".to_string(),
                     }),
-                ),
+                },
                 tail: Vec::new(),
             },
             Linebreak { newlines: None },

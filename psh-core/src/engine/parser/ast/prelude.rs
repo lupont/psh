@@ -61,9 +61,14 @@ impl CompleteCommands {
 #[serde(tag = "type", content = "content")]
 pub enum CompleteCommand {
     #[serde(rename = "list")]
-    List(List, Option<SeparatorOp>, Option<Comment>),
+    List {
+        list: List,
+        separator_op: Option<SeparatorOp>,
+        comment: Option<Comment>,
+    },
+
     #[serde(rename = "comment")]
-    Comment(Comment),
+    Comment { comment: Comment },
 }
 
 impl CompleteCommand {
@@ -71,8 +76,10 @@ impl CompleteCommand {
         let mut items = Vec::new();
 
         let (list, separator_op) = match self {
-            Self::List(list, separator_op, _) => (list, separator_op),
-            Self::Comment(_) => return items,
+            Self::List {
+                list, separator_op, ..
+            } => (list, separator_op),
+            Self::Comment { .. } => return items,
         };
 
         let final_separator = match separator_op {

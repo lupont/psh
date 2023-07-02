@@ -35,10 +35,16 @@ impl Expand for CompleteCommands {
 impl Expand for CompleteCommand {
     fn expand(self, engine: &mut Engine<impl Write>) -> Self {
         match self {
-            Self::List(list, separator_op, comment) => {
-                Self::List(list.expand(engine), separator_op, comment)
-            }
-            Self::Comment(comment) => Self::Comment(comment),
+            Self::List {
+                list,
+                separator_op,
+                comment,
+            } => Self::List {
+                list: list.expand(engine),
+                separator_op,
+                comment,
+            },
+            Self::Comment { comment } => Self::Comment { comment },
         }
     }
 }
