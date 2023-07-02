@@ -159,7 +159,7 @@ where
             Ok(CompleteCommand::List {
                 list,
                 separator_op: separator_op.ok(),
-                comment: comment.ok()
+                comment: comment.ok(),
             })
         } else if let Ok(comment) = comment {
             Ok(CompleteCommand::Comment { comment })
@@ -169,7 +169,7 @@ where
                 CompleteCommand::List {
                     list,
                     separator_op: None,
-                    comment: None
+                    comment: None,
                 },
             ))
         } else {

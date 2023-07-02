@@ -154,6 +154,7 @@ impl AndOrList {
 pub struct Pipeline {
     #[serde(flatten)]
     pub bang: Option<Bang>,
+
     #[serde(rename = "pipe_sequence")]
     pub sequence: PipeSequence,
 }

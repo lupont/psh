@@ -64,7 +64,12 @@ impl State {
     }
 }
 
-pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> {
+pub fn read_line<W: Write>(
+    engine: &mut Engine<W>,
+    ps1: bool,
+    start_pos: (u16, u16),
+    old_line: Option<&String>,
+) -> Result<String> {
     let _raw = RawMode::init()?;
 
     let mut state = State {
@@ -79,7 +84,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> 
     };
 
     while !state.about_to_exit {
-        print(engine, &state)?;
+        print(engine, &state, start_pos, old_line)?;
 
         execute!(engine.writer, event::EnableBracketedPaste)?;
 
@@ -95,7 +100,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> 
                 state.next_pos(),
             )?;
 
-            print(engine, &state)?;
+            print(engine, &state, start_pos, old_line)?;
         }
 
         execute!(engine.writer, event::DisableBracketedPaste)?;
@@ -273,7 +278,7 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> 
     let (_, start_y) = state.start_pos;
     let (_, height) = state.size;
     if start_y + 1 >= height {
-        execute!(engine.writer, terminal::ScrollUp(1))?;
+        execute!(engine.writer, terminal::ScrollUp(height - start_y))?;
     }
 
     if state.cleared {
@@ -293,8 +298,13 @@ pub fn read_line<W: Write>(engine: &mut Engine<W>, ps1: bool) -> Result<String> 
     }
 }
 
-fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
-    let (start_x, start_y) = state.start_pos;
+fn print<W: Write>(
+    engine: &mut Engine<W>,
+    state: &State,
+    start_pos: (u16, u16),
+    old_line: Option<&String>,
+) -> Result<()> {
+    let (start_x, start_y) = start_pos;
     let (x, y) = state.pos()?;
 
     queue!(
@@ -303,8 +313,20 @@ fn print<W: Write>(engine: &mut Engine<W>, state: &State) -> Result<()> {
         terminal::Clear(terminal::ClearType::UntilNewLine),
         style::SetForegroundColor(Colors::REDIRECT_INPUT),
     )?;
-    let Ok(ast) = psh_core::parse(&state.line, true) else { return Ok(()); };
-    ast.write_highlighted(engine)?;
+
+    let line = if let Some(l) = old_line {
+        format!("{l}{}", state.line)
+    } else {
+        state.line.clone()
+    };
+
+    let starting_point = match std::env::var("PS2") {
+        Ok(ps2) => ps2.len() as u16,
+        _ => start_x,
+    };
+
+    let Ok(ast) = psh_core::parse(line, true) else { return Ok(()); };
+    ast.write_highlighted(engine, starting_point)?;
     engine.writer.flush()?;
 
     if state.cancelled {

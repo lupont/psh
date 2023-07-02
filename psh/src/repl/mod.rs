@@ -44,11 +44,14 @@ impl Repl {
         loop {
             self.prompt(false)?;
 
-            let mut line = read_line(&mut self.engine, true)?;
+            let start_pos = crossterm::cursor::position()?;
+            let mut line = read_line(&mut self.engine, true, start_pos, None)?;
 
             while let Err(Error::Incomplete(_)) = parse(&line, false) {
+                line.push('\n');
+
                 self.prompt(true)?;
-                match read_line(&mut self.engine, false) {
+                match read_line(&mut self.engine, false, start_pos, Some(&line)) {
                     Ok(l) => line += &l,
                     Err(Error::CancelledLine) => {
                         line = String::new();
