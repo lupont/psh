@@ -259,21 +259,9 @@ impl Highlighter for SimpleCommand {
         }
 
         if let Some(name) = &self.name {
-            queue!(engine.writer, SetForegroundColor(cmd_color),)?;
+            queue!(engine.writer, SetForegroundColor(cmd_color))?;
 
-            let newlines = name.name.chars().filter(|&c| c == '\n').count();
-            if newlines > 0 {
-                for line in name.to_string().split('\n') {
-                    queue!(
-                        engine.writer,
-                        Print(line),
-                        MoveToColumn(start_x),
-                        MoveDown(1)
-                    )?;
-                }
-            } else {
-                queue!(engine.writer, Print(name.to_string()), ResetColor)?;
-            }
+            name.write_highlighted(engine, start_x)?;
 
             queue!(engine.writer, ResetColor)?;
         }
@@ -304,19 +292,9 @@ impl Highlighter for CmdSuffix {
                     SetForegroundColor(Colors::TRAILING_WORD_COLOR),
                 )?;
 
-                let newlines = w.name.chars().filter(|&c| c == '\n').count();
-                for (i, line) in w.to_string().split('\n').enumerate() {
-                    if i + 1 == newlines {
-                        queue!(
-                            engine.writer,
-                            Print(w.to_string()),
-                            MoveToColumn(start_x),
-                            ResetColor
-                        )?;
-                    } else {
-                        queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line),)?;
-                    }
-                }
+                w.write_highlighted(engine, start_x)?;
+
+                queue!(engine.writer, ResetColor)?;
 
                 Ok(())
             }
@@ -395,19 +373,15 @@ impl Highlighter for VariableAssignment {
 
 impl Highlighter for NewlineList {
     fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        let newlines = self.whitespace.chars().filter(|&c| c == '\n').count();
-        for (i, line) in self.whitespace.split('\n').enumerate() {
-            if i + 1 == newlines {
-                queue!(
-                    engine.writer,
-                    Print(line),
-                    MoveToColumn(start_x),
-                    MoveDown(1)
-                )?;
-            } else {
-                queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line),)?;
+        let mut lines = self.whitespace.split('\n').peekable();
+
+        while let Some(line) = lines.next() {
+            queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
+            if lines.peek().is_some() {
+                queue!(engine.writer, MoveToColumn(start_x), MoveDown(1))?;
             }
         }
+
         Ok(())
     }
 }
@@ -495,6 +469,22 @@ impl Highlighter for Pipe {
             Print(self.to_string()),
             ResetColor,
         )?;
+        Ok(())
+    }
+}
+
+impl Highlighter for Word {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+        let s = format!("{}{}", self.whitespace, self.name_with_escaped_newlines);
+        let mut lines = s.split('\n').peekable();
+
+        while let Some(line) = lines.next() {
+            queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
+            if lines.peek().is_some() {
+                queue!(engine.writer, MoveToColumn(start_x), MoveDown(1))?;
+            }
+        }
+
         Ok(())
     }
 }

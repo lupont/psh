@@ -246,10 +246,11 @@ where
             match token {
                 Token::Backslash => {
                     let slash = self.next().unwrap();
+                    word.push_str(&slash.to_str());
                     if let Some(Token::Whitespace('\n')) = self.peek() {
                         self.next();
+                        word.push('\n');
                     } else {
-                        word.push_str(&slash.to_str());
                         is_escaped ^= true;
                     }
                 }
@@ -314,10 +315,11 @@ where
 
                 Token::Backslash => {
                     let slash = self.next().unwrap();
+                    word.push_str(&slash.to_str());
                     if let Some(Token::Whitespace('\n')) = self.peek() {
                         self.next();
+                        word.push('\n');
                     } else {
-                        word.push_str(&slash.to_str());
                         is_escaped ^= true;
                     }
                 }

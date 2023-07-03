@@ -244,6 +244,7 @@ fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
 fn quote_removal(word: Word) -> Word {
     Word {
         name: remove_quotes(&word.name),
+        name_with_escaped_newlines: remove_quotes(&word.name_with_escaped_newlines),
         whitespace: word.whitespace,
         expansions: word.expansions,
     }

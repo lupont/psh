@@ -62,7 +62,7 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
                 } else {
                     Err(ast)
                 }
-            },
+            }
             Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(SyntaxTree {
                 leading: linebreak,
                 commands: Some((cmds, trailing_linebreak)),

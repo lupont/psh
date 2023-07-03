@@ -735,16 +735,20 @@ pub enum QuoteState {
 pub struct Word {
     pub whitespace: LeadingWhitespace,
     pub name: String,
+    pub name_with_escaped_newlines: String,
     pub expansions: Vec<Expansion>,
 }
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
         let expansions = Self::find_expansions(input);
+        let name = input.replace("\\\n", "");
+        let name_with_escaped_newlines = input.to_string();
 
         Self {
-            name: input.to_string(),
             whitespace: whitespace.into(),
+            name,
+            name_with_escaped_newlines,
             expansions,
         }
     }
