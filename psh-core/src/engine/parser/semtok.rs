@@ -245,9 +245,13 @@ where
         while let Some(token) = self.peek() {
             match token {
                 Token::Backslash => {
-                    is_escaped ^= true;
                     let slash = self.next().unwrap();
-                    word.push_str(&slash.to_str());
+                    if let Some(Token::Whitespace('\n')) = self.peek() {
+                        self.next();
+                    } else {
+                        word.push_str(&slash.to_str());
+                        is_escaped ^= true;
+                    }
                 }
 
                 Token::DoubleQuote if is_escaped => {
@@ -309,9 +313,13 @@ where
                 }
 
                 Token::Backslash => {
-                    word.push('\\');
-                    self.next();
-                    is_escaped ^= true;
+                    let slash = self.next().unwrap();
+                    if let Some(Token::Whitespace('\n')) = self.peek() {
+                        self.next();
+                    } else {
+                        word.push_str(&slash.to_str());
+                        is_escaped ^= true;
+                    }
                 }
 
                 Token::Equals => {
