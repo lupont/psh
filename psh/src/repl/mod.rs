@@ -82,10 +82,7 @@ impl Repl {
                     }
 
                     Err(e) => {
-                        writeln!(
-                            self.engine.writer,
-                            "psh: Error occurred when reading or executing: {e}"
-                        )?;
+                        writeln!(self.engine.writer, "psh: {e}")?;
                     }
                 }
             }

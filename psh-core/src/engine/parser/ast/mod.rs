@@ -35,7 +35,7 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
         Err(ast) if allow_errors => Ok(ast),
         Err(ast) if ast.is_ok() => Err(Error::Incomplete(ast.to_string())),
         Err(ast) => Err(Error::SyntaxError(format!(
-            "psh: could not parse the following: '{}'",
+            "'{}'",
             ast.unparsed.trim_start()
         ))),
     }
@@ -50,11 +50,19 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
         let unparsed = self.by_ref().map(|t| t.to_string()).collect();
 
         match commands {
-            Ok(cmds) => Ok(SyntaxTree {
-                leading: linebreak,
-                commands: Some((cmds, trailing_linebreak)),
-                unparsed,
-            }),
+            Ok(cmds) => {
+                let ast = SyntaxTree {
+                    leading: linebreak,
+                    commands: Some((cmds, trailing_linebreak)),
+                    unparsed,
+                };
+
+                if ast.is_ok() {
+                    Ok(ast)
+                } else {
+                    Err(ast)
+                }
+            },
             Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(SyntaxTree {
                 leading: linebreak,
                 commands: Some((cmds, trailing_linebreak)),

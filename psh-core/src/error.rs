@@ -35,7 +35,7 @@ impl fmt::Display for Error {
                 Self::HistoryOutOfBounds => "tried to read beyond the history bounds.".to_string(),
                 Self::UnknownCommand(cmd) => format!("unknown command: '{}'", cmd),
                 Self::Unimplemented(s) => s.to_string(),
-                Self::SyntaxError(s) => format!("syntax error: {s}"),
+                Self::SyntaxError(s) => format!("could not parse the following: {s}"),
                 Self::ParseError(e) => e.to_string(),
                 Self::CancelledLine => "line input cancelled".to_string(),
                 Self::Incomplete(line) => format!("incomplete line: '{line}'"),
