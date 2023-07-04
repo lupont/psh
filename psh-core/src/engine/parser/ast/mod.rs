@@ -293,14 +293,25 @@ where
         loop {
             let Ok(pipe) = self.parse_pipe() else { break; };
             let linebreak = self.parse_linebreak();
-            let Ok(cmd) = self.parse_command() else {
-                let ws = self.swallow_whitespace();
-                tail.push((pipe, linebreak, Command::noop()));
-                let seq = PipeSequence {
-                    head: Box::new(head),
-                    tail,
-                };
-                return Err(ParseError::UnfinishedPipeSequence(ws, seq));
+            let cmd = match self.parse_command() {
+                Ok(cmd) => cmd,
+                Err(ParseError::UnfinishedCommand(cmd)) => {
+                    tail.push((pipe, linebreak, cmd));
+                    let seq = PipeSequence {
+                        head: Box::new(head),
+                        tail,
+                    };
+                    return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
+                }
+                Err(ParseError::Invalid) => {
+                    tail.push((pipe, linebreak, Command::noop()));
+                    let seq = PipeSequence {
+                        head: Box::new(head),
+                        tail,
+                    };
+                    return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
+                }
+                Err(e) => return Err(e),
             };
             tail.push((pipe, linebreak, cmd));
         }
