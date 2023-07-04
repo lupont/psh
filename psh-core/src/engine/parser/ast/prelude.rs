@@ -762,6 +762,9 @@ impl Word {
 
         let mut trailing_backslash = false;
 
+        // FIXME: this does not take the current quote state into account,
+        //        meaning if a word is e.g. 'foo\, this will mark it as
+        //        a trailing backslash, when it should not
         let mut iter = self.name.chars().rev();
         while let Some('\\') = iter.next() {
             trailing_backslash ^= true;
