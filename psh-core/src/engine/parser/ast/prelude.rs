@@ -503,7 +503,7 @@ impl SimpleCommand {
         self.suffixes
             .iter()
             .filter_map(|m| match m {
-                CmdSuffix::Word(w) => Some(w),
+                CmdSuffix::Word(w) if !w.is_empty() => Some(w),
                 _ => None,
             })
             .map(|w| &w.name)
@@ -751,6 +751,10 @@ impl Word {
             name_with_escaped_newlines,
             expansions,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.name.is_empty()
     }
 
     pub fn is_finished(&self) -> bool {
