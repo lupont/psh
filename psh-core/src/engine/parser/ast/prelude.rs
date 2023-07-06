@@ -43,9 +43,9 @@ pub struct CompleteCommands {
 }
 
 impl CompleteCommands {
-    pub fn full(&self) -> Vec<&CompleteCommand> {
-        let mut v = vec![&self.head];
-        for (_, cmd) in &self.tail {
+    pub fn full(self) -> Vec<CompleteCommand> {
+        let mut v = vec![self.head];
+        for (_, cmd) in self.tail {
             v.push(cmd);
         }
         v
@@ -72,7 +72,7 @@ pub enum CompleteCommand {
 }
 
 impl CompleteCommand {
-    pub fn list_with_separator(&self) -> Vec<(&AndOrList, SeparatorOp)> {
+    pub fn list_with_separator(self) -> Vec<(AndOrList, SeparatorOp)> {
         let mut items = Vec::new();
 
         let (list, separator_op) = match self {
@@ -83,23 +83,21 @@ impl CompleteCommand {
         };
 
         let final_separator = match separator_op {
-            Some(separator) => separator.clone(),
+            Some(separator) => separator,
             None => Default::default(),
         };
 
         if list.tail.is_empty() {
-            items.push((&list.head, final_separator));
+            items.push((list.head, final_separator));
         } else {
-            let mut prev_list = &list.head;
+            let mut prev_list = list.head;
 
-            for (sep, and_or_list) in &list.tail {
-                items.push((prev_list, sep.clone()));
+            for (sep, and_or_list) in list.tail {
+                items.push((prev_list, sep));
                 prev_list = and_or_list;
             }
 
-            if let Some((_, and_or_list)) = list.tail.last() {
-                items.push((and_or_list, final_separator));
-            }
+            items.push((prev_list, final_separator));
         }
 
         items
@@ -161,9 +159,9 @@ pub struct Pipeline {
 
 impl Pipeline {
     /// Always at least one in length, since this joins self.first and self.rest.
-    pub fn full(&self) -> Vec<&Command> {
-        let mut v = vec![&*self.sequence.head];
-        for (_, _, cmd) in &self.sequence.tail {
+    pub fn full(self) -> Vec<Command> {
+        let mut v = vec![*self.sequence.head];
+        for (_, _, cmd) in self.sequence.tail {
             v.push(cmd);
         }
         v

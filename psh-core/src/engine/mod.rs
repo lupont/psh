@@ -174,7 +174,7 @@ impl<W: Write> Engine<W> {
 
     fn execute_simple_command(
         &mut self,
-        cmd: &SimpleCommand,
+        cmd: SimpleCommand,
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
@@ -373,7 +373,7 @@ impl<W: Write> Engine<W> {
 
     fn execute_command(
         &mut self,
-        command: &Command,
+        command: Command,
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
@@ -385,21 +385,18 @@ impl<W: Write> Engine<W> {
         }
     }
 
-    pub fn execute_pipeline(
-        &mut self,
-        pipeline: &Pipeline,
-        background: bool,
-    ) -> Result<ExitStatus> {
+    pub fn execute_pipeline(&mut self, pipeline: Pipeline, background: bool) -> Result<ExitStatus> {
+        let has_bang = pipeline.has_bang();
         let pipeline_cmds = pipeline.full();
-        let mut pipeline_iter = pipeline_cmds.iter().peekable();
+        let mut pipeline_iter = pipeline_cmds.into_iter().peekable();
         let mut pids = Vec::with_capacity(pipeline_iter.len());
 
         let mut last_stdout = None;
         let mut last_status = ExitStatus::from_code(0);
 
         while let Some(cmd) = pipeline_iter.next() {
-            if self.is_builtin(cmd) {
-                last_status = self.execute_builtin(cmd)?;
+            if self.is_builtin(&cmd) {
+                last_status = self.execute_builtin(&cmd)?;
                 break;
             }
 
@@ -437,22 +434,18 @@ impl<W: Write> Engine<W> {
             }
         }
 
-        Ok(if pipeline.has_bang() {
-            !last_status
-        } else {
-            last_status
-        })
+        Ok(if has_bang { !last_status } else { last_status })
     }
 
     pub fn execute_and_or_list(
         &mut self,
-        and_or_list: &AndOrList,
+        and_or_list: AndOrList,
         background: bool,
     ) -> Result<Vec<ExitStatus>> {
-        let mut prev_status = self.execute_pipeline(&and_or_list.head, background)?;
+        let mut prev_status = self.execute_pipeline(and_or_list.head, background)?;
         let mut codes = vec![prev_status];
 
-        for (op, _, expr) in &and_or_list.tail {
+        for (op, _, expr) in and_or_list.tail {
             match (op, prev_status.is_ok()) {
                 (LogicalOp::And(_), true) | (LogicalOp::Or(_), false) => {
                     prev_status = self.execute_pipeline(expr, background)?;
@@ -465,7 +458,7 @@ impl<W: Write> Engine<W> {
         Ok(codes)
     }
 
-    pub fn execute(&mut self, cmd: &CompleteCommand) -> Result<Vec<ExitStatus>> {
+    pub fn execute(&mut self, cmd: CompleteCommand) -> Result<Vec<ExitStatus>> {
         self.update_assignments_from_env();
 
         let lists_with_separator = cmd.list_with_separator();
@@ -488,10 +481,10 @@ impl<W: Write> Engine<W> {
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
         if let Some((cmds, _)) = ast.commands {
-            return cmds
-                .full()
-                .into_iter()
-                .fold(Ok(vec![]), |_, c| self.execute(c));
+            let mut results = Vec::new();
+            for cmd in cmds.full() {
+                results.push(self.execute(cmd));
+            }
         }
         Ok(vec![])
     }
