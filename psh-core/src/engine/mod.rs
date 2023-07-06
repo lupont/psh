@@ -12,9 +12,8 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use self::expand::remove_quotes;
+use self::expand::{remove_quotes, Expand};
 use self::parser::ast::prelude::*;
-use crate::engine::expand::Expand;
 pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
 
@@ -162,13 +161,13 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
-        let ast = parse(line.to_string(), false)?.expand(self);
+        let ast = parse(line.to_string(), false)?;
         self.walk_ast(ast)
     }
 
     pub fn execute_file(&mut self, path: PathBuf) -> Result<Vec<ExitStatus>> {
         let lines = std::fs::read_to_string(path)?;
-        let ast = parse(lines, false)?.expand(self);
+        let ast = parse(lines, false)?;
         self.walk_ast(ast)
     }
 
@@ -178,6 +177,7 @@ impl<W: Write> Engine<W> {
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
+        has_multiple_commands: bool,
     ) -> Result<Option<(bool, process::Child)>> {
         let mut assignments = Vec::new();
         for assignment in cmd.assignments() {
@@ -190,8 +190,10 @@ impl<W: Write> Engine<W> {
         }
 
         let Some(name) = cmd.name() else {
-            for (k, v) in assignments {
-                self.assignments.insert(k, v);
+            if !has_multiple_commands {
+                for (k, v) in assignments {
+                    self.assignments.insert(k, v);
+                }
             }
             return Ok(None);
         };
@@ -378,17 +380,22 @@ impl<W: Write> Engine<W> {
         stdin: Stdio,
         stdout: Stdio,
         stderr: Stdio,
+        has_multiple_commands: bool,
     ) -> Result<Option<(bool, process::Child)>> {
         match command {
-            Command::Simple(cmd) => self.execute_simple_command(cmd, stdin, stdout, stderr),
+            Command::Simple(cmd) => {
+                self.execute_simple_command(cmd, stdin, stdout, stderr, has_multiple_commands)
+            }
             Command::Compound(_cmd, _redirections) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
             Command::FunctionDefinition(_func_def) => todo!(), //self.execute_function_defenition(func_def, stdin, stdout, stderr)
         }
     }
 
     pub fn execute_pipeline(&mut self, pipeline: Pipeline, background: bool) -> Result<ExitStatus> {
+        let pipeline = pipeline.expand(self);
         let has_bang = pipeline.has_bang();
         let pipeline_cmds = pipeline.full();
+        let has_multiple_commands = pipeline_cmds.len() > 1;
         let mut pipeline_iter = pipeline_cmds.into_iter().peekable();
         let mut pids = Vec::with_capacity(pipeline_iter.len());
 
@@ -416,7 +423,7 @@ impl<W: Write> Engine<W> {
             let stderr = Stdio::inherit();
 
             if let Some((stdout_redirected, mut child)) =
-                self.execute_command(cmd, stdin, stdout, stderr)?
+                self.execute_command(cmd, stdin, stdout, stderr, has_multiple_commands)?
             {
                 last_stdout = if stdout_redirected {
                     Some(None)
