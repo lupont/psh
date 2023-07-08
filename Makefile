@@ -1,5 +1,5 @@
 CARGO := cargo
-BASH := bash
+BASH := sh
 SHELLCHECK := shellcheck
 
 all: lint test

@@ -1,0 +1,11 @@
+a=one echo $a
+echo $a
+b=two; echo $b
+echo $b
+c=three && echo $c
+echo $c
+d=four | echo $d
+echo $d
+e=five
+echo | e=six | echo $e
+echo $e

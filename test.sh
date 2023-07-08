@@ -1,181 +1,74 @@
-#!/usr/bin/env bash
-# shellcheck disable=SC2016
+#!/bin/sh
 
-ALL=0
-FAILED=0
-ROOT="$(realpath "$(dirname "$0")")"
-TARGET="$ROOT/target/debug/psh"
-TEST_DIR=/tmp/psh-test
-
-QUIET=true
+verbose=false
 case "$1" in
-    -v|--verbose)
-        QUIET=false
+    -h|--help)
+        printf 'usage: %s [-v|--verbose]\n' "$(basename "$0")"
+        exit
         ;;
+    -v|--verbose) verbose=true
 esac
 
-run-tests() {
-    expect foo \
-        'printf foo'
+build_flags=
+"$verbose" || build_flags=-q
+cargo build $build_flags
 
-    expect foo \
-        'echo oof |rev'
+target="${TARGET:-$(realpath target/debug/psh)}"
+run_dir="${RUN_DIR:-$(mktemp -d)}"
 
-    expect "$HOME" \
-        'echo ~'
+cp -r test "$run_dir/"
+cd "$run_dir" || exit
 
-    expect '~~' \
-        'echo ~~'
+sed -i "s/user/$USER/g" test/004_expand_tilde
+sed -i "s/user/$USER/g" test/expected/stdout/004_expand_tilde
 
-    expect "$HOME/~" \
-        'echo ~/~'
+find test/ -type f -not -path '*test/expected/*' -name '0*' | sort | while read -r file; do
+    mkdir run && cd run || exit
 
-    expect '~' \
-        'echo "~"'
+    expected_stdout="../test/expected/stdout/$(basename "$file")"
+    expected_stderr="../test/expected/stderr/$(basename "$file")"
+    ! [ -f "$expected_stdout" ] && ! [ -f "$expected_stderr" ] && return
 
-    expect "$HOME" \
-        "echo ~$(whoami)"
+    stdout_tmp="$(mktemp -p "$run_dir")"
+    stderr_tmp="$(mktemp -p "$run_dir")"
+    "$target" "../$file" >"$stdout_tmp" 2>"$stderr_tmp"
+    res_stdout="$(cat "$stdout_tmp")"
+    res_stderr="$(cat "$stderr_tmp")"
 
-    expect foobar \
-        'printf foo; printf bar'
-
-    expect $'foo\nbar' \
-        'echo foo; printf bar'
-
-    expect $'foonbar' \
-        'echo -e foo\nbar'
-
-    expect $'foo\nbar' \
-        'echo oof | rev; printf bar'
-
-    expect '' \
-        'echo foo >abc123'
-    expect_file abc123 \
-        'foo'
-
-    expect foo \
-        'echo oof | rev >file; cat <file'
-    expect_file file \
-        'foo'
-
-    expect '' \
-        'echo foo >file; echo bar >> file'
-    expect_file file \
-        $'foo\nbar'
-
-    expect "$HOME" \
-        'echo $HOME'
-
-    expect '$HOME' \
-        "echo '\$HOME'"
-
-    expect "$HOME" \
-        'echo "$HOME"'
-
-    expect '' \
-        'foo=bar echo "$foo"'
-
-    expect '/' \
-        'foo=a bar=b echo "$foo/$bar"'
-
-    expect 'foo' \
-        ': && echo foo'
-
-    expect '' \
-        ': || echo foo'
-
-    expect '' \
-        ': | : || echo foo'
-
-    expect 'foo' \
-        ': | : && echo foo'
-
-    expect '' \
-        '! : && echo foo'
-
-    expect 'foo' \
-        '! : || echo foo'
-
-    expect 'foo' \
-        '! : | : || echo foo'
-
-    expect '' \
-        '! : | : && echo foo'
-
-    expect 'foo ' \
-        'echo "foo'$'\n''"'
-
-    expect 'oof' \
-        'echo foo|'$'\n\n\n''rev'
-
-    # expect foo \
-    #     'foo=bar; echo $foo'
-}
-
-run() {
-    "$TARGET" -c "$*" 2>&1
-}
-
-success() {
-    local val="$1"
-    local col=92
-    if [ -z "$val" ]; then
-        val='<empty>'
-        col=94
-    fi
-    ! "$QUIET" && printf '\033[%sm%s\033[0m\n' "$col" "$val"
-}
-
-failure() {
-    ! "$QUIET" && printf '\033[91m%s\033[0m\n' "$1" 1>&2
-}
-
-expect_file() {
-    local path="$1"
-
-    local expected="$2"
-    local actual
-    actual="$(cat "$path")"
-
-    if [ "$expected" = "$actual" ]; then
-        success "Got expected '$expected' in file $path"
+    if [ -f "$expected_stdout" ]; then
+        expected_stdout="$(cat "$expected_stdout")"
     else
-        failure "Expected '$expected' in file $path, found '$actual'"
+        expected_stdout=
     fi
-}
 
-expect() {
-    local res
-    res="$(run $2)"
-
-    if [ "$1" = "$res" ]; then
-        ! "$QUIET" && printf '\n$ %s\n' "$2"
-        success "$res"
+    if [ -f "$expected_stderr" ]; then
+        expected_stderr="$(cat "$expected_stderr")"
     else
-        printf '$ %s\n' "$2"
-        QUIET=false failure "$res (expected: ${1:-<empty>})"
-        FAILED=$((FAILED + 1))
+        expected_stderr=
     fi
 
-    ALL=$((ALL + 1))
-}
+    printf '%s  ' "$file"
+    if [ "$res_stdout" = "$expected_stdout" ] && [ "$res_stderr" = "$expected_stderr" ]; then
+        printf '\033[92mOK\033[0m\n'
+    else
+        printf '\033[91mFAIL\033[0m\n'
+    fi
 
-if "$QUIET"; then
-    cargo build >/dev/null 2>&1
-else
-    cargo build
-fi
+    if "$verbose"; then
+        tmpdir="$(mktemp -d)"
+        mkfifo "$tmpdir/res"
+        mkfifo "$tmpdir/expected"
+        echo "$res_stdout" >"$tmpdir/res_stdout" &
+        echo "$res_stderr" >"$tmpdir/res_stderr" &
+        echo "$expected_stdout" >"$tmpdir/expected_stdout" &
+        echo "$expected_stderr" >"$tmpdir/expected_stderr" &
+        diff -u --color=always "$tmpdir/expected_stdout" "$tmpdir/res_stdout" 2>/dev/null | tail -n +4
+        diff -u --color=always "$tmpdir/expected_stderr" "$tmpdir/res_stderr" 2>/dev/null | tail -n +4
+        rm -rf "$tmpdir"
+    fi
 
-mkdir -p "$TEST_DIR"
-{
-    cd "$TEST_DIR" || exit
-    run-tests
-}
-rm -rf "$TEST_DIR"
+    cd ..
+    rm -rf run
+done
 
-if [ "$FAILED" -eq 0 ]; then
-    QUIET=false success $'\n'"All $ALL tests passed!"
-else
-    QUIET=false failure $'\n'"$FAILED/$ALL tests failed."
-    exit 1
-fi
+rm -rf "$run_dir"

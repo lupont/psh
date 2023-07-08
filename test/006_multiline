@@ -1,0 +1,13 @@
+echo foo \
+\
+bar
+echo "foo
+bar"
+echo foo |
+rev
+echo foo \
+| rev |
+
+    cat
+printf foo &&
+    echo bar

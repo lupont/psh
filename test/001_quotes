@@ -1,0 +1,6 @@
+echo 'foo bar'
+echo foo" bar"
+echo foo" ""bar"
+echo "\foo\ bar"
+echo "'foo' \"bar\""
+echo 'foo "bar"'

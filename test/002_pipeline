@@ -1,0 +1,9 @@
+echo 'foo bar' | rev |
+
+
+  tac
+
+! echo foo |rev
+
+echo foo \
+| rev
