@@ -22,7 +22,8 @@ cd "$run_dir" || exit
 sed -i "s/user/$USER/g" test/004_expand_tilde
 sed -i "s/user/$USER/g" test/expected/stdout/004_expand_tilde
 
-find test/ -type f -not -path '*test/expected/*' -name '0*' | sort | while read -r file; do
+rc=0
+for file in $(find test/ -type f -not -path '*test/expected/*' -name '0*' | sort); do
     mkdir run && cd run || exit
 
     expected_stdout="../test/expected/stdout/$(basename "$file")"
@@ -52,6 +53,7 @@ find test/ -type f -not -path '*test/expected/*' -name '0*' | sort | while read 
         printf '\033[92mOK\033[0m\n'
     else
         printf '\033[91mFAIL\033[0m\n'
+        rc=1
     fi
 
     if "$verbose"; then
@@ -72,3 +74,5 @@ find test/ -type f -not -path '*test/expected/*' -name '0*' | sort | while read 
 done
 
 rm -rf "$run_dir"
+
+exit "$rc"
