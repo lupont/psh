@@ -49,4 +49,4 @@ jobs:
       run: cargo llvm-cov
 
     - name: Run test script
-      run: bash test.sh --verbose
+      run: sh test.sh --verbose
