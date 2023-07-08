@@ -1,3 +1,4 @@
+mod builtin;
 pub mod expand;
 pub mod history;
 pub mod parser;
@@ -25,118 +26,6 @@ pub struct Engine<W: Write> {
 }
 
 impl<W: Write> Engine<W> {
-    fn cd(&mut self, dir: Option<&str>) -> Result<ExitStatus> {
-        let path = match dir {
-            Some("-") => {
-                if let Ok(old_pwd) = env::var("OLDPWD") {
-                    PathBuf::from(old_pwd)
-                } else {
-                    writeln!(self.writer, "cd: No previous directory.")?;
-                    return Ok(ExitStatus::from_code(1));
-                }
-            }
-
-            Some(dir) if PathBuf::from(dir).is_dir() => PathBuf::from(dir),
-
-            Some(dir) if PathBuf::from(dir).exists() => {
-                writeln!(self.writer, "cd: '{}' is not a directory.", dir)?;
-                return Ok(ExitStatus::from_code(3));
-            }
-
-            Some(dir) => {
-                writeln!(self.writer, "cd: '{}' does not exist.", dir)?;
-                return Ok(ExitStatus::from_code(2));
-            }
-
-            None => PathBuf::from(path::home_dir()),
-        };
-
-        env::set_var("OLDPWD", env::current_dir()?);
-        env::set_current_dir(path)?;
-        Ok(ExitStatus::from_code(0))
-    }
-
-    fn exit(&self, code: i32) -> ! {
-        std::process::exit(code)
-    }
-
-    fn debug(&mut self, args: &[&str]) -> Result<ExitStatus> {
-        match args {
-            ["assignments"] => {
-                for (k, v) in &self.assignments {
-                    writeln!(self.writer, "{k}={v}")?;
-                }
-                Ok(ExitStatus::from_code(0))
-            }
-
-            [arg] => {
-                writeln!(self.writer, "debug: unknown command '{arg}'")?;
-                Ok(ExitStatus::from_code(1))
-            }
-
-            _ => {
-                writeln!(self.writer, "usage: debug assignments")?;
-                Ok(ExitStatus::from_code(2))
-            }
-        }
-    }
-
-    pub fn has_builtin(&self, s: &Word) -> bool {
-        let name = remove_quotes(&s.name);
-        let has = |s| name == s || name.starts_with(&format!("{s} "));
-        has("cd") || has("exit") || has(":") || has("debug")
-    }
-
-    pub fn is_builtin(&self, cmd: &Command) -> bool {
-        match cmd {
-            Command::Simple(cmd) => {
-                if let Some(word) = &cmd.name {
-                    self.has_builtin(word)
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        }
-    }
-
-    pub fn execute_builtin(&mut self, cmd: &Command) -> Result<ExitStatus> {
-        let Command::Simple(cmd) = cmd else {
-            return Err(Error::Unimplemented("tried to execute complex command as builtin".to_string()));
-        };
-
-        let Some(command) = cmd.name() else {
-            return Err(Error::Unimplemented("tried to execute empty command as builtin".to_string()));
-        };
-
-        let args = cmd.args().map(|s| s.as_str()).collect::<Vec<_>>();
-
-        match (command.as_str(), &args[..]) {
-            ("debug", args) => self.debug(args),
-
-            (":", _) => Ok(ExitStatus::from_code(0)),
-
-            ("exit", []) => self.exit(0),
-            ("exit", [code]) => {
-                if let Ok(s) = code.parse::<i32>() {
-                    self.exit(s)
-                } else {
-                    writeln!(self.writer, "invalid integer: '{}'", code)?;
-                    Ok(ExitStatus::from_code(1))
-                }
-            }
-
-            ("cd", [dir]) => self.cd(Some(dir)),
-            ("cd", []) => self.cd(None),
-            ("cd", _) => {
-                writeln!(self.writer, "invalid number of arguments")?;
-                Ok(ExitStatus::from_code(1))
-            }
-
-            (c, _) => Err(Error::UnknownCommand(c.to_string())),
-        }
-    }
-
     pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<&String> {
         self.assignments.get(var_name.as_ref())
     }
@@ -157,7 +46,7 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn has_executable(&self, cmd: &Word) -> bool {
-        self.has_command(cmd) || self.has_builtin(cmd)
+        self.has_command(cmd) || builtin::has(cmd)
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
@@ -169,6 +58,27 @@ impl<W: Write> Engine<W> {
         let lines = std::fs::read_to_string(path)?;
         let ast = parse(lines, false)?;
         self.walk_ast(ast)
+    }
+
+    pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
+        let Command::Simple(cmd) = cmd else {
+            return Err(Error::Unimplemented("tried to execute complex command as builtin".to_string()));
+        };
+
+        let cmd = cmd.expand_name(self).expand_suffixes(self);
+
+        let Some(command) = cmd.name() else {
+            return Err(Error::Unimplemented("tried to execute empty command as builtin".to_string()));
+        };
+
+        let args = cmd.args().map(|s| s.as_str()).collect::<Vec<_>>();
+
+        match command.as_str() {
+            ":" => builtin::colon(),
+            "cd" => builtin::cd(self, &args),
+            "exit" => builtin::exit(self, &args),
+            c => Err(Error::UnknownBuiltin(c.to_string())),
+        }
     }
 
     fn execute_simple_command(
@@ -407,8 +317,8 @@ impl<W: Write> Engine<W> {
         let mut last_status = ExitStatus::from_code(0);
 
         while let Some(cmd) = pipeline_iter.next() {
-            if self.is_builtin(&cmd) {
-                last_status = self.execute_builtin(&cmd)?;
+            if cmd.is_builtin() {
+                last_status = self.execute_builtin(cmd)?;
                 break;
             }
 

@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::io::Write;
 use std::ops::RangeInclusive;
 
+use crate::engine::builtin;
 use crate::engine::expand::Expand;
 use crate::path;
 use crate::Engine;
@@ -227,6 +228,15 @@ pub enum Command {
 impl Command {
     pub fn noop() -> Self {
         Self::Simple(SimpleCommand::noop())
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            Command::Simple(cmd) => {
+                matches!(&cmd.name, Some(word) if builtin::has(word))
+            }
+            _ => false,
+        }
     }
 }
 
