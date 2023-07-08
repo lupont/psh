@@ -506,20 +506,38 @@ impl SimpleCommand {
         let mut prefixes = Vec::new();
 
         for prefix in self.prefixes {
-            match prefix {
-                CmdPrefix::Redirection(r) => {
-                    prefixes.push(CmdPrefix::Redirection(r.expand(engine)));
-                }
-                CmdPrefix::Assignment(a) => {
-                    prefixes.push(CmdPrefix::Assignment(a.expand(engine)));
-                }
-            }
+            prefixes.push(prefix.expand(engine));
         }
 
         Self {
             prefixes,
             name: self.name,
             suffixes: self.suffixes,
+        }
+    }
+
+    pub fn expand_suffixes(self, engine: &mut Engine<impl Write>) -> Self {
+        let mut suffixes = Vec::new();
+        for suffix in self.suffixes {
+            match suffix {
+                CmdSuffix::Word(word) => {
+                    let empty = word.name.is_empty();
+                    if !empty {
+                        let expanded = word.expand(engine);
+                        suffixes.push(CmdSuffix::Word(expanded));
+                    }
+                }
+
+                CmdSuffix::Redirection(r) => {
+                    suffixes.push(CmdSuffix::Redirection(r.expand(engine)))
+                }
+            }
+        }
+
+        Self {
+            prefixes: self.prefixes,
+            name: self.name,
+            suffixes,
         }
     }
 
@@ -535,7 +553,7 @@ impl SimpleCommand {
         self.suffixes
             .iter()
             .filter_map(|m| match m {
-                CmdSuffix::Word(w) if !w.is_empty() => Some(w),
+                CmdSuffix::Word(w) => Some(w),
                 _ => None,
             })
             .map(|w| &w.name)

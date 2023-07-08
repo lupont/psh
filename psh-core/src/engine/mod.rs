@@ -12,7 +12,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use self::expand::{remove_quotes, Expand};
+use self::expand::remove_quotes;
 use self::parser::ast::prelude::*;
 pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
@@ -345,16 +345,7 @@ impl<W: Write> Engine<W> {
 
         let stdout_redirected = stdout_override.is_some();
 
-        let mut args = Vec::new();
-        for suffix in cmd.suffixes {
-            if let CmdSuffix::Word(word) = suffix {
-                let empty = word.name.is_empty();
-                if !empty {
-                    let expanded = word.expand(self);
-                    args.push(expanded.name);
-                }
-            }
-        }
+        let cmd = cmd.expand_suffixes(self);
 
         let child = command
             .envs(&self.assignments)
@@ -362,7 +353,7 @@ impl<W: Write> Engine<W> {
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
             .stderr(stderr_override.unwrap_or(stderr))
-            .args(args)
+            .args(cmd.args())
             .spawn()?;
 
         Ok(Some((stdout_redirected, child)))
