@@ -1,8 +1,11 @@
 use serde::Serialize;
 
+use std::io::Write;
 use std::ops::RangeInclusive;
 
+use crate::engine::expand::Expand;
 use crate::path;
+use crate::Engine;
 
 pub use super::parse;
 pub use super::reconstruct;
@@ -486,6 +489,37 @@ impl SimpleCommand {
             Some(&word.name)
         } else {
             None
+        }
+    }
+    pub fn expand_name(self, engine: &mut Engine<impl Write>) -> Self {
+        match self.name {
+            Some(name) => SimpleCommand {
+                prefixes: self.prefixes,
+                name: Some(name.expand(engine)),
+                suffixes: self.suffixes,
+            },
+            None => self,
+        }
+    }
+
+    pub fn expand_prefixes(self, engine: &mut Engine<impl Write>) -> Self {
+        let mut prefixes = Vec::new();
+
+        for prefix in self.prefixes {
+            match prefix {
+                CmdPrefix::Redirection(r) => {
+                    prefixes.push(CmdPrefix::Redirection(r.expand(engine)));
+                }
+                CmdPrefix::Assignment(a) => {
+                    prefixes.push(CmdPrefix::Assignment(a.expand(engine)));
+                }
+            }
+        }
+
+        Self {
+            prefixes,
+            name: self.name,
+            suffixes: self.suffixes,
         }
     }
 

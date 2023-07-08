@@ -179,6 +179,9 @@ impl<W: Write> Engine<W> {
         stderr: Stdio,
         has_multiple_commands: bool,
     ) -> Result<Option<(bool, process::Child)>> {
+        let cmd = cmd.expand_name(self);
+        let cmd = cmd.expand_prefixes(self);
+
         let mut assignments = Vec::new();
         for assignment in cmd.assignments() {
             let lhs = assignment.lhs.name.clone();
@@ -342,13 +345,24 @@ impl<W: Write> Engine<W> {
 
         let stdout_redirected = stdout_override.is_some();
 
+        let mut args = Vec::new();
+        for suffix in cmd.suffixes {
+            if let CmdSuffix::Word(word) = suffix {
+                let empty = word.name.is_empty();
+                if !empty {
+                    let expanded = word.expand(self);
+                    args.push(expanded.name);
+                }
+            }
+        }
+
         let child = command
             .envs(&self.assignments)
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
             .stderr(stderr_override.unwrap_or(stderr))
-            .args(cmd.args())
+            .args(args)
             .spawn()?;
 
         Ok(Some((stdout_redirected, child)))
@@ -392,7 +406,6 @@ impl<W: Write> Engine<W> {
     }
 
     pub fn execute_pipeline(&mut self, pipeline: Pipeline, background: bool) -> Result<ExitStatus> {
-        let pipeline = pipeline.expand(self);
         let has_bang = pipeline.has_bang();
         let pipeline_cmds = pipeline.full();
         let has_multiple_commands = pipeline_cmds.len() > 1;
