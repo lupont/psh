@@ -9,17 +9,26 @@ pub fn home_dir() -> String {
     env::var("HOME").map_err(|_| Error::NoHome).unwrap()
 }
 
-pub fn history_file() -> PathBuf {
-    match env::var("PSH_HISTORY") {
-        Ok(path) => PathBuf::from(path),
-        Err(_) => match env::var("XDG_CONFIG_HOME") {
-            Ok(config_home) => PathBuf::from(config_home).join("psh").join("history"),
-            Err(_) => PathBuf::from(home_dir())
-                .join(".config")
-                .join("psh")
-                .join("history"),
-        },
+fn cfg_file(file_name: &str, var: &str) -> PathBuf {
+    if let Ok(path) = env::var(var) {
+        return PathBuf::from(path);
     }
+
+    match env::var("XDG_CONFIG_HOME") {
+        Ok(cfg_home) => PathBuf::from(cfg_home).join("psh").join(file_name),
+        Err(_) => PathBuf::from(home_dir())
+            .join(".config")
+            .join("psh")
+            .join(file_name),
+    }
+}
+
+pub fn init_file() -> PathBuf {
+    cfg_file("init.psh", "PSH_INIT")
+}
+
+pub fn history_file() -> PathBuf {
+    cfg_file("history", "PSH_HISTORY")
 }
 
 pub fn get_cmds_from_path() -> Vec<String> {

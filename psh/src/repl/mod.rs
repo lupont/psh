@@ -7,7 +7,7 @@ use std::process;
 use crossterm::{execute, style, terminal};
 
 use psh_core::engine::parser::{semtok, tok};
-use psh_core::{parse, Engine, Error, ExitStatus, Result};
+use psh_core::{parse, path, Engine, Error, ExitStatus, Result};
 
 use crate::config::{self, Colors};
 use crate::repl::input::read_line;
@@ -25,7 +25,17 @@ impl Repl {
         }
     }
 
+    fn read_init_file(&mut self) -> Result<()> {
+        match self.engine.execute_file(path::init_file()) {
+            Ok(_) => Ok(()),
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
+        self.read_init_file()?;
+
         if env::var("PS1").is_err() {
             env::set_var(
                 "PS1",
