@@ -2,6 +2,7 @@ mod abbr;
 mod cd;
 mod colon;
 mod exit;
+mod unabbr;
 
 use std::io::Write;
 
@@ -14,7 +15,7 @@ use crate::{Engine, Error, ExitStatus, Result};
 
 use super::expand::remove_quotes;
 
-pub const BUILTINS: &[&str] = &[":", "abbr", "cd", "exit"];
+pub const BUILTINS: &[&str] = &[":", "abbr", "cd", "exit", "unabbr"];
 
 pub fn execute(
     engine: &mut Engine<impl Write>,
@@ -26,6 +27,7 @@ pub fn execute(
         "abbr" => abbr::abbr(engine, args),
         "cd" => cd::cd(engine, args),
         "exit" => exit::exit(engine, args),
+        "unabbr" => unabbr::unabbr(engine, args),
         c => Err(Error::UnknownBuiltin(c.to_string())),
     }
 }

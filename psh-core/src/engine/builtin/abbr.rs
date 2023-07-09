@@ -3,14 +3,14 @@ use std::io::Write;
 use crate::{Engine, ExitStatus, Result};
 
 const HELP: &str = "\
-usage: abbr [ <key>=<val> | [-e|--erase] <key> ]
+usage: abbr [ -h | --help ] [ <key>=<val> | <key> ]
 
-Define, query, or erase existing abbreviations.
+Define or query existing abbreviations.
 
-`abbr`         prints the current abbreviations
-`abbr key`     prints the abbreviation with key `key`
-`abbr key=val` defines `key` to expand to `val`
-`abbr -e key`  erases the abbreviation with key `key`";
+abbr -h         print this text
+abbr            print the current abbreviations
+abbr key        print the abbreviation with key `key`
+abbr key=val    define `key` to expand to `val`";
 
 pub fn abbr(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus> {
     match args {
@@ -47,16 +47,6 @@ pub fn abbr(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus
                 Ok(ExitStatus::from_code(0))
             } else {
                 writeln!(engine.writer, "abbr: {} not found", expr)?;
-                Ok(ExitStatus::from_code(1))
-            }
-        }
-
-        &["-e" | "--erase", key] => {
-            if engine.abbreviations.contains_key(key) {
-                engine.abbreviations.remove(key);
-                Ok(ExitStatus::from_code(0))
-            } else {
-                writeln!(engine.writer, "abbr: {} not found", key)?;
                 Ok(ExitStatus::from_code(1))
             }
         }
