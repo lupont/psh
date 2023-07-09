@@ -1,3 +1,4 @@
+mod abbr;
 mod cd;
 mod colon;
 mod exit;
@@ -13,7 +14,7 @@ use crate::{Engine, Error, ExitStatus, Result};
 
 use super::expand::remove_quotes;
 
-pub const BUILTINS: &[&str] = &[":", "cd", "exit"];
+pub const BUILTINS: &[&str] = &[":", "abbr", "cd", "exit"];
 
 pub fn execute(
     engine: &mut Engine<impl Write>,
@@ -22,6 +23,7 @@ pub fn execute(
 ) -> Result<ExitStatus> {
     match command {
         ":" => colon::colon(),
+        "abbr" => abbr::abbr(engine, args),
         "cd" => cd::cd(engine, args),
         "exit" => exit::exit(engine, args),
         c => Err(Error::UnknownBuiltin(c.to_string())),
