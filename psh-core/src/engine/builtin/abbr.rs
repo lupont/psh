@@ -12,7 +12,7 @@ abbr            print the current abbreviations
 abbr key        print the abbreviation with key `key`
 abbr key=val    define `key` to expand to `val`";
 
-pub fn abbr(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus> {
+pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     match args {
         args if args.contains(&"-h") || args.contains(&"--help") => {
             writeln!(engine.writer, "{}", HELP)?;

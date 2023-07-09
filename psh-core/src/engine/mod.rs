@@ -18,15 +18,28 @@ use self::parser::ast::prelude::*;
 pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
 
-pub struct Engine<W: Write> {
-    pub writer: W,
+pub struct Engine {
+    pub writer: Stdout,
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
     pub abbreviations: HashMap<String, String>,
 }
 
-impl<W: Write> Engine<W> {
+impl Engine {
+    pub fn new() -> Self {
+        let history = FileHistory::init().expect("could not initialize history");
+        let mut this = Self {
+            writer: io::stdout(),
+            commands: path::get_cmds_from_path(),
+            history: Box::new(history),
+            assignments: Default::default(),
+            abbreviations: Default::default(),
+        };
+        this.update_assignments_from_env();
+        this
+    }
+
     pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<&String> {
         self.assignments.get(var_name.as_ref())
     }
@@ -413,22 +426,7 @@ impl<W: Write> Engine<W> {
     }
 }
 
-impl Engine<Stdout> {
-    pub fn new() -> Self {
-        let history = FileHistory::init().expect("could not initialize history");
-        let mut this = Self {
-            writer: io::stdout(),
-            commands: path::get_cmds_from_path(),
-            history: Box::new(history),
-            assignments: Default::default(),
-            abbreviations: Default::default(),
-        };
-        this.update_assignments_from_env();
-        this
-    }
-}
-
-impl Default for Engine<Stdout> {
+impl Default for Engine {
     fn default() -> Self {
         Self::new()
     }

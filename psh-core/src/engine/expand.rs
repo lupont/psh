@@ -1,14 +1,12 @@
-use std::io::Write;
-
 use crate::ast::prelude::*;
 use crate::{path, Engine};
 
 pub trait Expand {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self;
+    fn expand(self, engine: &mut Engine) -> Self;
 }
 
 impl Expand for Pipeline {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         Self {
             bang: self.bang,
             sequence: self.sequence.expand(engine),
@@ -17,7 +15,7 @@ impl Expand for Pipeline {
 }
 
 impl Expand for PipeSequence {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         Self {
             head: Box::new(self.head.expand(engine)),
             tail: self
@@ -30,7 +28,7 @@ impl Expand for PipeSequence {
 }
 
 impl Expand for Command {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         match self {
             Self::Simple(cmd) => Self::Simple(cmd.expand(engine)),
             Self::Compound(_, _) => todo!(),
@@ -40,7 +38,7 @@ impl Expand for Command {
 }
 
 impl Expand for SimpleCommand {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         Self {
             name: self.name.map(|w| w.expand(engine)),
             prefixes: self
@@ -58,7 +56,7 @@ impl Expand for SimpleCommand {
 }
 
 impl Expand for CmdPrefix {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         match self {
             Self::Redirection(r) => Self::Redirection(r.expand(engine)),
             Self::Assignment(a) => Self::Assignment(a.expand(engine)),
@@ -67,7 +65,7 @@ impl Expand for CmdPrefix {
 }
 
 impl Expand for CmdSuffix {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         match self {
             Self::Redirection(r) => Self::Redirection(r.expand(engine)),
             Self::Word(w) => Self::Word(w.expand(engine)),
@@ -76,7 +74,7 @@ impl Expand for CmdSuffix {
 }
 
 impl Expand for Redirection {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         match self {
             Self::File {
                 whitespace,
@@ -107,7 +105,7 @@ impl Expand for Redirection {
 }
 
 impl Expand for VariableAssignment {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         Self {
             whitespace: self.whitespace,
             lhs: self.lhs,
@@ -117,7 +115,7 @@ impl Expand for VariableAssignment {
 }
 
 impl Expand for Word {
-    fn expand(self, engine: &mut Engine<impl Write>) -> Self {
+    fn expand(self, engine: &mut Engine) -> Self {
         let tilde_expanded = expand_tilde(self);
         let parameter_expanded = expand_parameters(tilde_expanded, engine);
         // FIXME: command substitution
@@ -151,7 +149,7 @@ fn expand_tilde(mut word: Word) -> Word {
     word
 }
 
-fn expand_parameters(mut word: Word, engine: &mut Engine<impl Write>) -> Word {
+fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
     let mut expansion_indices = Vec::new();
     for (i, exp) in word.expansions.iter().enumerate().rev() {
         if matches!(exp, Expansion::Parameter { .. }) {

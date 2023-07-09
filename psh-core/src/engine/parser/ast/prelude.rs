@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-use std::io::Write;
 use std::ops::RangeInclusive;
 
 use crate::engine::builtin;
@@ -501,7 +500,7 @@ impl SimpleCommand {
             None
         }
     }
-    pub fn expand_name(self, engine: &mut Engine<impl Write>) -> Self {
+    pub fn expand_name(self, engine: &mut Engine) -> Self {
         match self.name {
             Some(name) => SimpleCommand {
                 prefixes: self.prefixes,
@@ -512,7 +511,7 @@ impl SimpleCommand {
         }
     }
 
-    pub fn expand_prefixes(self, engine: &mut Engine<impl Write>) -> Self {
+    pub fn expand_prefixes(self, engine: &mut Engine) -> Self {
         let mut prefixes = Vec::new();
 
         for prefix in self.prefixes {
@@ -526,7 +525,7 @@ impl SimpleCommand {
         }
     }
 
-    pub fn expand_suffixes(self, engine: &mut Engine<impl Write>) -> Self {
+    pub fn expand_suffixes(self, engine: &mut Engine) -> Self {
         let mut suffixes = Vec::new();
         for suffix in self.suffixes {
             match suffix {

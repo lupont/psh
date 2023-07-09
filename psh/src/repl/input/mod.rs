@@ -67,8 +67,8 @@ impl State {
     }
 }
 
-pub fn read_line<W: Write>(
-    engine: &mut Engine<W>,
+pub fn read_line(
+    engine: &mut Engine,
     ps1: bool,
     start_pos: (u16, u16),
     old_line: Option<&String>,
@@ -305,8 +305,8 @@ pub fn read_line<W: Write>(
     }
 }
 
-fn print<W: Write>(
-    engine: &mut Engine<W>,
+fn print(
+    engine: &mut Engine,
     state: &State,
     start_pos: (u16, u16),
     old_line: Option<&String>,

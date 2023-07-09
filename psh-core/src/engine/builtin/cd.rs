@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use crate::path;
 use crate::{Engine, ExitStatus, Result};
 
-pub fn cd(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus> {
+pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     let path = match args {
         [] => PathBuf::from(path::home_dir()),
 

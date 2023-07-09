@@ -1,7 +1,7 @@
 pub mod input;
 
 use std::env;
-use std::io::{Stdout, Write};
+use std::io::Write;
 use std::process;
 
 use crossterm::{execute, style, terminal};
@@ -13,7 +13,7 @@ use crate::config::{self, Colors};
 use crate::repl::input::read_line;
 
 pub struct Repl {
-    engine: Engine<Stdout>,
+    engine: Engine,
     last_status: Option<Vec<ExitStatus>>,
 }
 

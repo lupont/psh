@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::{Engine, ExitStatus, Result};
 
-pub fn exit(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus> {
+pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     let code = match args {
         [code] => {
             if let Ok(code) = code.parse::<i32>() {

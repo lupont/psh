@@ -10,13 +10,13 @@ Erase an existing abbreviation.
 unabbr -h   print this text
 unabbr key  remove the abbreviation with key `key`";
 
-pub fn unabbr(engine: &mut Engine<impl Write>, args: &[&str]) -> Result<ExitStatus> {
+pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     match args {
         args if args.is_empty() || args.contains(&"-h") || args.contains(&"--help") => {
             writeln!(engine.writer, "{}", HELP)?;
             Ok(ExitStatus::from_code(0))
         }
-        
+
         &[key] => {
             if engine.abbreviations.contains_key(key) {
                 engine.abbreviations.remove(key);
