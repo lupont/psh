@@ -10,17 +10,23 @@ use psh_core::{Engine, Result};
 
 use crate::repl::Colors;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Context {
+    pub start_x: u16,
+    pub abbreviations: bool,
+}
+
 pub trait Highlighter {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()>;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()>;
 }
 
 impl Highlighter for SyntaxTree {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.leading.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.leading.write_highlighted(engine, context)?;
 
         if let Some((cmds, linebreak)) = &self.commands {
-            cmds.write_highlighted(engine, start_x)?;
-            linebreak.write_highlighted(engine, start_x)?;
+            cmds.write_highlighted(engine, context)?;
+            linebreak.write_highlighted(engine, context)?;
         }
 
         queue!(
@@ -37,12 +43,12 @@ impl Highlighter for SyntaxTree {
 }
 
 impl Highlighter for CompleteCommands {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.head.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.head.write_highlighted(engine, context)?;
 
         for (newlines, cmd) in &self.tail {
-            newlines.write_highlighted(engine, start_x)?;
-            cmd.write_highlighted(engine, start_x)?;
+            newlines.write_highlighted(engine, context)?;
+            cmd.write_highlighted(engine, context)?;
         }
 
         Ok(())
@@ -50,42 +56,42 @@ impl Highlighter for CompleteCommands {
 }
 
 impl Highlighter for CompleteCommand {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
             Self::List {
                 list,
                 separator_op: None,
                 comment: None,
             } => {
-                list.write_highlighted(engine, start_x)?;
+                list.write_highlighted(engine, context)?;
             }
             Self::List {
                 list,
                 separator_op: Some(separator_op),
                 comment: None,
             } => {
-                list.write_highlighted(engine, start_x)?;
-                separator_op.write_highlighted(engine, start_x)?;
+                list.write_highlighted(engine, context)?;
+                separator_op.write_highlighted(engine, context)?;
             }
             Self::List {
                 list,
                 separator_op: None,
                 comment: Some(comment),
             } => {
-                list.write_highlighted(engine, start_x)?;
-                comment.write_highlighted(engine, start_x)?;
+                list.write_highlighted(engine, context)?;
+                comment.write_highlighted(engine, context)?;
             }
             Self::List {
                 list,
                 separator_op: Some(separator_op),
                 comment: Some(comment),
             } => {
-                list.write_highlighted(engine, start_x)?;
-                separator_op.write_highlighted(engine, start_x)?;
-                comment.write_highlighted(engine, start_x)?;
+                list.write_highlighted(engine, context)?;
+                separator_op.write_highlighted(engine, context)?;
+                comment.write_highlighted(engine, context)?;
             }
             Self::Comment { comment } => {
-                comment.write_highlighted(engine, start_x)?;
+                comment.write_highlighted(engine, context)?;
             }
         }
 
@@ -94,12 +100,12 @@ impl Highlighter for CompleteCommand {
 }
 
 impl Highlighter for List {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.head.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.head.write_highlighted(engine, context)?;
 
         for (sep, and_or_list) in &self.tail {
-            sep.write_highlighted(engine, start_x)?;
-            and_or_list.write_highlighted(engine, start_x)?;
+            sep.write_highlighted(engine, context)?;
+            and_or_list.write_highlighted(engine, context)?;
         }
 
         Ok(())
@@ -107,13 +113,13 @@ impl Highlighter for List {
 }
 
 impl Highlighter for AndOrList {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.head.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.head.write_highlighted(engine, context)?;
 
         for (op, linebreak, pipeline) in &self.tail {
-            op.write_highlighted(engine, start_x)?;
-            linebreak.write_highlighted(engine, start_x)?;
-            pipeline.write_highlighted(engine, start_x)?;
+            op.write_highlighted(engine, context)?;
+            linebreak.write_highlighted(engine, context)?;
+            pipeline.write_highlighted(engine, context)?;
         }
 
         Ok(())
@@ -121,49 +127,49 @@ impl Highlighter for AndOrList {
 }
 
 impl Highlighter for Pipeline {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         if let Some(bang) = &self.bang {
-            bang.write_highlighted(engine, start_x)?;
+            bang.write_highlighted(engine, context)?;
         }
 
-        self.sequence.write_highlighted(engine, start_x)?;
+        self.sequence.write_highlighted(engine, context)?;
 
         Ok(())
     }
 }
 
 impl Highlighter for PipeSequence {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.head.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.head.write_highlighted(engine, context)?;
         for (pipe, linebreak, cmd) in &self.tail {
-            pipe.write_highlighted(engine, start_x)?;
-            linebreak.write_highlighted(engine, start_x)?;
-            cmd.write_highlighted(engine, start_x)?;
+            pipe.write_highlighted(engine, context)?;
+            linebreak.write_highlighted(engine, context)?;
+            cmd.write_highlighted(engine, context)?;
         }
         Ok(())
     }
 }
 
 impl Highlighter for Command {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
-            Command::Simple(cmd) => cmd.write_highlighted(engine, start_x),
+            Command::Simple(cmd) => cmd.write_highlighted(engine, context),
             Command::Compound(cmd, redirections) => {
-                cmd.write_highlighted(engine, start_x)?;
+                cmd.write_highlighted(engine, context)?;
                 for redirection in redirections {
-                    redirection.write_highlighted(engine, start_x)?;
+                    redirection.write_highlighted(engine, context)?;
                 }
                 Ok(())
             }
-            Command::FunctionDefinition(func_def) => func_def.write_highlighted(engine, start_x),
+            Command::FunctionDefinition(func_def) => func_def.write_highlighted(engine, context),
         }
     }
 }
 
 impl Highlighter for CompoundCommand {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
-            CompoundCommand::Brace(brace_group) => brace_group.write_highlighted(engine, start_x),
+            CompoundCommand::Brace(brace_group) => brace_group.write_highlighted(engine, context),
             CompoundCommand::Subshell(_) => todo!(),
             CompoundCommand::For(_) => todo!(),
             CompoundCommand::Case(_) => todo!(),
@@ -175,55 +181,55 @@ impl Highlighter for CompoundCommand {
 }
 
 impl Highlighter for CompoundList {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.linebreak.write_highlighted(engine, start_x)?;
-        self.term.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.linebreak.write_highlighted(engine, context)?;
+        self.term.write_highlighted(engine, context)?;
         if let Some(separator) = &self.separator {
-            separator.write_highlighted(engine, start_x)?;
+            separator.write_highlighted(engine, context)?;
         }
         Ok(())
     }
 }
 
 impl Highlighter for Term {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.head.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.head.write_highlighted(engine, context)?;
         for (sep, and_or) in &self.tail {
-            sep.write_highlighted(engine, start_x)?;
-            and_or.write_highlighted(engine, start_x)?;
+            sep.write_highlighted(engine, context)?;
+            and_or.write_highlighted(engine, context)?;
         }
         Ok(())
     }
 }
 
 impl Highlighter for FunctionDefinition {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.name.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.name.write_highlighted(engine, context)?;
         queue!(
             engine.writer,
             SetForegroundColor(Colors::FUNC_DEF_PAREN_COLOR),
             Print(&self.parens),
             ResetColor
         )?;
-        self.linebreak.write_highlighted(engine, start_x)?;
-        self.body.write_highlighted(engine, start_x)?;
+        self.linebreak.write_highlighted(engine, context)?;
+        self.body.write_highlighted(engine, context)?;
 
         Ok(())
     }
 }
 
 impl Highlighter for FunctionBody {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
-        self.command.write_highlighted(engine, start_x)?;
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
+        self.command.write_highlighted(engine, context)?;
         for redirection in &self.redirections {
-            redirection.write_highlighted(engine, start_x)?;
+            redirection.write_highlighted(engine, context)?;
         }
         Ok(())
     }
 }
 
 impl Highlighter for BraceGroup {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         queue!(
             engine.writer,
             SetForegroundColor(Colors::BRACE_GROUP_COLOR),
@@ -231,7 +237,7 @@ impl Highlighter for BraceGroup {
             Print('{'),
             ResetColor
         )?;
-        self.body.write_highlighted(engine, start_x)?;
+        self.body.write_highlighted(engine, context)?;
         queue!(
             engine.writer,
             SetForegroundColor(Colors::BRACE_GROUP_COLOR),
@@ -244,30 +250,34 @@ impl Highlighter for BraceGroup {
 }
 
 impl Highlighter for SimpleCommand {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         let cmd_color = match &self.name {
-            Some(word @ Word { name, .. })
-                if engine.has_executable(word) || super::has_abbreviation(name) =>
-            {
-                Colors::VALID_CMD_COLOR
+            Some(word) => {
+                if engine.has_executable(word)
+                    || (engine.has_abbreviation(&word.name) && context.abbreviations)
+                {
+                    Colors::VALID_CMD_COLOR
+                } else {
+                    Colors::INVALID_CMD_COLOR
+                }
             }
             _ => Colors::INVALID_CMD_COLOR,
         };
 
         for prefix in &self.prefixes {
-            prefix.write_highlighted(engine, start_x)?;
+            prefix.write_highlighted(engine, context)?;
         }
 
         if let Some(name) = &self.name {
             queue!(engine.writer, SetForegroundColor(cmd_color))?;
 
-            name.write_highlighted(engine, start_x)?;
+            name.write_highlighted(engine, context)?;
 
             queue!(engine.writer, ResetColor)?;
         }
 
         for suffix in &self.suffixes {
-            suffix.write_highlighted(engine, start_x)?;
+            suffix.write_highlighted(engine, context)?;
         }
 
         Ok(())
@@ -275,16 +285,16 @@ impl Highlighter for SimpleCommand {
 }
 
 impl Highlighter for CmdPrefix {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
-            Self::Redirection(r) => r.write_highlighted(engine, start_x),
-            Self::Assignment(a) => a.write_highlighted(engine, start_x),
+            Self::Redirection(r) => r.write_highlighted(engine, context),
+            Self::Assignment(a) => a.write_highlighted(engine, context),
         }
     }
 }
 
 impl Highlighter for CmdSuffix {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
             Self::Word(w) => {
                 queue!(
@@ -292,19 +302,19 @@ impl Highlighter for CmdSuffix {
                     SetForegroundColor(Colors::TRAILING_WORD_COLOR),
                 )?;
 
-                w.write_highlighted(engine, start_x)?;
+                w.write_highlighted(engine, context)?;
 
                 queue!(engine.writer, ResetColor)?;
 
                 Ok(())
             }
-            Self::Redirection(r) => r.write_highlighted(engine, start_x),
+            Self::Redirection(r) => r.write_highlighted(engine, context),
         }
     }
 }
 
 impl Highlighter for Redirection {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         match self {
             Redirection::File {
                 whitespace,
@@ -353,7 +363,7 @@ impl Highlighter for Redirection {
 }
 
 impl Highlighter for VariableAssignment {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         Ok(queue!(
             engine.writer,
             Print(&self.whitespace),
@@ -372,13 +382,13 @@ impl Highlighter for VariableAssignment {
 }
 
 impl Highlighter for NewlineList {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         let mut lines = self.whitespace.split('\n').peekable();
 
         while let Some(line) = lines.next() {
             queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
             if lines.peek().is_some() {
-                queue!(engine.writer, MoveToColumn(start_x), MoveDown(1))?;
+                queue!(engine.writer, MoveToColumn(context.start_x), MoveDown(1))?;
             }
         }
 
@@ -387,16 +397,16 @@ impl Highlighter for NewlineList {
 }
 
 impl Highlighter for Linebreak {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         if let Some(newlines) = &self.newlines {
-            newlines.write_highlighted(engine, start_x)?;
+            newlines.write_highlighted(engine, context)?;
         }
         Ok(())
     }
 }
 
 impl Highlighter for SeparatorOp {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         queue!(
             engine.writer,
             SetForegroundColor(Colors::SEPARATOR_COLOR),
@@ -408,19 +418,19 @@ impl Highlighter for SeparatorOp {
 }
 
 impl Highlighter for Separator {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         match self {
             Separator::Explicit(op, linebreak) => {
-                op.write_highlighted(engine, start_x)?;
-                linebreak.write_highlighted(engine, start_x)
+                op.write_highlighted(engine, context)?;
+                linebreak.write_highlighted(engine, context)
             }
-            Separator::Implicit(newlines) => newlines.write_highlighted(engine, start_x),
+            Separator::Implicit(newlines) => newlines.write_highlighted(engine, context),
         }
     }
 }
 
 impl Highlighter for LogicalOp {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         Ok(queue!(
             engine.writer,
             SetForegroundColor(Colors::LOGICAL_OP_COLOR),
@@ -431,14 +441,14 @@ impl Highlighter for LogicalOp {
 }
 
 impl Highlighter for Name {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         queue!(engine.writer, Print(self.to_string()))?;
         Ok(())
     }
 }
 
 impl Highlighter for Bang {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         queue!(
             engine.writer,
             SetForegroundColor(Colors::BANG_COLOR),
@@ -450,7 +460,7 @@ impl Highlighter for Bang {
 }
 
 impl Highlighter for Comment {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         queue!(
             engine.writer,
             SetForegroundColor(Colors::COMMENT_COLOR),
@@ -462,7 +472,7 @@ impl Highlighter for Comment {
 }
 
 impl Highlighter for Pipe {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, _: Context) -> Result<()> {
         queue!(
             engine.writer,
             SetForegroundColor(Colors::PIPE_COLOR),
@@ -474,14 +484,14 @@ impl Highlighter for Pipe {
 }
 
 impl Highlighter for Word {
-    fn write_highlighted(&self, engine: &mut Engine<impl Write>, start_x: u16) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine<impl Write>, context: Context) -> Result<()> {
         let s = format!("{}{}", self.whitespace, self.name_with_escaped_newlines);
         let mut lines = s.split('\n').peekable();
 
         while let Some(line) = lines.next() {
             queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
             if lines.peek().is_some() {
-                queue!(engine.writer, MoveToColumn(start_x), MoveDown(1))?;
+                queue!(engine.writer, MoveToColumn(context.start_x), MoveDown(1))?;
             }
         }
 

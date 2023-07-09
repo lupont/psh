@@ -37,9 +37,3 @@ impl Colors {
 pub const PS1_USER_PROMPT: &str = "$ ";
 pub const PS1_ROOT_PROMPT: &str = "# ";
 pub const PS2_PROMPT: &str = "> ";
-
-pub const ABBREVIATIONS: [(&str, &str); 3] = [
-    ("gs", "git status"),
-    ("pacs", "sudo pacman -S"),
-    ("e", "nvim"),
-];

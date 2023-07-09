@@ -1,5 +1,6 @@
 mod syntax_highlighting;
 
+use std::collections::HashMap;
 use std::io::Write;
 
 use crossterm::cursor;
@@ -11,9 +12,11 @@ use crossterm::terminal;
 
 use psh_core::{Engine, Error, Result};
 
-use crate::config::{Colors, ABBREVIATIONS};
+use crate::config::Colors;
 use crate::repl::input::syntax_highlighting::Highlighter;
 use crate::repl::RawMode;
+
+use self::syntax_highlighting::Context;
 
 struct State {
     /// The current content of the input line.
@@ -38,7 +41,7 @@ struct State {
     cleared: bool,
 
     /// Will be `false` if the user inputs '^ ', which will make abbreviations not expand.
-    highlight_abbreviations: bool,
+    expand_abbreviations: bool,
 }
 
 impl State {
@@ -80,7 +83,7 @@ pub fn read_line<W: Write>(
         about_to_exit: false,
         cancelled: false,
         cleared: false,
-        highlight_abbreviations: true,
+        expand_abbreviations: true,
     };
 
     while !state.about_to_exit {
@@ -123,8 +126,13 @@ pub fn read_line<W: Write>(
             }
 
             (KeyCode::Enter, _) => {
-                if let Some((expanded_line, _)) = expand_abbreviation(&state.line, true) {
-                    state.line = expanded_line;
+                if state.expand_abbreviations {
+                    if let Some((expanded_line, diff)) =
+                        expand_abbreviation(&engine.abbreviations, &state.line)
+                    {
+                        state.line = expanded_line;
+                        state.index = state.index.wrapping_add_signed(diff);
+                    }
                 }
                 state.about_to_exit = true;
             }
@@ -178,10 +186,6 @@ pub fn read_line<W: Write>(
                 state.line.replace_range(space_index..state.index, "");
                 state.index = space_index;
 
-                if has_abbreviation(&state.line) {
-                    state.highlight_abbreviations = true;
-                }
-
                 execute!(engine.writer, state.next_pos())?;
             }
 
@@ -209,12 +213,17 @@ pub fn read_line<W: Write>(
                 execute!(engine.writer, state.next_pos())?;
             }
 
-            (KeyCode::Char(c @ (' ' | '|' | ';')), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                state.line.insert(state.index, c);
+            (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                state.line.insert(state.index, ' ');
                 state.index += 1;
 
-                if has_abbreviation(&state.line) {
-                    state.highlight_abbreviations = true;
+                if state.expand_abbreviations {
+                    if let Some((expanded_line, diff)) =
+                        expand_abbreviation(&engine.abbreviations, &state.line)
+                    {
+                        state.line = expanded_line;
+                        state.index = state.index.wrapping_add_signed(diff);
+                    }
                 }
 
                 execute!(
@@ -228,8 +237,7 @@ pub fn read_line<W: Write>(
             (KeyCode::Char(' '), KeyModifiers::CONTROL) => {
                 state.line.insert(state.index, ' ');
                 state.index += 1;
-
-                state.highlight_abbreviations = false;
+                state.expand_abbreviations = false;
 
                 execute!(
                     engine.writer,
@@ -242,6 +250,7 @@ pub fn read_line<W: Write>(
             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 state.line.insert(state.index, c);
                 state.index += 1;
+                state.expand_abbreviations = c != '|' && c != '&' && c != ';';
 
                 execute!(
                     engine.writer,
@@ -253,10 +262,7 @@ pub fn read_line<W: Write>(
             (KeyCode::Backspace, _) if state.index > 0 => {
                 state.index -= 1;
                 state.line.remove(state.index);
-
-                if has_abbreviation(&state.line) {
-                    state.highlight_abbreviations = true;
-                }
+                state.expand_abbreviations = true;
 
                 execute!(
                     engine.writer,
@@ -270,6 +276,7 @@ pub fn read_line<W: Write>(
         }
 
         if state.about_to_exit {
+            print(engine, &state, start_pos, old_line)?;
             break;
         }
     }
@@ -326,7 +333,13 @@ fn print<W: Write>(
     };
 
     let Ok(ast) = psh_core::parse(line, true) else { return Ok(()); };
-    ast.write_highlighted(engine, starting_point)?;
+    ast.write_highlighted(
+        engine,
+        Context {
+            start_x: starting_point,
+            abbreviations: state.expand_abbreviations,
+        },
+    )?;
     engine.writer.flush()?;
 
     if state.cancelled {
@@ -338,18 +351,20 @@ fn print<W: Write>(
     Ok(())
 }
 
-pub fn has_abbreviation(cmd: impl AsRef<str>) -> bool {
-    let cmd = cmd.as_ref();
-    ABBREVIATIONS.iter().any(|&(a, _)| a == cmd)
-}
-
-fn expand_abbreviation<S: AsRef<str>>(line: S, only_if_equal: bool) -> Option<(String, isize)> {
+fn expand_abbreviation<S: AsRef<str>>(
+    abbreviations: &HashMap<String, String>,
+    line: S,
+) -> Option<(String, isize)> {
     let line = line.as_ref();
-    for (a, b) in ABBREVIATIONS {
-        if line == a || (!only_if_equal && line.starts_with(&format!("{a} "))) {
-            let diff = b.len() as isize - a.len() as isize;
-            return Some((line.replacen(a, b, 1), diff));
-        }
+    let mut iter = line.split(' ');
+    match iter.next() {
+        Some(part) => match abbreviations.get(part) {
+            Some(exp) => {
+                let diff = exp.len() as isize - part.len() as isize;
+                Some((line.replacen(part, exp, 1), diff))
+            }
+            None => None,
+        },
+        None => None,
     }
-    None
 }

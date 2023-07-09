@@ -23,6 +23,7 @@ pub struct Engine<W: Write> {
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
+    pub abbreviations: HashMap<String, String>,
 }
 
 impl<W: Write> Engine<W> {
@@ -36,6 +37,10 @@ impl<W: Write> Engine<W> {
         }
     }
 
+    pub fn has_executable(&self, cmd: &Word) -> bool {
+        self.has_command(cmd) || builtin::has(cmd)
+    }
+
     pub fn has_command(&self, cmd: &Word) -> bool {
         let cmd = remove_quotes(&cmd.name);
         path::has_relative_command(&cmd)
@@ -45,8 +50,9 @@ impl<W: Write> Engine<W> {
                 .any(|c| c == &cmd || c.ends_with(&format!("/{}", cmd)))
     }
 
-    pub fn has_executable(&self, cmd: &Word) -> bool {
-        self.has_command(cmd) || builtin::has(cmd)
+    pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
+        let cmd = cmd.as_ref();
+        self.abbreviations.keys().any(|a| a == cmd)
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
@@ -420,6 +426,7 @@ impl Engine<Stdout> {
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
             assignments: Default::default(),
+            abbreviations: Default::default(),
         };
         this.update_assignments_from_env();
         this
