@@ -79,12 +79,7 @@ impl<W: Write> Engine<W> {
 
         let args = cmd.args().map(|s| s.as_str()).collect::<Vec<_>>();
 
-        match command.as_str() {
-            ":" => builtin::colon(),
-            "cd" => builtin::cd(self, &args),
-            "exit" => builtin::exit(self, &args),
-            c => Err(Error::UnknownBuiltin(c.to_string())),
-        }
+        builtin::execute(self, command, &args)
     }
 
     fn execute_simple_command(
