@@ -14,3 +14,6 @@ rev <file 1<>file; cat file
 
 echo
 sh ../test/res/errcho hello 2>file; cat file
+
+echo
+cat <foobar
