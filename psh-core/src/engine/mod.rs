@@ -269,7 +269,6 @@ impl Engine {
 
         let child = command
             .envs(env::vars())
-            .envs(&self.assignments)
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
