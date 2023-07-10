@@ -38,5 +38,6 @@ pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
 
     env::set_var("OLDPWD", env::current_dir()?);
     env::set_current_dir(path)?;
+    env::set_var("PWD", env::current_dir()?);
     Ok(ExitStatus::from_code(0))
 }
