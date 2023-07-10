@@ -410,13 +410,13 @@ impl Engine {
     }
 
     fn walk_ast(&mut self, ast: SyntaxTree) -> Result<Vec<ExitStatus>> {
+        let mut results = Vec::new();
         if let Some((cmds, _)) = ast.commands {
-            let mut results = Vec::new();
             for cmd in cmds.full() {
-                results.push(self.execute(cmd));
+                results.append(&mut self.execute(cmd)?);
             }
         }
-        Ok(vec![])
+        Ok(results)
     }
 }
 
