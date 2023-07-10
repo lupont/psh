@@ -1,6 +1,5 @@
 pub mod input;
 
-use std::env;
 use std::io::Write;
 use std::process;
 
@@ -39,16 +38,19 @@ impl Repl {
         self.read_init_file()?;
 
         if self.engine.get_value_of("PS1").is_none() {
-            env::set_var(
-                "PS1",
+            self.engine.assignments.insert(
+                "PS1".to_string(),
                 match is_root() {
                     true => config::PS1_ROOT_PROMPT,
                     false => config::PS1_USER_PROMPT,
-                },
+                }
+                .to_string(),
             );
         }
         if self.engine.get_value_of("PS2").is_none() {
-            env::set_var("PS2", config::PS2_PROMPT);
+            self.engine
+                .assignments
+                .insert("PS2".to_string(), config::PS2_PROMPT.to_string());
         }
 
         ctrlc::set_handler(|| {}).expect("psh: Error setting ^C handler");
