@@ -385,11 +385,17 @@ impl Highlighter for NewlineList {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         let mut lines = self.whitespace.split('\n').peekable();
 
+        let first = lines.next().unwrap();
+        queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
+
         while let Some(line) = lines.next() {
-            queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
-            if lines.peek().is_some() {
-                queue!(engine.writer, MoveToColumn(context.start_x), MoveDown(1))?;
-            }
+            queue!(
+                engine.writer,
+                MoveToColumn(context.start_x),
+                MoveDown(1),
+                Clear(ClearType::UntilNewLine),
+                Print(line)
+            )?;
         }
 
         Ok(())
@@ -488,11 +494,17 @@ impl Highlighter for Word {
         let s = format!("{}{}", self.whitespace, self.name_with_escaped_newlines);
         let mut lines = s.split('\n').peekable();
 
+        let first = lines.next().unwrap();
+        queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
+
         while let Some(line) = lines.next() {
-            queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(line))?;
-            if lines.peek().is_some() {
-                queue!(engine.writer, MoveToColumn(context.start_x), MoveDown(1))?;
-            }
+            queue!(
+                engine.writer,
+                MoveToColumn(context.start_x),
+                MoveDown(1),
+                Clear(ClearType::UntilNewLine),
+                Print(line)
+            )?;
         }
 
         Ok(())
