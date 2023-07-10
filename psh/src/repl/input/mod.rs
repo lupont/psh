@@ -1,7 +1,6 @@
 mod syntax_highlighting;
 
 use std::collections::HashMap;
-use std::io::Write;
 
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -148,20 +147,20 @@ pub fn read_line(
                 state.line = engine.history.prev()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos(),)?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
                 state.line = engine.history.next()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos(),)?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 state.line.clear();
                 state.index = 0;
-                execute!(engine.writer, state.next_pos())?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
@@ -186,12 +185,12 @@ pub fn read_line(
                 state.line.replace_range(space_index..state.index, "");
                 state.index = space_index;
 
-                execute!(engine.writer, state.next_pos())?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                 let (start_x, _) = state.start_pos;
-                execute!(
+                queue!(
                     engine.writer,
                     cursor::MoveTo(start_x, 0),
                     terminal::Clear(terminal::ClearType::FromCursorDown),
@@ -203,14 +202,14 @@ pub fn read_line(
             (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if state.index > 0 => {
                 state.index -= 1;
 
-                execute!(engine.writer, state.next_pos())?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
                 if state.index < state.line.len() =>
             {
                 state.index += 1;
-                execute!(engine.writer, state.next_pos())?;
+                queue!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
@@ -226,7 +225,7 @@ pub fn read_line(
                     }
                 }
 
-                execute!(
+                queue!(
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
@@ -239,7 +238,7 @@ pub fn read_line(
                 state.index += 1;
                 state.expand_abbreviations = false;
 
-                execute!(
+                queue!(
                     engine.writer,
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
@@ -252,7 +251,7 @@ pub fn read_line(
                 state.index += 1;
                 state.expand_abbreviations = c != '|' && c != '&' && c != ';';
 
-                execute!(
+                queue!(
                     engine.writer,
                     style::Print(&state.line[state.index - 1..]),
                     state.next_pos(),
@@ -264,7 +263,7 @@ pub fn read_line(
                 state.line.remove(state.index);
                 state.expand_abbreviations = true;
 
-                execute!(
+                queue!(
                     engine.writer,
                     state.next_pos(),
                     style::Print(&state.line[state.index..]),
@@ -281,11 +280,10 @@ pub fn read_line(
         }
     }
 
-    write!(engine.writer, "\r")?;
     let (_, start_y) = state.start_pos;
     let (_, height) = state.size;
     if start_y + 1 >= height {
-        execute!(engine.writer, terminal::ScrollUp(height - start_y))?;
+        queue!(engine.writer, terminal::ScrollUp(height - start_y))?;
     }
 
     if state.cleared {
@@ -295,7 +293,7 @@ pub fn read_line(
             cursor::MoveTo(0, 0)
         )?;
     } else {
-        execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+        queue!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
     }
 
     match (state.cancelled, ps1) {
@@ -340,13 +338,12 @@ fn print(
             abbreviations: state.expand_abbreviations,
         },
     )?;
-    engine.writer.flush()?;
 
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
     }
 
-    execute!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
+    queue!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
 
     Ok(())
 }

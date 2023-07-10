@@ -115,7 +115,7 @@ impl Repl {
         let word = Word::new(&prompt, "");
         let word = word.expand(&mut self.engine);
 
-        Ok(execute!(
+        Ok(crossterm::queue!(
             self.engine.writer,
             style::SetForegroundColor(Colors::PROMPT),
             style::Print(word.to_string()),
