@@ -6,6 +6,8 @@ use std::process;
 
 use crossterm::{execute, style, terminal};
 
+use psh_core::ast::prelude::Word;
+use psh_core::engine::expand::Expand;
 use psh_core::engine::parser::{semtok, tok};
 use psh_core::{parse, path, Engine, Error, ExitStatus, Result};
 
@@ -36,7 +38,7 @@ impl Repl {
     pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
         self.read_init_file()?;
 
-        if env::var("PS1").is_err() {
+        if self.engine.get_value_of("PS1").is_none() {
             env::set_var(
                 "PS1",
                 match is_root() {
@@ -45,7 +47,7 @@ impl Repl {
                 },
             );
         }
-        if env::var("PS2").is_err() {
+        if self.engine.get_value_of("PS2").is_none() {
             env::set_var("PS2", config::PS2_PROMPT);
         }
 
@@ -103,15 +105,18 @@ impl Repl {
         let _raw = RawMode::init()?;
 
         let prompt = if ps2 {
-            env::var("PS2").unwrap()
+            self.engine.get_value_of("PS2").unwrap()
         } else {
-            env::var("PS1").unwrap()
+            self.engine.get_value_of("PS1").unwrap()
         };
+
+        let word = Word::new(&prompt, "");
+        let word = word.expand(&mut self.engine);
 
         Ok(execute!(
             self.engine.writer,
             style::SetForegroundColor(Colors::PROMPT),
-            style::Print(prompt),
+            style::Print(word.to_string()),
             style::ResetColor,
         )?)
     }

@@ -29,25 +29,21 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         let history = FileHistory::init().expect("could not initialize history");
-        let mut this = Self {
+        Self {
             writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
             assignments: Default::default(),
             abbreviations: Default::default(),
-        };
-        this.update_assignments_from_env();
-        this
-    }
-
-    pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<&String> {
-        self.assignments.get(var_name.as_ref())
-    }
-
-    fn update_assignments_from_env(&mut self) {
-        for (k, v) in env::vars() {
-            self.assignments.insert(k, v);
         }
+    }
+
+    pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<String> {
+        let var = var_name.as_ref();
+        self.assignments
+            .get(var)
+            .cloned()
+            .or_else(|| env::var(var).ok())
     }
 
     pub fn has_executable(&self, cmd: &Word) -> bool {
@@ -272,6 +268,7 @@ impl Engine {
         let cmd = cmd.expand_suffixes(self);
 
         let child = command
+            .envs(env::vars())
             .envs(&self.assignments)
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
@@ -395,8 +392,6 @@ impl Engine {
     }
 
     pub fn execute(&mut self, cmd: CompleteCommand) -> Result<Vec<ExitStatus>> {
-        self.update_assignments_from_env();
-
         let lists_with_separator = cmd.list_with_separator();
 
         let mut codes = Vec::new();

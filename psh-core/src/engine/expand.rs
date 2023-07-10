@@ -162,7 +162,7 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
             unreachable!()
         };
         if let Some(val) = engine.get_value_of(&name) {
-            word.name.replace_range(range, val);
+            word.name.replace_range(range, &val);
         } else {
             word.name.replace_range(range, "");
         }
