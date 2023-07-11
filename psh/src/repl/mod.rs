@@ -6,20 +6,18 @@ use std::process;
 use crossterm::terminal;
 
 use psh_core::engine::parser::{semtok, tok};
-use psh_core::{parse, path, Engine, Error, ExitStatus, Result};
+use psh_core::{parse, path, Engine, Error, Result};
 
 use crate::config::{self, Colors};
 
 pub struct Repl {
     engine: Engine,
-    last_status: Option<Vec<ExitStatus>>,
 }
 
 impl Repl {
     pub fn new() -> Self {
         Self {
             engine: Engine::default(),
-            last_status: None,
         }
     }
 
@@ -72,7 +70,7 @@ impl Repl {
                     Ok(statuses) if statuses.is_empty() => {}
 
                     Ok(statuses) => {
-                        self.last_status = Some(statuses);
+                        self.engine.last_status = statuses;
                     }
 
                     Err(e) => {

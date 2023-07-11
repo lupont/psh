@@ -893,6 +893,16 @@ impl Word {
                     curr_expansion_start = index;
                 }
 
+                ('?', QuoteState::None) if !is_escaped && curr_expansion.is_some() => {
+                    if matches!(&curr_expansion, Some(s) if s.is_empty()) {
+                        expansions.push(Expansion::Parameter {
+                            range: curr_expansion_start..=index,
+                            name: "?".to_string(),
+                        });
+                        curr_expansion = None;
+                    }
+                }
+
                 (c, _) if !is_escaped && curr_expansion.is_some() => {
                     if super::is_valid_part_of_name(c) {
                         curr_expansion.as_mut().unwrap().push(c);

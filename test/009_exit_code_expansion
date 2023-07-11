@@ -1,0 +1,3 @@
+echo $?
+sh ../test/res/rc 4
+echo $?

@@ -161,7 +161,15 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
         let Expansion::Parameter { range, name } = word.expansions.remove(index) else {
             unreachable!()
         };
-        if let Some(val) = engine.get_value_of(&name) {
+        if name == "?" {
+            let status = engine
+                .last_status
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join("|");
+            word.name.replace_range(range, &status);
+        } else if let Some(val) = engine.get_value_of(&name) {
             word.name.replace_range(range, &val);
         } else {
             word.name.replace_range(range, "");

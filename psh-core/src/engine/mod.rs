@@ -24,6 +24,7 @@ pub struct Engine {
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
     pub abbreviations: HashMap<String, String>,
+    pub last_status: Vec<ExitStatus>,
 }
 
 impl Engine {
@@ -35,6 +36,7 @@ impl Engine {
             history: Box::new(history),
             assignments: Default::default(),
             abbreviations: Default::default(),
+            last_status: vec![ExitStatus::from_code(0)],
         }
     }
 
@@ -365,6 +367,8 @@ impl Engine {
                 last_stdout = Some(None);
             }
         }
+
+        self.last_status = vec![last_status];
 
         Ok(if has_bang { !last_status } else { last_status })
     }
