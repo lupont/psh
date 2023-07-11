@@ -1,7 +1,6 @@
 mod syntax_highlighting;
 
 use std::collections::HashMap;
-use std::io::Write;
 
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -10,13 +9,61 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
-use psh_core::{Engine, Error, Result};
+use psh_core::ast::prelude::Word;
+use psh_core::engine::expand::Expand;
+use psh_core::{parse, Engine, Error, Result};
 
 use crate::config::Colors;
 use crate::repl::input::syntax_highlighting::Highlighter;
 use crate::repl::RawMode;
 
 use self::syntax_highlighting::Context;
+
+pub fn read_full_command(engine: &mut Engine) -> Result<String> {
+    let _raw = RawMode::init()?;
+
+    prompt(engine, false)?;
+
+    let start_pos = cursor::position()?;
+    let mut line = read_line(engine, true, start_pos, None)?;
+
+    'outer: while let Err(Error::Incomplete(_)) = parse(&line, false) {
+        line.push('\n');
+
+        prompt(engine, true)?;
+        match read_line(engine, false, start_pos, Some(&line)) {
+            Ok(l) => line += &l,
+            Err(Error::CancelledLine) => {
+                line = String::new();
+                break 'outer;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(line)
+}
+
+fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
+    let prompt = if ps2 {
+        engine.get_value_of("PS2").unwrap()
+    } else {
+        engine.get_value_of("PS1").unwrap()
+    };
+
+    let word = Word::new(&prompt, "");
+    let word = word.expand(engine);
+
+    queue!(
+        engine.writer,
+        cursor::MoveToColumn(0),
+        style::SetForegroundColor(Colors::PROMPT),
+        style::Print(word.to_string()),
+        style::ResetColor,
+    )?;
+
+    Ok(())
+}
 
 struct State {
     /// The current content of the input line.
@@ -67,7 +114,7 @@ impl State {
     }
 }
 
-pub fn read_line(
+fn read_line(
     engine: &mut Engine,
     ps1: bool,
     start_pos: (u16, u16),
@@ -87,7 +134,7 @@ pub fn read_line(
     };
 
     while !state.about_to_exit {
-        print(engine, &state, start_pos, old_line)?;
+        write_highlighted_ast(engine, &state, start_pos, old_line)?;
 
         execute!(engine.writer, event::EnableBracketedPaste)?;
 
@@ -103,7 +150,7 @@ pub fn read_line(
                 state.next_pos(),
             )?;
 
-            print(engine, &state, start_pos, old_line)?;
+            write_highlighted_ast(engine, &state, start_pos, old_line)?;
         }
 
         execute!(engine.writer, event::DisableBracketedPaste)?;
@@ -148,14 +195,14 @@ pub fn read_line(
                 state.line = engine.history.prev()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos(),)?;
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
                 state.line = engine.history.next()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos(),)?;
+                execute!(engine.writer, state.next_pos())?;
             }
 
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
@@ -276,26 +323,27 @@ pub fn read_line(
         }
 
         if state.about_to_exit {
-            print(engine, &state, start_pos, old_line)?;
             break;
         }
     }
 
-    write!(engine.writer, "\r")?;
     let (_, start_y) = state.start_pos;
     let (_, height) = state.size;
-    if start_y + 1 >= height {
-        execute!(engine.writer, terminal::ScrollUp(height - start_y))?;
+    let next_y = start_y + 1;
+    if next_y >= height {
+        queue!(engine.writer, terminal::ScrollUp(height - start_y))?;
     }
 
     if state.cleared {
         execute!(
             engine.writer,
             terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0)
+            cursor::MoveTo(0, 0),
         )?;
+    } else if !state.line.is_empty() {
+        execute!(engine.writer, cursor::MoveTo(0, next_y))?;
     } else {
-        execute!(engine.writer, cursor::MoveTo(0, start_y + 1))?;
+        execute!(engine.writer, cursor::MoveToRow(next_y))?;
     }
 
     match (state.cancelled, ps1) {
@@ -305,7 +353,7 @@ pub fn read_line(
     }
 }
 
-fn print(
+fn write_highlighted_ast(
     engine: &mut Engine,
     state: &State,
     start_pos: (u16, u16),
@@ -340,7 +388,6 @@ fn print(
             abbreviations: state.expand_abbreviations,
         },
     )?;
-    engine.writer.flush()?;
 
     if state.cancelled {
         queue!(engine.writer, style::ResetColor, style::Print("^C"))?;

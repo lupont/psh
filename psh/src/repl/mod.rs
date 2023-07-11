@@ -3,15 +3,12 @@ pub mod input;
 use std::io::Write;
 use std::process;
 
-use crossterm::{execute, style, terminal};
+use crossterm::terminal;
 
-use psh_core::ast::prelude::Word;
-use psh_core::engine::expand::Expand;
 use psh_core::engine::parser::{semtok, tok};
 use psh_core::{parse, path, Engine, Error, ExitStatus, Result};
 
 use crate::config::{self, Colors};
-use crate::repl::input::read_line;
 
 pub struct Repl {
     engine: Engine,
@@ -56,24 +53,7 @@ impl Repl {
         ctrlc::set_handler(|| {}).expect("psh: Error setting ^C handler");
 
         loop {
-            self.prompt(false)?;
-
-            let start_pos = crossterm::cursor::position()?;
-            let mut line = read_line(&mut self.engine, true, start_pos, None)?;
-
-            while let Err(Error::Incomplete(_)) = parse(&line, false) {
-                line.push('\n');
-
-                self.prompt(true)?;
-                match read_line(&mut self.engine, false, start_pos, Some(&line)) {
-                    Ok(l) => line += &l,
-                    Err(Error::CancelledLine) => {
-                        line = String::new();
-                        break;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
+            let line = input::read_full_command(&mut self.engine)?;
 
             if tokenize && line != "exit" {
                 for token in tok::tokenize(line) {
@@ -101,26 +81,6 @@ impl Repl {
                 }
             }
         }
-    }
-
-    pub fn prompt(&mut self, ps2: bool) -> Result<()> {
-        let _raw = RawMode::init()?;
-
-        let prompt = if ps2 {
-            self.engine.get_value_of("PS2").unwrap()
-        } else {
-            self.engine.get_value_of("PS1").unwrap()
-        };
-
-        let word = Word::new(&prompt, "");
-        let word = word.expand(&mut self.engine);
-
-        Ok(execute!(
-            self.engine.writer,
-            style::SetForegroundColor(Colors::PROMPT),
-            style::Print(word.to_string()),
-            style::ResetColor,
-        )?)
     }
 }
 

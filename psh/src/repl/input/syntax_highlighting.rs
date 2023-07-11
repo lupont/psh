@@ -388,7 +388,7 @@ impl Highlighter for NewlineList {
         let first = lines.next().unwrap();
         queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
 
-        while let Some(line) = lines.next() {
+        for line in lines {
             queue!(
                 engine.writer,
                 MoveToColumn(context.start_x),
@@ -497,7 +497,7 @@ impl Highlighter for Word {
         let first = lines.next().unwrap();
         queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
 
-        while let Some(line) = lines.next() {
+        for line in lines {
             queue!(
                 engine.writer,
                 MoveToColumn(context.start_x),
