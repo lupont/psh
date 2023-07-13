@@ -89,6 +89,9 @@ struct State {
 
     /// Will be `false` if the user inputs '^ ', which will make abbreviations not expand.
     expand_abbreviations: bool,
+
+    /// Will be `true` immediately after pressing Tab
+    show_tab_suggestions: bool,
 }
 
 impl State {
@@ -131,6 +134,7 @@ fn read_line(
         cancelled: false,
         cleared: false,
         expand_abbreviations: true,
+        show_tab_suggestions: false,
     };
 
     while !state.about_to_exit {
@@ -162,6 +166,8 @@ fn read_line(
             _ => continue,
         };
 
+        state.show_tab_suggestions = false;
+
         match (code, modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                 if ps1 && state.line.is_empty() {
@@ -189,6 +195,22 @@ fn read_line(
                 if ps1 && state.line.is_empty() {
                     state.about_to_exit = true;
                     state.line = "exit".to_string();
+                }
+            }
+
+            (KeyCode::Tab, KeyModifiers::NONE) => {
+                let pattern =
+                    &state.line[state.line.rfind(' ').map(|n| n + 1).unwrap_or(0)..state.index];
+                let last_part = {
+                    let index = pattern.rfind('/').map(|n| n + 1).unwrap_or(0);
+                    &pattern[index..]
+                };
+                if let Some((diff, file)) = engine.get_single_match(pattern) {
+                    state.line = state.line.replacen(last_part, &file, 1);
+                    state.index += diff;
+                    execute!(engine.writer, state.next_pos())?;
+                } else {
+                    state.show_tab_suggestions = true;
                 }
             }
 
@@ -323,17 +345,42 @@ fn read_line(
             _ => {}
         }
 
+        if state.show_tab_suggestions {
+            let pattern =
+                &state.line[state.line.rfind(' ').map(|n| n + 1).unwrap_or(0)..state.index];
+            let (_, files) = engine.get_files_matching_pattern(pattern);
+            let files = files.join("   ");
+
+            let (x, y) = state.pos()?;
+            scroll_up_if_needed(engine, &mut state)?;
+            execute!(
+                engine.writer,
+                style::SetForegroundColor(Colors::PROMPT),
+                cursor::MoveTo(0, y + 1),
+                terminal::Clear(terminal::ClearType::FromCursorDown),
+                style::Print(files),
+                cursor::MoveTo(x, y),
+                style::ResetColor,
+            )?;
+        } else {
+            let (x, y) = state.pos()?;
+            execute!(
+                engine.writer,
+                style::SetForegroundColor(Colors::PROMPT),
+                cursor::MoveTo(0, y + 1),
+                terminal::Clear(terminal::ClearType::FromCursorDown),
+                cursor::MoveTo(x, y),
+                style::ResetColor,
+            )?;
+        }
+
         if state.about_to_exit {
             break;
         }
     }
 
-    let (_, start_y) = state.start_pos;
-    let (_, height) = state.size;
-    let next_y = start_y + 1;
-    if next_y >= height {
-        queue!(engine.writer, terminal::ScrollUp(height - start_y))?;
-    }
+    let next_y = state.start_pos.1 + 1;
+    scroll_up_if_needed(engine, &mut state)?;
 
     if state.cleared {
         execute!(
@@ -347,11 +394,32 @@ fn read_line(
         execute!(engine.writer, cursor::MoveToRow(next_y))?;
     }
 
+    execute!(
+        engine.writer,
+        terminal::Clear(terminal::ClearType::UntilNewLine)
+    )?;
+
     match (state.cancelled, ps1) {
         (true, false) => Err(Error::CancelledLine),
         (true, true) => Ok("".to_string()),
         (false, _) => Ok(state.line),
     }
+}
+
+fn scroll_up_if_needed(engine: &mut Engine, state: &mut State) -> Result<()> {
+    let (start_x, start_y) = state.start_pos;
+    let (_, height) = state.size;
+    let next_y = start_y + 1;
+    if next_y >= height {
+        state.start_pos = (start_x, start_y - 1);
+        execute!(
+            engine.writer,
+            terminal::ScrollUp(height - start_y),
+            cursor::MoveUp(1),
+            state.next_pos()
+        )?;
+    }
+    Ok(())
 }
 
 fn write_highlighted_ast(

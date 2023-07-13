@@ -41,6 +41,68 @@ impl Engine {
         }
     }
 
+    pub fn get_single_match(&self, file: &str) -> Option<(usize, String)> {
+        let last_part = {
+            let index = file.rfind('/').map(|n| n + 1).unwrap_or(0);
+            &file[index..]
+        };
+        let (_, mut files) = self.get_files_matching_pattern(file);
+        if files.len() == 1 {
+            let file_match = files.remove(0);
+            let diff = file_match.len() - last_part.len();
+            Some((diff, file_match))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_files_matching_pattern(&self, pattern: &str) -> (Option<usize>, Vec<String>) {
+        let (dir, pattern) = if let Some(index) = pattern.rfind('/') {
+            let dir = pattern[..=index].to_string();
+            let pattern = &pattern[index + 1..];
+            (dir, pattern)
+        } else {
+            (self.get_value_of("PWD").unwrap(), pattern)
+        };
+
+        let mut files = Vec::new();
+
+        let Ok(dir) = fs::canonicalize(dir) else {
+            return (None, files);
+        };
+
+        let Ok(dir_entries) = fs::read_dir(dir) else {
+            return (None, files);
+        };
+
+        for entry in dir_entries {
+            let file = entry.unwrap();
+            let dir = file.path().is_dir();
+            let file_name = file.file_name().to_str().unwrap().to_string();
+            let file_name = if dir { file_name + "/" } else { file_name };
+            if file_name.starts_with(pattern) {
+                files.push(file_name);
+            }
+        }
+
+        let diff = if files.len() == 1 {
+            let diff = files[0].len() - pattern.len();
+            Some(diff)
+        } else {
+            None
+        };
+
+        files.sort();
+
+        files.sort_by(|a, b| match (a.ends_with('/'), b.ends_with('/')) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        });
+
+        (diff, files)
+    }
+
     pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<String> {
         let var = var_name.as_ref();
         self.assignments
