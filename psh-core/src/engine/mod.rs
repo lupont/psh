@@ -103,6 +103,7 @@ impl Engine {
     ) -> Result<Option<(bool, process::Child)>> {
         let cmd = cmd.expand_name(self);
         let cmd = cmd.expand_prefixes(self);
+        let cmd = cmd.expand_suffixes(self);
 
         let mut assignments = Vec::new();
         for assignment in cmd.assignments() {
@@ -266,8 +267,6 @@ impl Engine {
         }
 
         let stdout_redirected = stdout_override.is_some();
-
-        let cmd = cmd.expand_suffixes(self);
 
         let child = command
             .envs(env::vars())

@@ -16,4 +16,10 @@ echo
 sh ../test/res/errcho hello 2>file; cat file
 
 echo
+echo yo >foo\ bar; cat 'foo bar'
+
+echo
+>'the file' echo hej; cat the\ file
+
+echo
 cat <foobar
