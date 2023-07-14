@@ -193,18 +193,16 @@ pub fn remove_quotes(s: &str) -> String {
     let mut state = QuoteState::None;
     let mut is_escaped = false;
 
-    for c in s.chars() {
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
         match (c, state, is_escaped) {
             ('\'', QuoteState::Single, _) => {
                 state = QuoteState::None;
                 is_escaped = false;
             }
+
             ('\'', QuoteState::None, false) => {
                 state = QuoteState::Single;
-                is_escaped = false;
-            }
-            (c, QuoteState::Single, _) => {
-                name.push(c);
                 is_escaped = false;
             }
 
@@ -218,7 +216,11 @@ pub fn remove_quotes(s: &str) -> String {
                 is_escaped = false;
             }
 
-            ('\\', _, false) => {
+            ('\\', QuoteState::None, false) => {
+                is_escaped = true;
+            }
+
+            ('\\', QuoteState::Double, false) if matches!(chars.peek(), Some('"')) => {
                 is_escaped = true;
             }
 
@@ -230,4 +232,28 @@ pub fn remove_quotes(s: &str) -> String {
     }
 
     name
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backslash_removal() {
+        let input = "hello\\ there";
+        let output = remove_quotes(input);
+        assert_eq!("hello there", &output);
+
+        let input = "'hello\\ there'";
+        let output = remove_quotes(input);
+        assert_eq!("hello\\ there", &output);
+
+        let input = "\"hello\\ there\"";
+        let output = remove_quotes(input);
+        assert_eq!("hello\\ there", &output);
+
+        let input = r#""'foo' \"bar\"""#;
+        let output = remove_quotes(input);
+        assert_eq!(r#"'foo' "bar""#, &output);
+    }
 }
