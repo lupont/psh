@@ -182,6 +182,7 @@ fn read_line(
                     }
                 }
                 state.about_to_exit = true;
+                write_highlighted_ast(engine, &state, start_pos, old_line)?;
             }
 
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
