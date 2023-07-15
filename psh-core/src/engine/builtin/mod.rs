@@ -6,10 +6,7 @@ mod exit;
 mod unabbr;
 mod unalias;
 
-use crate::ast::prelude::Word;
 use crate::{Engine, Error, ExitStatus, Result};
-
-use super::expand::remove_quotes;
 
 type Builtin = fn(&mut Engine, &[&str]) -> Result<ExitStatus>;
 
@@ -33,7 +30,6 @@ pub fn execute(engine: &mut Engine, command: &str, args: &[&str]) -> Result<Exit
     }
 }
 
-pub fn has(s: &Word) -> bool {
-    let name = remove_quotes(&s.name);
-    get(&name).is_some()
+pub fn has(s: &str) -> bool {
+    get(s).is_some()
 }

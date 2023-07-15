@@ -13,7 +13,6 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 use std::process::{self, Stdio};
 
-use self::expand::remove_quotes;
 use self::parser::ast::prelude::*;
 pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
@@ -50,17 +49,16 @@ impl Engine {
             .or_else(|| env::var(var).ok())
     }
 
-    pub fn has_executable(&self, cmd: &Word) -> bool {
-        self.has_command(cmd) || self.has_alias(&cmd.name) || builtin::has(cmd)
+    pub fn has_executable(&self, cmd: &str) -> bool {
+        self.has_command(cmd) || self.has_alias(cmd) || builtin::has(cmd)
     }
 
-    pub fn has_command(&self, cmd: &Word) -> bool {
-        let cmd = remove_quotes(&cmd.name);
-        path::has_relative_command(&cmd)
+    pub fn has_command(&self, cmd: &str) -> bool {
+        path::has_relative_command(cmd)
             || self
                 .commands
                 .iter()
-                .any(|c| c == &cmd || c.ends_with(&format!("/{}", cmd)))
+                .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
     }
 
     pub fn has_alias(&self, cmd: impl AsRef<str>) -> bool {
@@ -100,6 +98,27 @@ impl Engine {
         builtin::execute(self, command, &args)
     }
 
+    fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
+        let (mut name, mut args) = (name.to_string(), Vec::new());
+        let mut stop = false;
+        while let Some(expanded) = self.aliases.get(&name) {
+            if stop {
+                break;
+            }
+            let (a, b) = expanded.split_once(' ').unwrap_or((expanded, ""));
+            let b = b
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            if a == name {
+                stop = true;
+            }
+            (name, args) = (a.to_string(), b);
+        }
+        (name, args)
+    }
+
     fn execute_simple_command(
         &mut self,
         cmd: SimpleCommand,
@@ -131,37 +150,10 @@ impl Engine {
             return Ok(None);
         };
 
-        // unwrap is OK since we exit early above if None
-        let word = cmd.name.as_ref().unwrap();
-        if !self.has_executable(word) {
-            return Err(Error::UnknownCommand(name.to_string()));
-        }
+        let (name, alias_args) = self.expand_alias(name);
 
-        fn expand_alias(
-            name: &str,
-            aliases: &HashMap<String, String>,
-        ) -> Option<(String, Vec<String>)> {
-            if let Some(name) = aliases.get(name) {
-                let (cmd, args) = name.split_once(' ').unwrap_or((name, ""));
-                let args = args
-                    .split(' ')
-                    .filter(|s| !s.is_empty())
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>();
-                Some((cmd.to_string(), args))
-            } else {
-                None
-            }
-        }
-
-        let (mut name, mut args) = (name.to_string(), Vec::new());
-        while let Some((a, b)) = expand_alias(&name, &self.aliases) {
-            let stop = a == name;
-            name = a.to_string();
-            args = b;
-            if stop {
-                break;
-            }
+        if !self.has_executable(&name) {
+            return Err(Error::UnknownCommand(name));
         }
 
         let mut command = process::Command::new(name);
@@ -310,8 +302,8 @@ impl Engine {
             .stderr(stderr_override.unwrap_or(stderr))
             .args(cmd.args());
 
-        if !args.is_empty() {
-            proc = proc.args(args);
+        if !alias_args.is_empty() {
+            proc = proc.args(alias_args);
         }
 
         let child = proc.spawn()?;

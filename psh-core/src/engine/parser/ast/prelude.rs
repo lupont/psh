@@ -232,7 +232,7 @@ impl Command {
     pub fn is_builtin(&self) -> bool {
         match self {
             Command::Simple(cmd) => {
-                matches!(&cmd.name, Some(word) if builtin::has(word))
+                matches!(&cmd.name, Some(word) if builtin::has(&word.name))
             }
             _ => false,
         }

@@ -6,6 +6,7 @@ use crossterm::style::{Print, ResetColor, SetForegroundColor};
 use crossterm::terminal::{Clear, ClearType};
 
 use psh_core::ast::prelude::*;
+use psh_core::engine::expand::remove_quotes;
 use psh_core::{Engine, Result};
 
 use crate::repl::Colors;
@@ -253,9 +254,10 @@ impl Highlighter for SimpleCommand {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         let cmd_color = match &self.name {
             Some(word) => {
-                if engine.has_executable(word)
-                    || engine.has_alias(&word.name)
-                    || (engine.has_abbreviation(&word.name) && context.abbreviations)
+                let name = remove_quotes(&word.name);
+                if engine.has_executable(&name)
+                    || engine.has_alias(&name)
+                    || (engine.has_abbreviation(&name) && context.abbreviations)
                 {
                     Colors::VALID_CMD_COLOR
                 } else {
