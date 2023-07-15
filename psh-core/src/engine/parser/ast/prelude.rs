@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::ops::RangeInclusive;
 
 use crate::engine::builtin;
+use crate::engine::expand::remove_quotes;
 use crate::engine::expand::Expand;
 use crate::path;
 use crate::Engine;
@@ -232,7 +233,7 @@ impl Command {
     pub fn is_builtin(&self) -> bool {
         match self {
             Command::Simple(cmd) => {
-                matches!(&cmd.name, Some(word) if builtin::has(&word.name))
+                matches!(&cmd.name, Some(word) if builtin::has(&remove_quotes(&word.name)))
             }
             _ => false,
         }
