@@ -254,6 +254,7 @@ impl Highlighter for SimpleCommand {
         let cmd_color = match &self.name {
             Some(word) => {
                 if engine.has_executable(word)
+                    || engine.has_alias(&word.name)
                     || (engine.has_abbreviation(&word.name) && context.abbreviations)
                 {
                     Colors::VALID_CMD_COLOR

@@ -23,6 +23,7 @@ pub struct Engine {
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
+    pub aliases: HashMap<String, String>,
     pub abbreviations: HashMap<String, String>,
     pub last_status: Vec<ExitStatus>,
 }
@@ -35,6 +36,7 @@ impl Engine {
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
             assignments: Default::default(),
+            aliases: Default::default(),
             abbreviations: Default::default(),
             last_status: vec![ExitStatus::from_code(0)],
         }
@@ -49,7 +51,7 @@ impl Engine {
     }
 
     pub fn has_executable(&self, cmd: &Word) -> bool {
-        self.has_command(cmd) || builtin::has(cmd)
+        self.has_command(cmd) || self.has_alias(&cmd.name) || builtin::has(cmd)
     }
 
     pub fn has_command(&self, cmd: &Word) -> bool {
@@ -59,6 +61,11 @@ impl Engine {
                 .commands
                 .iter()
                 .any(|c| c == &cmd || c.ends_with(&format!("/{}", cmd)))
+    }
+
+    pub fn has_alias(&self, cmd: impl AsRef<str>) -> bool {
+        let cmd = cmd.as_ref();
+        self.aliases.keys().any(|a| a == cmd)
     }
 
     pub fn has_abbreviation(&self, cmd: impl AsRef<str>) -> bool {
@@ -128,6 +135,33 @@ impl Engine {
         let word = cmd.name.as_ref().unwrap();
         if !self.has_executable(word) {
             return Err(Error::UnknownCommand(name.to_string()));
+        }
+
+        fn expand_alias(
+            name: &str,
+            aliases: &HashMap<String, String>,
+        ) -> Option<(String, Vec<String>)> {
+            if let Some(name) = aliases.get(name) {
+                let (cmd, args) = name.split_once(' ').unwrap_or((name, ""));
+                let args = args
+                    .split(' ')
+                    .filter(|s| !s.is_empty())
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
+                Some((cmd.to_string(), args))
+            } else {
+                None
+            }
+        }
+
+        let (mut name, mut args) = (name.to_string(), Vec::new());
+        while let Some((a, b)) = expand_alias(&name, &self.aliases) {
+            let stop = a == name;
+            name = a.to_string();
+            args = b;
+            if stop {
+                break;
+            }
         }
 
         let mut command = process::Command::new(name);
@@ -268,14 +302,19 @@ impl Engine {
 
         let stdout_redirected = stdout_override.is_some();
 
-        let child = command
+        let mut proc = command
             .envs(env::vars())
             .envs(assignments)
             .stdin(stdin_override.unwrap_or(stdin))
             .stdout(stdout_override.unwrap_or(stdout))
             .stderr(stderr_override.unwrap_or(stderr))
-            .args(cmd.args())
-            .spawn()?;
+            .args(cmd.args());
+
+        if !args.is_empty() {
+            proc = proc.args(args);
+        }
+
+        let child = proc.spawn()?;
 
         Ok(Some((stdout_redirected, child)))
     }
