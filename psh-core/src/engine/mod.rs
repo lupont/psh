@@ -99,6 +99,7 @@ impl Engine {
     }
 
     fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
+        let initial_name = name.clone();
         let (mut name, mut args) = (name.to_string(), Vec::new());
         let mut stop = false;
         while let Some(expanded) = self.aliases.get(&name) {
@@ -111,7 +112,7 @@ impl Engine {
                 .filter(|s| !s.is_empty())
                 .map(ToString::to_string)
                 .collect::<Vec<_>>();
-            if a == name {
+            if a == initial_name {
                 stop = true;
             }
             (name, args) = (a.to_string(), b);
