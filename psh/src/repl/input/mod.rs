@@ -367,7 +367,7 @@ fn write_highlighted_ast(
         engine.writer,
         cursor::MoveTo(start_x, start_y),
         terminal::Clear(terminal::ClearType::UntilNewLine),
-        style::SetForegroundColor(Colors::REDIRECT_INPUT),
+        style::SetForegroundColor(Colors::TRAILING_WORD_COLOR),
     )?;
 
     let line = if let Some(l) = old_line {
