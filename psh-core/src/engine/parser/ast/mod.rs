@@ -200,19 +200,23 @@ where
             Err(e) => return Err(e),
         };
 
-        let mut prev = self.clone();
         let mut tail = Vec::new();
 
-        while let Ok(thing) = self
-            .parse_separator_op()
-            .and_then(|s| self.parse_and_or_list().map(|a| (s, a)))
-            .map_err(|_| {
-                *self = prev.clone();
-                ParseError::Done
-            })
-        {
-            tail.push(thing);
-            prev = self.clone();
+        loop {
+            let Ok(sep_op) = self.parse_separator_op() else {
+                break;
+            };
+            let and_or_list = match self.parse_and_or_list() {
+                Ok(list) => list,
+                Err(ParseError::UnfinishedAndOrList(ws, and_or_list)) => {
+                    tail.push((sep_op, and_or_list));
+                    return Err(ParseError::UnfinishedList(ws, List { head, tail }));
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            };
+            tail.push((sep_op, and_or_list));
         }
 
         Ok(List { head, tail })
