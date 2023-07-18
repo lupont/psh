@@ -252,6 +252,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "memoffset"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5de893c32cde5f383baa4c04c5d6dbdd735cfd4a794b0debdb2bb1b421da5ff4"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "mio"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -272,6 +281,8 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "libc",
+ "memoffset",
+ "pin-utils",
  "static_assertions",
 ]
 
@@ -305,6 +316,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pin-utils"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -328,6 +345,7 @@ dependencies = [
 name = "psh-core"
 version = "0.1.0"
 dependencies = [
+ "nix",
  "serde",
  "serde_json",
 ]

@@ -1,13 +1,13 @@
 use std::ops::RangeInclusive;
+use std::os::fd::IntoRawFd;
+use std::os::fd::RawFd;
 
 #[cfg(feature = "serde")]
 use serde::Serialize;
 
 use crate::engine::builtin;
 use crate::engine::expand::remove_quotes;
-use crate::engine::expand::Expand;
 use crate::path;
-use crate::Engine;
 
 pub use super::parse;
 pub use super::reconstruct;
@@ -141,9 +141,9 @@ pub struct AndOrList {
 }
 
 impl AndOrList {
-    pub fn all_pipelines(&self) -> Vec<&Pipeline> {
-        let mut pipelines = vec![&self.head];
-        for (_, _, p) in &self.tail {
+    pub fn all_pipelines(self) -> Vec<Pipeline> {
+        let mut pipelines = vec![self.head];
+        for (_, _, p) in self.tail {
             pipelines.push(p);
         }
         pipelines
@@ -220,15 +220,6 @@ pub enum Command {
 impl Command {
     pub fn noop() -> Self {
         Self::Simple(SimpleCommand::noop())
-    }
-
-    pub fn is_builtin(&self) -> bool {
-        match self {
-            Command::Simple(cmd) => {
-                matches!(&cmd.name, Some(word) if builtin::has(&remove_quotes(&word.name)))
-            }
-            _ => false,
-        }
     }
 }
 
@@ -513,55 +504,6 @@ impl SimpleCommand {
             None
         }
     }
-    pub fn expand_name(self, engine: &mut Engine) -> Self {
-        match self.name {
-            Some(name) => SimpleCommand {
-                prefixes: self.prefixes,
-                name: Some(name.expand(engine)),
-                suffixes: self.suffixes,
-            },
-            None => self,
-        }
-    }
-
-    pub fn expand_prefixes(self, engine: &mut Engine) -> Self {
-        let mut prefixes = Vec::new();
-
-        for prefix in self.prefixes {
-            prefixes.push(prefix.expand(engine));
-        }
-
-        Self {
-            prefixes,
-            name: self.name,
-            suffixes: self.suffixes,
-        }
-    }
-
-    pub fn expand_suffixes(self, engine: &mut Engine) -> Self {
-        let mut suffixes = Vec::new();
-        for suffix in self.suffixes {
-            match suffix {
-                CmdSuffix::Word(word) => {
-                    let empty = word.name.is_empty();
-                    if !empty {
-                        let expanded = word.expand(engine);
-                        suffixes.push(CmdSuffix::Word(expanded));
-                    }
-                }
-
-                CmdSuffix::Redirection(r) => {
-                    suffixes.push(CmdSuffix::Redirection(r.expand(engine)))
-                }
-            }
-        }
-
-        Self {
-            prefixes: self.prefixes,
-            name: self.name,
-            suffixes,
-        }
-    }
 
     pub fn noop() -> Self {
         Self {
@@ -571,11 +513,15 @@ impl SimpleCommand {
         }
     }
 
+    pub fn as_args(&self) -> impl Iterator<Item = &String> {
+        self.name().into_iter().chain(self.args())
+    }
+
     pub fn args(&self) -> impl Iterator<Item = &String> {
         self.suffixes
             .iter()
             .filter_map(|m| match m {
-                CmdSuffix::Word(w) => Some(w),
+                CmdSuffix::Word(w) if !w.is_empty() => Some(w),
                 _ => None,
             })
             .map(|w| &w.name)
@@ -599,6 +545,10 @@ impl SimpleCommand {
                 CmdSuffix::Redirection(r) => Some(r),
                 _ => None,
             }))
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(&self.name, Some(Word { name, .. }) if builtin::has(&remove_quotes(name)))
     }
 }
 
@@ -634,6 +584,48 @@ pub enum FileDescriptor {
     Stdout,
     Stderr,
     Other(i32),
+}
+
+impl FileDescriptor {
+    pub fn try_from(input: &str) -> Option<Self> {
+        if input.chars().all(|c| c.is_ascii_digit()) {
+            input.parse::<i32>().ok().map(Into::into)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_raw_fd(&self) -> RawFd {
+        match self {
+            FileDescriptor::Stdin => 0,
+            FileDescriptor::Stdout => 1,
+            FileDescriptor::Stderr => 2,
+            FileDescriptor::Other(n) => *n,
+        }
+    }
+
+    pub fn is_stdin(&self) -> bool {
+        matches!(self, Self::Stdin)
+    }
+
+    pub fn is_stdout(&self) -> bool {
+        matches!(self, Self::Stdout)
+    }
+
+    pub fn is_stderr(&self) -> bool {
+        matches!(self, Self::Stderr)
+    }
+}
+
+impl From<RawFd> for FileDescriptor {
+    fn from(value: RawFd) -> Self {
+        match value {
+            0 => Self::Stdin,
+            1 => Self::Stdout,
+            2 => Self::Stderr,
+            n => Self::Other(n),
+        }
+    }
 }
 
 /// `Input`:         `<`
@@ -673,6 +665,53 @@ pub enum RedirectionType {
     #[cfg_attr(feature = "serde", serde(rename = "output_clobber"))]
     /// `>|`
     OutputClobber,
+}
+
+impl RedirectionType {
+    pub fn default_dst_fd(&self) -> FileDescriptor {
+        match self {
+            Self::Input => FileDescriptor::Stdin,
+            Self::InputFd => FileDescriptor::Stdin,
+            Self::ReadWrite => FileDescriptor::Stdin,
+            Self::Output => FileDescriptor::Stdout,
+            Self::OutputFd => FileDescriptor::Stdout,
+            Self::OutputAppend => FileDescriptor::Stdout,
+            Self::OutputClobber => FileDescriptor::Stdout,
+        }
+    }
+
+    pub fn default_src_fd(&self, path: &str) -> crate::Result<FileDescriptor> {
+        let mut options = std::fs::OpenOptions::new();
+        match self {
+            Self::InputFd => {
+                if let Some(fd) = FileDescriptor::try_from(path) {
+                    return Ok(fd);
+                } else {
+                    options.read(true);
+                }
+            }
+            Self::OutputFd => {
+                if let Some(fd) = FileDescriptor::try_from(path) {
+                    return Ok(fd);
+                } else {
+                    options.write(true).truncate(true).create(true);
+                }
+            }
+            Self::Input => {
+                options.read(true);
+            }
+            Self::ReadWrite => {
+                options.read(true).write(true).create(true);
+            }
+            Self::Output | Self::OutputClobber => {
+                options.write(true).truncate(true).create(true);
+            }
+            Self::OutputAppend => {
+                options.write(true).append(true).create(true);
+            }
+        }
+        Ok(options.open(path)?.into_raw_fd().into())
+    }
 }
 
 /// `Normal`:    `<<`
@@ -902,7 +941,11 @@ impl Word {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.name.is_empty()
+        // FIXME: this should check if it's literally '\\\n',
+        //        i.e. just the escaped newline, but something
+        //        is currently wrong with this expansion
+        !self.name_with_escaped_newlines.is_empty()
+            && self.name_with_escaped_newlines.chars().all(|c| c == '\n')
     }
 
     pub fn is_finished(&self) -> bool {

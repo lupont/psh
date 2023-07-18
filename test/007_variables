@@ -9,3 +9,6 @@ echo $d
 e=five
 echo | e=six | echo $e
 echo $e
+../test/res/echfoo
+foo=six ../test/res/echfoo
+echo $foo

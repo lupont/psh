@@ -21,6 +21,7 @@ pub enum Error {
     ParseError(ParseError),
     CancelledLine,
     Incomplete(String),
+    Nix(nix::Error),
 
     #[cfg(feature = "serde")]
     Json(serde_json::Error),
@@ -44,6 +45,7 @@ impl fmt::Display for Error {
                 Self::ParseError(e) => e.to_string(),
                 Self::CancelledLine => "line input cancelled".to_string(),
                 Self::Incomplete(line) => format!("incomplete line: '{line}'"),
+                Self::Nix(e) => format!("errno: {e}"),
 
                 #[cfg(feature = "serde")]
                 Self::Json(e) => e.to_string(),
@@ -57,6 +59,12 @@ impl std::error::Error for Error {}
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
+    }
+}
+
+impl From<nix::Error> for Error {
+    fn from(e: nix::Error) -> Self {
+        Self::Nix(e)
     }
 }
 

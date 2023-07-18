@@ -7,3 +7,7 @@ echo 'foo bar' | rev |
 
 echo foo \
 | rev
+
+../test/res/errcho foo | rev
+
+../test/res/errcho foo 2>&1 |rev

@@ -5,14 +5,19 @@ pub mod parser;
 
 use std::collections::HashMap;
 use std::env;
-use std::fs;
+use std::ffi::CString;
 use std::io::{self, Stdout, Write};
 use std::ops::Not;
-use std::os::fd::FromRawFd;
+use std::os::fd::RawFd;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
-use std::process::{self, Stdio};
 
+use nix::sys::wait::{waitpid, WaitStatus};
+use nix::unistd::{close, dup, ForkResult};
+use nix::unistd::{dup2, execvp};
+use nix::unistd::{fork, pipe};
+
+use self::expand::Expand;
 use self::parser::ast::prelude::*;
 pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
@@ -25,6 +30,47 @@ pub struct Engine {
     pub aliases: HashMap<String, String>,
     pub abbreviations: HashMap<String, String>,
     pub last_status: Vec<ExitStatus>,
+}
+
+#[derive(Debug, Clone)]
+struct ExecutionContext {
+    stdin: RawFd,
+    stdout: RawFd,
+    stderr: RawFd,
+    fds: Vec<(FileDescriptor, FileDescriptor)>,
+    background: bool,
+}
+
+impl ExecutionContext {
+    fn dup_fds(&self) -> Result<()> {
+        for &(src, dst) in &self.fds {
+            if src != dst {
+                dup2(src.as_raw_fd(), dst.as_raw_fd())?;
+            }
+        }
+        if !self.fds.iter().any(|&(_, dst)| dst.is_stdin()) {
+            dup2(self.stdin, FileDescriptor::Stdin.as_raw_fd())?;
+        }
+        if !self.fds.iter().any(|&(_, dst)| dst.is_stdout()) {
+            dup2(self.stdout, FileDescriptor::Stdout.as_raw_fd())?;
+        }
+        if !self.fds.iter().any(|&(_, dst)| dst.is_stderr()) {
+            dup2(self.stderr, FileDescriptor::Stderr.as_raw_fd())?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for ExecutionContext {
+    fn default() -> Self {
+        Self {
+            stdin: 0,
+            stdout: 1,
+            stderr: 2,
+            fds: Default::default(),
+            background: false,
+        }
+    }
 }
 
 impl Engine {
@@ -71,6 +117,25 @@ impl Engine {
         self.abbreviations.keys().any(|a| a == cmd)
     }
 
+    // FIXME: this needs to be totally reworked. the best way would be
+    //        to replace the actual input string as needed, but this
+    //        would require us to be able to take a SyntaxTree, update
+    //        the originating string and re-parse
+    fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
+        let (mut name, mut args) = (name.to_string(), Vec::new());
+        // should also be recursive
+        if let Some(expanded) = self.aliases.get(&name) {
+            let (a, b) = expanded.split_once(' ').unwrap_or((expanded, ""));
+            let b = b
+                .split(' ')
+                .filter(|s| !s.is_empty())
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            (name, args) = (a.to_string(), b);
+        }
+        (name, args)
+    }
+
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
         let ast = parse(line.to_string(), false)?;
         self.walk_ast(ast)
@@ -82,320 +147,146 @@ impl Engine {
         self.walk_ast(ast)
     }
 
-    pub fn execute_builtin(&mut self, cmd: Command) -> Result<ExitStatus> {
-        let Command::Simple(cmd) = cmd else {
-            return Err(Error::Unimplemented("tried to execute complex command as builtin".to_string()));
-        };
-
-        let cmd = cmd.expand_name(self).expand_suffixes(self);
-
-        let Some(command) = cmd.name() else {
-            return Err(Error::Unimplemented("tried to execute empty command as builtin".to_string()));
-        };
-
-        let args = cmd.args().map(|s| s.as_str()).collect::<Vec<_>>();
-
-        builtin::execute(self, command, &args)
-    }
-
-    fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
-        let initial_name = <&str>::clone(&name);
-        let (mut name, mut args) = (name.to_string(), Vec::new());
-        let mut stop = false;
-        while let Some(expanded) = self.aliases.get(&name) {
-            if stop {
-                break;
-            }
-            let (a, b) = expanded.split_once(' ').unwrap_or((expanded, ""));
-            let b = b
-                .split(' ')
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            if a == initial_name {
-                stop = true;
-            }
-            (name, args) = (a.to_string(), b);
-        }
-        (name, args)
-    }
-
-    fn execute_simple_command(
+    fn execute_builtin(
         &mut self,
-        cmd: SimpleCommand,
-        stdin: Stdio,
-        stdout: Stdio,
-        stderr: Stdio,
-        has_multiple_commands: bool,
-    ) -> Result<Option<(bool, process::Child)>> {
-        let cmd = cmd.expand_name(self);
-        let cmd = cmd.expand_prefixes(self);
-        let cmd = cmd.expand_suffixes(self);
+        args: &[impl AsRef<str>],
+        context: ExecutionContext,
+    ) -> Result<ExitStatus> {
+        let args = args.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
 
-        let mut assignments = Vec::new();
-        for assignment in cmd.assignments() {
-            let lhs = assignment.lhs.name.clone();
-            let rhs = match &assignment.rhs {
-                Some(rhs) => rhs.name.clone(),
-                None => "".to_string(),
-            };
-            assignments.push((lhs, rhs));
+        let old_fds = [(dup(0)?, 0), (dup(1)?, 1), (dup(2)?, 2)];
+        context.dup_fds()?;
+        let status = builtin::execute(self, args[0], &args[1..])?;
+
+        for (fd, n) in old_fds {
+            dup2(fd, n)?;
+            close(fd)?;
         }
 
-        let Some(name) = cmd.name() else {
-            if !has_multiple_commands {
-                for (k, v) in assignments {
-                    self.assignments.insert(k, v);
-                }
-            }
-            return Ok(None);
-        };
-
-        let (name, alias_args) = self.expand_alias(name);
-
-        if !self.has_executable(&name) {
-            return Err(Error::UnknownCommand(name));
-        }
-
-        let mut command = process::Command::new(name);
-
-        let mut stdin_override = None;
-        let mut stdout_override = None;
-        let mut stderr_override = None;
-        for redirection in cmd.redirections() {
-            match redirection {
-                Redirection::File {
-                    ty: RedirectionType::Input,
-                    target,
-                    ..
-                } => {
-                    let file = fs::OpenOptions::new()
-                        .read(true)
-                        .write(false)
-                        .append(false)
-                        .create(false)
-                        .open(&target.name)?;
-                    stdin_override = Some(Stdio::from(file));
-                }
-                Redirection::File {
-                    input_fd,
-                    ty: RedirectionType::Output,
-                    target,
-                    ..
-                } => {
-                    let file = fs::OpenOptions::new()
-                        .read(false)
-                        .write(true)
-                        .create(true)
-                        .append(false)
-                        .truncate(true)
-                        .open(&target.name)?;
-                    match input_fd {
-                        None | Some(FileDescriptor::Stdout) => {
-                            stdout_override = Some(Stdio::from(file))
-                        }
-                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
-                        _ => {}
-                    };
-                }
-                Redirection::File {
-                    input_fd,
-                    ty: RedirectionType::OutputAppend,
-                    target,
-                    ..
-                } => {
-                    let file = fs::OpenOptions::new()
-                        .read(false)
-                        .write(true)
-                        .create(true)
-                        .append(true)
-                        .open(&target.name)?;
-                    match input_fd {
-                        None | Some(FileDescriptor::Stdout) => {
-                            stdout_override = Some(Stdio::from(file))
-                        }
-                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
-                        _ => {}
-                    };
-                }
-                Redirection::File {
-                    input_fd,
-                    ty: RedirectionType::OutputClobber,
-                    target,
-                    ..
-                } => {
-                    // TODO: real implementation
-                    let file = fs::OpenOptions::new()
-                        .read(false)
-                        .write(true)
-                        .create(true)
-                        .append(false)
-                        .open(&target.name)?;
-                    match input_fd {
-                        None | Some(FileDescriptor::Stdout) => {
-                            stdout_override = Some(Stdio::from(file))
-                        }
-                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
-                        _ => {}
-                    };
-                }
-                Redirection::File {
-                    input_fd,
-                    ty: RedirectionType::ReadWrite,
-                    target,
-                    ..
-                } => {
-                    // TODO: real implementation
-                    let file = fs::OpenOptions::new()
-                        .read(false)
-                        .write(true)
-                        .create(true)
-                        .append(false)
-                        .open(&target.name)?;
-                    match input_fd {
-                        None | Some(FileDescriptor::Stdout) => {
-                            stdout_override = Some(Stdio::from(file))
-                        }
-                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
-                        _ => {}
-                    };
-                }
-
-                Redirection::File {
-                    ty: RedirectionType::InputFd,
-                    target,
-                    ..
-                } => {
-                    // TODO: does not currently work
-                    let fd = target.to_string().parse::<i32>().unwrap();
-                    let file = unsafe { fs::File::from_raw_fd(fd) };
-                    stdin_override = Some(Stdio::from(file));
-                }
-                Redirection::File {
-                    input_fd,
-                    ty: RedirectionType::OutputFd,
-                    target,
-                    ..
-                } => {
-                    // TODO: does not currently work
-                    let fd = target.to_string().parse::<i32>().unwrap();
-                    let file = unsafe { fs::File::from_raw_fd(fd) };
-                    match input_fd {
-                        None | Some(FileDescriptor::Stdout) => {
-                            stdout_override = Some(Stdio::from(file))
-                        }
-                        Some(FileDescriptor::Stderr) => stderr_override = Some(Stdio::from(file)),
-                        _ => {}
-                    };
-                }
-
-                Redirection::Here { .. } => {}
-            }
-        }
-
-        let stdout_redirected = stdout_override.is_some();
-
-        let mut proc = command
-            .envs(env::vars())
-            .envs(assignments)
-            .stdin(stdin_override.unwrap_or(stdin))
-            .stdout(stdout_override.unwrap_or(stdout))
-            .stderr(stderr_override.unwrap_or(stderr))
-            .args(cmd.args());
-
-        if !alias_args.is_empty() {
-            proc = proc.args(alias_args);
-        }
-
-        let child = proc.spawn()?;
-
-        Ok(Some((stdout_redirected, child)))
+        Ok(status)
     }
 
-    fn _execute_compound_command(
+    fn execute_external_command<'a>(
         &mut self,
-        _cmd: &CompoundCommand,
-        _stdin: Stdio,
-        _stdout: Stdio,
-        _stderr: Stdio,
-    ) -> Result<process::Child> {
-        todo!()
-    }
-
-    fn _execute_function_defenition(
-        &mut self,
-        _func_def: &FunctionDefinition,
-        _stdin: Stdio,
-        _stdout: Stdio,
-        _stderr: Stdio,
-    ) -> Result<process::Child> {
-        todo!()
-    }
-
-    fn execute_command(
-        &mut self,
-        command: Command,
-        stdin: Stdio,
-        stdout: Stdio,
-        stderr: Stdio,
-        has_multiple_commands: bool,
-    ) -> Result<Option<(bool, process::Child)>> {
-        match command {
-            Command::Simple(cmd) => {
-                self.execute_simple_command(cmd, stdin, stdout, stderr, has_multiple_commands)
+        args: &[impl AsRef<str>],
+        context: ExecutionContext,
+        assignments: impl Iterator<Item = &'a VariableAssignment>,
+    ) -> Result<ExitStatus> {
+        match unsafe { fork() } {
+            Ok(ForkResult::Parent { child }) => {
+                let mut rc = 0;
+                if !context.background {
+                    if let Ok(WaitStatus::Exited(_, code)) = waitpid(child, None) {
+                        rc = code;
+                    }
+                }
+                Ok(ExitStatus::from_code(rc))
             }
-            Command::Compound(_cmd, _redirections) => todo!(), //self.execute_compound_command(cmd, stdin, stdout, stderr),
-            Command::FunctionDefinition(_func_def) => todo!(), //self.execute_function_defenition(func_def, stdin, stdout, stderr)
+
+            Ok(ForkResult::Child) => {
+                context.dup_fds()?;
+
+                for assignment in assignments {
+                    let rhs = if let Some(rhs) = &assignment.rhs {
+                        rhs.to_string()
+                    } else {
+                        Default::default()
+                    };
+                    env::set_var(assignment.lhs.to_string(), rhs);
+                }
+
+                let args = args
+                    .iter()
+                    .map(|s| CString::new(s.as_ref()).unwrap())
+                    .collect::<Vec<_>>();
+
+                match execvp(&args[0], &args) {
+                    Ok(_) => unreachable!(),
+                    Err(e) => panic!("psh: error in exec: {e}"),
+                }
+            }
+            Err(_e) => todo!(),
         }
     }
 
     pub fn execute_pipeline(&mut self, pipeline: Pipeline, background: bool) -> Result<ExitStatus> {
         let has_bang = pipeline.has_bang();
         let pipeline_cmds = pipeline.full();
-        let has_multiple_commands = pipeline_cmds.len() > 1;
+        let pipeline_amount = pipeline_cmds.len();
         let mut pipeline_iter = pipeline_cmds.into_iter().peekable();
-        let mut pids = Vec::with_capacity(pipeline_iter.len());
 
-        let mut last_stdout = None;
+        let mut stdin = 0;
         let mut last_status = ExitStatus::from_code(0);
 
         while let Some(cmd) = pipeline_iter.next() {
-            if cmd.is_builtin() {
-                last_status = self.execute_builtin(cmd)?;
-                break;
-            }
+            let cmd = cmd.expand(self);
+            if let Command::Simple(cmd) = cmd {
+                let mut args = cmd.as_args().collect::<Vec<_>>();
 
-            let stdin = match last_stdout {
-                Some(Some(stdout)) => Stdio::from(stdout),
-                Some(None) => Stdio::null(),
-                None => Stdio::inherit(),
-            };
+                let (pipe_read, pipe_write) = pipe()?;
 
-            let stdout = match pipeline_iter.peek() {
-                Some(_) => Stdio::piped(),
-                None => Stdio::inherit(),
-            };
-
-            // FIXME: figure out how to do this on-spec
-            let stderr = Stdio::inherit();
-
-            if let Some((stdout_redirected, mut child)) =
-                self.execute_command(cmd, stdin, stdout, stderr, has_multiple_commands)?
-            {
-                last_stdout = if stdout_redirected {
-                    Some(None)
+                let stdout = if pipeline_iter.peek().is_some() {
+                    pipe_write
                 } else {
-                    Some(child.stdout.take())
+                    1
                 };
 
-                pids.push(child.id());
+                let mut fds = Vec::new();
 
-                if !background && pipeline_iter.peek().is_none() {
-                    let status = child.wait().unwrap();
-                    last_status = ExitStatus::from(status);
+                for redirection in cmd.redirections() {
+                    let Redirection::File {
+                        input_fd,
+                        ty,
+                        target,
+                        ..
+                    } = redirection else {
+                        continue;
+                    };
+
+                    let mut src_fd = ty.default_src_fd(target.name())?;
+                    let dst_fd = input_fd.unwrap_or_else(|| ty.default_dst_fd());
+                    if src_fd == FileDescriptor::Stdin {
+                        src_fd = FileDescriptor::from(stdin);
+                    } else if src_fd == FileDescriptor::Stdout {
+                        src_fd = FileDescriptor::from(stdout);
+                    }
+                    fds.push((src_fd, dst_fd));
                 }
-            } else {
-                last_stdout = Some(None);
+
+                let context = ExecutionContext {
+                    stdin,
+                    stdout,
+                    stderr: 2,
+                    fds,
+                    background,
+                };
+
+                if let Some(name) = cmd.name() {
+                    let (expanded_alias, alias_args) = self.expand_alias(args[0]);
+
+                    args[0] = &expanded_alias;
+                    args.splice(1..1, alias_args.iter());
+
+                    last_status = if !self.has_executable(args[0]) {
+                        return Err(Error::UnknownCommand(name.to_string()));
+                    } else if cmd.is_builtin() {
+                        self.execute_builtin(&args, context)?
+                    } else {
+                        self.execute_external_command(&args, context, cmd.assignments())?
+                    };
+                } else if pipeline_amount == 1 {
+                    for assignment in cmd.assignments() {
+                        let rhs = if let Some(rhs) = &assignment.rhs {
+                            rhs.to_string()
+                        } else {
+                            Default::default()
+                        };
+                        self.assignments.insert(assignment.lhs.to_string(), rhs);
+                    }
+                }
+
+                stdin = pipe_read;
+                close(pipe_write)?;
             }
         }
 
