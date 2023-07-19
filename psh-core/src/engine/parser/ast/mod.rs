@@ -900,7 +900,7 @@ where
             }
 
             Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
-                let word = Word::new(&reserved.to_string(), ws);
+                let word = Word::new(reserved.as_ref(), ws);
                 Ok(word)
             }
 

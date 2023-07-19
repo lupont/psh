@@ -35,7 +35,7 @@ impl ToString for SemanticToken {
     fn to_string(&self) -> String {
         match self {
             SemanticToken::Word(word) => word.to_string(),
-            SemanticToken::Reserved(reserved_word) => reserved_word.to_string(),
+            SemanticToken::Reserved(reserved_word) => reserved_word.as_ref().to_string(),
             SemanticToken::Whitespace(ws) => ws.to_string(),
             SemanticToken::And => "&&".to_string(),
             SemanticToken::Or => "||".to_string(),
@@ -71,8 +71,8 @@ pub enum ReservedWord {
     While,
 }
 
-impl ToString for ReservedWord {
-    fn to_string(&self) -> String {
+impl AsRef<str> for ReservedWord {
+    fn as_ref(&self) -> &str {
         match self {
             ReservedWord::Bang => "!",
             ReservedWord::LBrace => "{",
@@ -91,7 +91,6 @@ impl ToString for ReservedWord {
             ReservedWord::Until => "until",
             ReservedWord::While => "while",
         }
-        .to_string()
     }
 }
 
