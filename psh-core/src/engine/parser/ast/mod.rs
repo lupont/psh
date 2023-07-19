@@ -181,7 +181,7 @@ where
                 },
             ))
         } else {
-            Err(ParseError::Invalid)
+            Err(ParseError::None)
         }
     }
 
@@ -285,10 +285,6 @@ where
                 };
                 return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
             }
-            Err(ParseError::Invalid) => {
-                let ws = self.swallow_whitespace();
-                return Err(ParseError::UnfinishedPipeSequence(ws, PipeSequence::noop()));
-            }
             Err(e) => return Err(e),
         };
 
@@ -307,7 +303,7 @@ where
                     };
                     return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
                 }
-                Err(ParseError::Invalid) => {
+                Err(ParseError::None) => {
                     tail.push((pipe, linebreak, Command::noop()));
                     let seq = PipeSequence {
                         head: Box::new(head),
@@ -363,18 +359,18 @@ where
         let lparen_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::LParen) else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         let Ok(body) = self.parse_compound_list() else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         let rparen_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::RParen) else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         Ok(Subshell {
@@ -390,7 +386,7 @@ where
 
         let Ok(term) = self.parse_term() else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         let separator = self.parse_separator().ok();
@@ -482,7 +478,7 @@ where
                 Some(token) => parens.push_str(&token.to_string()),
                 None => {
                     *self = initial;
-                    return Err(ParseError::Invalid);
+                    return Err(ParseError::None);
                 }
             };
         }
@@ -519,18 +515,18 @@ where
         let lbrace_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::LBrace)) else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         let Ok(body) = self.parse_compound_list() else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         let rbrace_ws = self.swallow_whitespace();
         let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::RBrace)) else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
         Ok(BraceGroup {
@@ -555,7 +551,7 @@ where
             .map(|body| DoGroup { body })
             .map_err(|_| {
                 *self = initial;
-                ParseError::Invalid
+                ParseError::None
             })
     }
 
@@ -600,7 +596,7 @@ where
 
         if name.is_none() && prefixes.is_empty() && suffixes.is_empty() {
             *self = initial;
-            Err(ParseError::Invalid)
+            Err(ParseError::None)
         } else {
             Ok(SimpleCommand {
                 name,
@@ -639,7 +635,7 @@ where
         }
 
         if whitespace.is_empty() {
-            Err(ParseError::Invalid)
+            Err(ParseError::None)
         } else {
             Ok(NewlineList { whitespace })
         }
@@ -655,7 +651,7 @@ where
         let ws = self.swallow_whitespace();
         self.consume_single(SemanticToken::SyncSeparator)
             .or_else(|| self.consume_single(SemanticToken::AsyncSeparator))
-            .ok_or(ParseError::Invalid)
+            .ok_or(ParseError::None)
             .map(|t| match t {
                 SemanticToken::SyncSeparator => SeparatorOp::Sync(ws),
                 SemanticToken::AsyncSeparator => SeparatorOp::Async(ws),
@@ -663,7 +659,7 @@ where
             })
             .map_err(|_| {
                 *self = initial;
-                ParseError::Invalid
+                ParseError::None
             })
     }
 
@@ -707,10 +703,10 @@ where
                 })
             } else {
                 *self = initial;
-                Err(ParseError::Invalid)
+                Err(ParseError::None)
             }
         } else {
-            Err(ParseError::Invalid)
+            Err(ParseError::None)
         }
     }
 
@@ -736,12 +732,15 @@ where
 
         let Ok(ty) = self.parse_redirection_type() else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
-        let Ok(target) = self.parse_word(true) else {
-            *self = initial;
-            return Err(ParseError::Invalid);
+        let target = match self.parse_word(true) {
+            Ok(word) => word,
+            Err(e) => {
+                *self = initial;
+                return Err(e);
+            }
         };
 
         Ok(Redirection::File {
@@ -761,12 +760,15 @@ where
 
         let Ok(ty) = self.parse_here_doc_type() else {
             *self = initial;
-            return Err(ParseError::Invalid);
+            return Err(ParseError::None);
         };
 
-        let Ok(end) = self.parse_word(true) else {
-            *self = initial;
-            return Err(ParseError::Invalid);
+        let end = match self.parse_word(true) {
+            Ok(word) => word,
+            Err(e) => {
+                *self = initial;
+                return Err(e);
+            }
         };
 
         // FIXME: actually parse content
@@ -812,7 +814,7 @@ where
 
             _ => {
                 *self = initial;
-                Err(ParseError::Invalid)
+                Err(ParseError::None)
             }
         }
     }
@@ -833,7 +835,7 @@ where
 
             _ => {
                 *self = initial;
-                Err(ParseError::Invalid)
+                Err(ParseError::None)
             }
         }
     }
@@ -866,7 +868,7 @@ where
         }
 
         *self = initial;
-        Err(ParseError::Invalid)
+        Err(ParseError::None)
     }
 
     fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word> {
@@ -890,7 +892,7 @@ where
 
             _ => {
                 *self = initial;
-                Err(ParseError::Invalid)
+                Err(ParseError::None)
             }
         }
     }
@@ -912,7 +914,7 @@ where
         }
 
         *self = initial;
-        Err(ParseError::Invalid)
+        Err(ParseError::None)
     }
 
     fn parse_comment(&mut self) -> ParseResult<Comment> {
@@ -926,7 +928,7 @@ where
             })
         } else {
             *self = initial;
-            Err(ParseError::Invalid)
+            Err(ParseError::None)
         }
     }
 
@@ -938,7 +940,7 @@ where
             .map(|_| Pipe { whitespace })
             .ok_or_else(|| {
                 *self = initial;
-                ParseError::Invalid
+                ParseError::None
             })
     }
 
@@ -950,7 +952,7 @@ where
             .map(|_| Bang { whitespace })
             .ok_or_else(|| {
                 *self = initial;
-                ParseError::Invalid
+                ParseError::None
             })
     }
 
@@ -967,7 +969,7 @@ where
             })
             .ok_or_else(|| {
                 *self = initial;
-                ParseError::Invalid
+                ParseError::None
             })
     }
 

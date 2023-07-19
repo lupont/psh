@@ -63,7 +63,7 @@ impl From<ParseError> for Error {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ParseError {
     InvalidName(String),
-    Invalid,
+    None,
     Done,
     Unimplemented(String),
     UnfinishedCompleteCommands(LeadingWhitespace, CompleteCommands),
@@ -84,7 +84,7 @@ impl fmt::Display for ParseError {
             "{}",
             match self {
                 Self::InvalidName(name) => format!("`{name}` is not a valid name"),
-                Self::Invalid => "invalid syntax".to_string(),
+                Self::None => "could not parse this here".to_string(),
                 Self::Done => "all finished".to_string(),
                 Self::Unimplemented(s) => format!("not yet implemented: {s}"),
                 Self::UnfinishedCompleteCommands(_, _) =>
