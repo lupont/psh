@@ -801,30 +801,30 @@ where
         use SemanticToken::*;
         let initial = self.clone();
 
-        match (self.next(), self.peek()) {
-            (Some(RedirectInput), Some(AsyncSeparator)) => {
+        match self.next().zip(self.peek()) {
+            Some((RedirectInput, AsyncSeparator)) => {
                 self.next();
                 Ok(RedirectionType::InputFd)
             }
-            (Some(RedirectInput), Some(RedirectOutput)) => {
+            Some((RedirectInput, RedirectOutput)) => {
                 self.next();
                 Ok(RedirectionType::ReadWrite)
             }
-            (Some(RedirectInput), _) => Ok(RedirectionType::Input),
+            Some((RedirectInput, _)) => Ok(RedirectionType::Input),
 
-            (Some(RedirectOutput), Some(AsyncSeparator)) => {
+            Some((RedirectOutput, AsyncSeparator)) => {
                 self.next();
                 Ok(RedirectionType::OutputFd)
             }
-            (Some(RedirectOutput), Some(RedirectOutput)) => {
+            Some((RedirectOutput, RedirectOutput)) => {
                 self.next();
                 Ok(RedirectionType::OutputAppend)
             }
-            (Some(RedirectOutput), Some(Pipe)) => {
+            Some((RedirectOutput, Pipe)) => {
                 self.next();
                 Ok(RedirectionType::OutputClobber)
             }
-            (Some(RedirectOutput), _) => Ok(RedirectionType::Output),
+            Some((RedirectOutput, _)) => Ok(RedirectionType::Output),
 
             _ => {
                 *self = initial;
@@ -998,14 +998,13 @@ where
 }
 
 fn is_valid_part_of_name(c: char) -> bool {
-    matches!(c, '0'..='9' | 'a'..='z' | 'A'..='Z' | '_')
+    c.is_ascii_alphanumeric() || c == '_'
 }
 
 fn is_name(input: impl AsRef<str>) -> bool {
     let mut input = input.as_ref().chars().peekable();
     match input.peek() {
-        Some('0'..='9') => false,
-        None => false,
+        None | Some('0'..='9') => false,
         _ => input.all(is_valid_part_of_name),
     }
 }
