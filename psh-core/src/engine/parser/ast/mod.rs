@@ -201,9 +201,11 @@ where
         };
 
         let mut tail = Vec::new();
+        let mut prev = self.clone();
 
         loop {
             let Ok(sep_op) = self.parse_separator_op() else {
+                *self = prev;
                 break;
             };
             let and_or_list = match self.parse_and_or_list() {
@@ -212,11 +214,16 @@ where
                     tail.push((sep_op, and_or_list));
                     return Err(ParseError::UnfinishedList(ws, List { head, tail }));
                 }
+                Err(ParseError::None) => {
+                    *self = prev;
+                    break;
+                }
                 Err(e) => {
                     return Err(e);
                 }
             };
             tail.push((sep_op, and_or_list));
+            prev = self.clone();
         }
 
         Ok(List { head, tail })
@@ -248,6 +255,13 @@ where
                     tail.push((logical_op, linebreak, pipeline));
                     return Err(ParseError::UnfinishedAndOrList(
                         ws,
+                        AndOrList { head, tail },
+                    ));
+                }
+                Err(ParseError::None) => {
+                    tail.push((logical_op, linebreak, Pipeline::noop()));
+                    return Err(ParseError::UnfinishedAndOrList(
+                        Default::default(),
                         AndOrList { head, tail },
                     ));
                 }
