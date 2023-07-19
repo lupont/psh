@@ -99,7 +99,7 @@ impl Engine {
     }
 
     fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
-        let initial_name = name.clone();
+        let initial_name = <&str>::clone(&name);
         let (mut name, mut args) = (name.to_string(), Vec::new());
         let mut stop = false;
         while let Some(expanded) = self.aliases.get(&name) {
