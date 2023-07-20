@@ -19,6 +19,13 @@ pub enum SemanticToken {
     Word(String),
     Reserved(ReservedWord),
     Whitespace(char),
+    CmdSubStart,
+    ArithmeticStart,
+    DoubleQuote,
+    SingleQuote,
+    Equals,
+    Dollar,
+    Backslash,
     And,
     Or,
     SyncSeparator,
@@ -34,19 +41,26 @@ pub enum SemanticToken {
 impl ToString for SemanticToken {
     fn to_string(&self) -> String {
         match self {
-            SemanticToken::Word(word) => word.to_string(),
-            SemanticToken::Reserved(reserved_word) => reserved_word.as_ref().to_string(),
-            SemanticToken::Whitespace(ws) => ws.to_string(),
-            SemanticToken::And => "&&".to_string(),
-            SemanticToken::Or => "||".to_string(),
-            SemanticToken::SyncSeparator => ";".to_string(),
-            SemanticToken::AsyncSeparator => "&".to_string(),
-            SemanticToken::Pipe => "|".to_string(),
-            SemanticToken::RedirectInput => "<".to_string(),
-            SemanticToken::RedirectOutput => ">".to_string(),
-            SemanticToken::LParen => "(".to_string(),
-            SemanticToken::RParen => ")".to_string(),
-            SemanticToken::Comment(comment) => format!("#{comment}"),
+            Self::Word(word) => word.to_string(),
+            Self::Reserved(reserved_word) => reserved_word.as_ref().to_string(),
+            Self::Whitespace(ws) => ws.to_string(),
+            Self::CmdSubStart => "$(".to_string(),
+            Self::ArithmeticStart => "$((".to_string(),
+            Self::DoubleQuote => "\"".to_string(),
+            Self::SingleQuote => "'".to_string(),
+            Self::Equals => "=".to_string(),
+            Self::Dollar => "$".to_string(),
+            Self::Backslash => "\\".to_string(),
+            Self::And => "&&".to_string(),
+            Self::Or => "||".to_string(),
+            Self::SyncSeparator => ";".to_string(),
+            Self::AsyncSeparator => "&".to_string(),
+            Self::Pipe => "|".to_string(),
+            Self::RedirectInput => "<".to_string(),
+            Self::RedirectOutput => ">".to_string(),
+            Self::LParen => "(".to_string(),
+            Self::RParen => ")".to_string(),
+            Self::Comment(comment) => format!("#{comment}"),
         }
     }
 }
@@ -106,11 +120,15 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
     fn parse_rparen(&mut self) -> Option<SemanticToken>;
     fn parse_comment(&mut self) -> Option<SemanticToken>;
     fn parse_whitespace(&mut self) -> Option<SemanticToken>;
+    fn parse_cmd_sub_start(&mut self) -> Option<SemanticToken>;
+    fn parse_arithmetic_start(&mut self) -> Option<SemanticToken>;
+    fn parse_dollar(&mut self) -> Option<SemanticToken>;
+    fn parse_backslash(&mut self) -> Option<SemanticToken>;
+    fn parse_double_quote(&mut self) -> Option<SemanticToken>;
+    fn parse_single_quote(&mut self) -> Option<SemanticToken>;
+    fn parse_equals(&mut self) -> Option<SemanticToken>;
     fn parse_word(&mut self) -> Option<SemanticToken>;
     fn parse_reserved_word(&mut self) -> Option<SemanticToken>;
-
-    fn parse_single_quoted_string(&mut self) -> Option<String>;
-    fn parse_double_quoted_string(&mut self) -> Option<String>;
 
     fn parse(&mut self) -> Option<SemanticToken> {
         self.parse_whitespace()
@@ -125,6 +143,13 @@ pub trait SemanticTokenizer: Iterator<Item = Token> {
             .or_else(|| self.parse_rparen())
             .or_else(|| self.parse_comment())
             .or_else(|| self.parse_reserved_word())
+            .or_else(|| self.parse_arithmetic_start())
+            .or_else(|| self.parse_cmd_sub_start())
+            .or_else(|| self.parse_dollar())
+            .or_else(|| self.parse_backslash())
+            .or_else(|| self.parse_double_quote())
+            .or_else(|| self.parse_single_quote())
+            .or_else(|| self.parse_equals())
             .or_else(|| self.parse_word())
     }
 
@@ -204,196 +229,52 @@ where
             })
     }
 
-    fn parse_single_quoted_string(&mut self) -> Option<String> {
-        if !matches!(self.peek(), Some(Token::SingleQuote)) {
-            return None;
-        }
-
-        let mut word = String::new();
-
-        let quote = self.next().unwrap();
-        word.push_str(&quote.to_str());
-
-        while self.peek().is_some() {
-            let next = self.next().unwrap();
-            word.push_str(&next.to_str());
-            if let Token::SingleQuote = next {
-                break;
-            }
-        }
-
-        if word.is_empty() {
-            None
-        } else {
-            Some(word)
-        }
+    fn parse_arithmetic_start(&mut self) -> Option<SemanticToken> {
+        self.consume_multiple([Token::Dollar, Token::LParen, Token::LParen])
+            .map(|_| SemanticToken::ArithmeticStart)
     }
 
-    fn parse_double_quoted_string(&mut self) -> Option<String> {
-        if !matches!(self.peek(), Some(Token::DoubleQuote)) {
-            return None;
-        }
+    fn parse_cmd_sub_start(&mut self) -> Option<SemanticToken> {
+        self.consume_multiple([Token::Dollar, Token::LParen])
+            .map(|_| SemanticToken::CmdSubStart)
+    }
 
-        let mut word = String::new();
+    fn parse_backslash(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::Backslash)
+            .map(|_| SemanticToken::Backslash)
+    }
 
-        let quote = self.next().unwrap();
-        word.push_str(&quote.to_str());
+    fn parse_dollar(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::Dollar)
+            .map(|_| SemanticToken::Dollar)
+    }
 
-        let mut is_escaped = false;
+    fn parse_double_quote(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::DoubleQuote)
+            .map(|_| SemanticToken::DoubleQuote)
+    }
 
-        while let Some(token) = self.peek() {
-            match token {
-                Token::Backslash => {
-                    let slash = self.next().unwrap();
-                    word.push_str(&slash.to_str());
-                    if let Some(Token::Whitespace('\n')) = self.peek() {
-                        self.next();
-                        word.push('\n');
-                    } else {
-                        is_escaped ^= true;
-                    }
-                }
+    fn parse_single_quote(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::SingleQuote)
+            .map(|_| SemanticToken::SingleQuote)
+    }
 
-                Token::DoubleQuote if is_escaped => {
-                    let quote = self.next().unwrap();
-                    word.push_str(&quote.to_str());
-                    is_escaped = false;
-                }
-
-                Token::DoubleQuote if !is_escaped => {
-                    let quote = self.next().unwrap();
-                    word.push_str(&quote.to_str());
-                    break;
-                }
-
-                _ => {
-                    let inner = self.next().unwrap();
-                    word.push_str(&inner.to_str());
-                }
-            }
-        }
-
-        Some(word)
+    fn parse_equals(&mut self) -> Option<SemanticToken> {
+        self.consume_single(Token::Equals)
+            .map(|_| SemanticToken::Equals)
     }
 
     fn parse_word(&mut self) -> Option<SemanticToken> {
-        if !matches!(
-            self.peek(),
-            Some(
-                Token::Backslash
-                    | Token::Backtick
-                    | Token::Dollar
-                    | Token::Equals
-                    | Token::Word(_)
-                    | Token::SingleQuote
-                    | Token::DoubleQuote
-            )
-        ) {
+        if !matches!(self.peek(), Some(Token::Backtick | Token::Word(_))) {
             return None;
         }
 
-        let initial = self.clone();
-
         let mut word = String::new();
-
-        let mut is_escaped = false;
-        let mut nested_level = Vec::new();
-
-        enum SubExprType {
-            CmdSub,
-            Arithmetic,
-        }
 
         while let Some(token) = self.peek() {
             match token {
-                t if is_escaped => {
-                    word.push_str(&t.to_str());
-                    self.next();
-                    is_escaped = false;
-                }
-
-                Token::Backslash => {
-                    let slash = self.next().unwrap();
-                    word.push_str(&slash.to_str());
-                    if let Some(Token::Whitespace('\n')) = self.peek() {
-                        self.next();
-                        word.push('\n');
-                    } else {
-                        is_escaped ^= true;
-                    }
-                }
-
-                Token::Equals => {
-                    word.push('=');
-                    self.next();
-                }
-
-                Token::Dollar => {
-                    word.push('$');
-                    self.next();
-
-                    if let Some(Token::LParen) = self.peek() {
-                        self.next();
-                        word.push('(');
-
-                        if let Some(Token::LParen) = self.peek() {
-                            self.next();
-                            word.push('(');
-                            nested_level.push(SubExprType::Arithmetic);
-                        } else {
-                            nested_level.push(SubExprType::CmdSub);
-                        }
-                    }
-                }
-
-                Token::RParen => {
-                    word.push(')');
-                    self.next();
-
-                    if let Some(SubExprType::Arithmetic) = nested_level.pop() {
-                        if let Some(Token::RParen) = self.peek() {
-                            word.push(')');
-                            self.next();
-                        }
-                    }
-                }
-
-                Token::SingleQuote => {
-                    if let Some(s) = self.parse_single_quoted_string() {
-                        word.push_str(&s);
-                    } else {
-                        *self = initial;
-                        return None;
-                    }
-                }
-
-                Token::DoubleQuote => {
-                    if let Some(s) = self.parse_double_quoted_string() {
-                        word.push_str(&s);
-                    } else {
-                        *self = initial;
-                        return None;
-                    }
-                }
-
-                Token::Whitespace(c) if is_escaped || !nested_level.is_empty() => {
-                    word.push(*c);
-                    self.next();
-                    is_escaped = false;
-                }
-
                 Token::Word(s) => {
                     word.push_str(s);
-                    self.next();
-                }
-
-                token if !nested_level.is_empty() => {
-                    word.push_str(&token.to_str());
-                    self.next();
-                }
-
-                Token::Pound if !word.is_empty() => {
-                    word.push_str(&token.to_str());
                     self.next();
                 }
 
@@ -409,12 +290,12 @@ where
     }
 
     fn parse_and(&mut self) -> Option<SemanticToken> {
-        self.consume_multiple(vec![Token::Ampersand, Token::Ampersand])
+        self.consume_multiple([Token::Ampersand, Token::Ampersand])
             .map(|_| SemanticToken::And)
     }
 
     fn parse_or(&mut self) -> Option<SemanticToken> {
-        self.consume_multiple(vec![Token::Pipe, Token::Pipe])
+        self.consume_multiple([Token::Pipe, Token::Pipe])
             .map(|_| SemanticToken::Or)
     }
 
@@ -519,21 +400,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_double_quoted_string() {
-        let mut input = r#""foo bar \"baz \\ quux\"""#.chars().peekable();
-        let mut tokens = input.tokenize().into_iter().peekable();
-        let parsed = tokens.parse();
-        let expected = SemanticToken::Word(r#""foo bar \"baz \\ quux\"""#.to_string());
-        assert_eq!(Some(expected), parsed);
-
-        let mut input = r#""$(echo "foo" $(("1")))""#.chars().peekable();
-        let mut tokens = input.tokenize().into_iter().peekable();
-        let parsed = tokens.parse();
-        let expected = SemanticToken::Word(r#""$(echo "foo" $(("1")))""#.to_string());
-        assert_eq!(Some(expected), parsed);
-    }
-
-    #[test]
     fn parse_comment() {
         let mut input = "#this is a comment".chars().peekable();
         let mut tokens = input.tokenize().into_iter().peekable();
@@ -559,7 +425,9 @@ mod tests {
         .into_iter()
         .peekable();
 
-        assert_eq!(Some(Word("'foo'".to_string())), input.parse());
+        assert_eq!(Some(SingleQuote), input.parse());
+        assert_eq!(Some(Word("foo".to_string())), input.parse());
+        assert_eq!(Some(SingleQuote), input.parse());
         assert!(input.next().is_none());
 
         let mut input = vec![
@@ -577,30 +445,31 @@ mod tests {
         .into_iter()
         .peekable();
 
-        assert_eq!(
-            Some(Word("foo'bar baz'quux\\ yo".to_string())),
-            input.parse()
-        );
+        assert_eq!(Some(Word("foo".to_string())), input.parse());
+        assert_eq!(Some(SingleQuote), input.parse());
+        assert_eq!(Some(Word("bar".to_string())), input.parse());
+        assert_eq!(Some(Whitespace(' ')), input.parse());
+        assert_eq!(Some(Word("baz".to_string())), input.parse());
+        assert_eq!(Some(SingleQuote), input.parse());
+        assert_eq!(Some(Word("quux".to_string())), input.parse());
+        assert_eq!(Some(Backslash), input.parse());
+        assert_eq!(Some(Whitespace(' ')), input.parse());
+        assert_eq!(Some(Word("yo".to_string())), input.parse());
         assert!(input.next().is_none());
 
         let input = "$(echo foo)".chars().peekable().tokenize();
-        let actual = input.into_iter().peekable().parse();
-        let expected = Word("$(echo foo)".to_string());
-        assert_eq!(Some(expected), actual);
+        let mut input = input.into_iter().peekable(); //.parse();
+        assert_eq!(Some(CmdSubStart), input.parse());
+        assert_eq!(Some(Word("echo".to_string())), input.parse());
+        assert_eq!(Some(Whitespace(' ')), input.parse());
+        assert_eq!(Some(Word("foo".to_string())), input.parse());
+        assert_eq!(Some(RParen), input.parse());
+        // let expected = CmdSubStart;
+        // assert_eq!(Some(expected), actual);
 
-        let input = r#"$(echo "$(echo foo\ bar $(( 1))))' 2'"#.chars().peekable().tokenize();
+        let input = "$(".chars().peekable().tokenize();
         let actual = input.into_iter().peekable().parse();
-        let expected = Word(r#"$(echo "$(echo foo\ bar $(( 1))))' 2'"#.to_string());
-        assert_eq!(Some(expected), actual);
-
-        let input = r#"$(echo '))  a')"#.chars().peekable().tokenize();
-        let actual = input.into_iter().peekable().parse();
-        let expected = Word(r#"$(echo '))  a')"#.to_string());
-        assert_eq!(Some(expected), actual);
-
-        let input = r#"$(echo \$\(\-\a)"#.chars().peekable().tokenize();
-        let actual = input.into_iter().peekable().parse();
-        let expected = Word(r#"$(echo \$\(\-\a)"#.to_string());
+        let expected = CmdSubStart;
         assert_eq!(Some(expected), actual);
     }
 
@@ -609,14 +478,19 @@ mod tests {
         test_tokenize(
             r#"foo="bar" <file echo $bar 2>> /dev/null"#,
             vec![
-                Word(r#"foo="bar""#.to_string()),
+                Word("foo".to_string()),
+                Equals,
+                DoubleQuote,
+                Word("bar".to_string()),
+                DoubleQuote,
                 Whitespace(' '),
                 RedirectInput,
                 Word("file".to_string()),
                 Whitespace(' '),
                 Word("echo".to_string()),
                 Whitespace(' '),
-                Word("$bar".to_string()),
+                Dollar,
+                Word("bar".to_string()),
                 Whitespace(' '),
                 Word("2".to_string()),
                 RedirectOutput,
@@ -634,7 +508,21 @@ mod tests {
             vec![
                 Word("echo".to_string()),
                 Whitespace(' '),
-                Word("$(b $(c $(( d ))) )".to_string()),
+                CmdSubStart,
+                Word("b".to_string()),
+                Whitespace(' '),
+                CmdSubStart,
+                Word("c".to_string()),
+                Whitespace(' '),
+                ArithmeticStart,
+                Whitespace(' '),
+                Word("d".to_string()),
+                Whitespace(' '),
+                RParen,
+                RParen,
+                RParen,
+                Whitespace(' '),
+                RParen,
                 Whitespace(' '),
                 Word("separate".to_string()),
             ],

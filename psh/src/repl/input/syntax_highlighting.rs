@@ -1,9 +1,9 @@
-use std::io::Write;
+use std::collections::HashMap;
 
 use crossterm::cursor::{MoveDown, MoveToColumn};
-use crossterm::queue;
 use crossterm::style::{Print, ResetColor, SetForegroundColor};
 use crossterm::terminal::{Clear, ClearType};
+use crossterm::{execute, queue};
 
 use psh_core::ast::prelude::*;
 use psh_core::engine::expand::remove_quotes;
@@ -30,14 +30,20 @@ impl Highlighter for SyntaxTree {
             linebreak.write_highlighted(engine, context)?;
         }
 
-        queue!(
-            engine.writer,
-            SetForegroundColor(Colors::UNPARSED),
-            Print(&self.unparsed),
-            ResetColor
-        )?;
-
-        engine.writer.flush()?;
+        queue!(engine.writer, SetForegroundColor(Colors::UNPARSED),)?;
+        for c in self.unparsed.chars() {
+            if c == '\n' {
+                queue!(
+                    engine.writer,
+                    MoveToColumn(context.start_x),
+                    MoveDown(1),
+                    Clear(ClearType::UntilNewLine)
+                )?;
+            } else {
+                queue!(engine.writer, Print(c))?;
+            }
+        }
+        execute!(engine.writer, ResetColor)?;
 
         Ok(())
     }
@@ -366,21 +372,23 @@ impl Highlighter for Redirection {
 }
 
 impl Highlighter for VariableAssignment {
-    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
-        Ok(queue!(
+    fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        queue!(
             engine.writer,
             Print(&self.whitespace),
             SetForegroundColor(Colors::ASSIGNMENT_LHS_COLOR),
             Print(self.lhs.to_string()),
             SetForegroundColor(Colors::ASSIGNMENT_OP_COLOR),
-            Print("="),
+            Print('='),
             SetForegroundColor(Colors::ASSIGNMENT_RHS_COLOR),
-            Print(match &self.rhs {
-                Some(rhs) => rhs.to_string(),
-                None => "".to_string(),
-            }),
-            ResetColor,
-        )?)
+        )?;
+
+        if let Some(rhs) = &self.rhs {
+            rhs.write_highlighted(engine, context)?;
+        }
+
+        queue!(engine.writer, ResetColor)?;
+        Ok(())
     }
 }
 
@@ -494,20 +502,61 @@ impl Highlighter for Pipe {
 
 impl Highlighter for Word {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
-        let s = format!("{}{}", self.whitespace, self.name_with_escaped_newlines);
-        let mut lines = s.split('\n').peekable();
+        let mut chars = self
+            .name_with_escaped_newlines
+            .chars()
+            .peekable()
+            .enumerate();
 
-        let first = lines.next().unwrap();
-        queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
+        let mut cmd_sub_starts = HashMap::new();
+        for exp in &self.expansions {
+            if let Expansion::Command {
+                range,
+                tree,
+                finished,
+                ..
+            } = exp
+            {
+                cmd_sub_starts.insert(*range.start(), (*range.end(), tree, finished));
+            }
+        }
 
-        for line in lines {
-            queue!(
-                engine.writer,
-                MoveToColumn(context.start_x),
-                MoveDown(1),
-                Clear(ClearType::UntilNewLine),
-                Print(line)
-            )?;
+        queue!(
+            engine.writer,
+            Clear(ClearType::UntilNewLine),
+            Print(&self.whitespace)
+        )?;
+
+        while let Some((i, c)) = chars.next() {
+            if let Some((end, tree, &finished)) = cmd_sub_starts.get(&i) {
+                queue!(
+                    engine.writer,
+                    SetForegroundColor(Colors::CMD_SUB_COLOR),
+                    Print("$("),
+                    ResetColor
+                )?;
+                tree.write_highlighted(engine, context)?;
+                if finished {
+                    queue!(
+                        engine.writer,
+                        SetForegroundColor(Colors::CMD_SUB_COLOR),
+                        Print(')'),
+                        ResetColor
+                    )?;
+                }
+                for _ in i..*end {
+                    chars.next();
+                }
+            } else if c == '\n' {
+                queue!(
+                    engine.writer,
+                    MoveToColumn(context.start_x),
+                    MoveDown(1),
+                    Clear(ClearType::UntilNewLine)
+                )?;
+            } else {
+                queue!(engine.writer, Print(c))?;
+            }
         }
 
         Ok(())

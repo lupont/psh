@@ -29,25 +29,45 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
         .tokenize()
         .into_iter()
         .peekable()
-        .parse()
+        .parse(true)
     {
         Ok(ast) => Ok(ast),
-        Err(ast) if allow_errors => Ok(ast),
-        Err(ast) if ast.is_ok() => Err(Error::Incomplete(ast.to_string())),
-        Err(ast) => Err(Error::SyntaxError(format!(
-            "'{}'",
+
+        Err(Ok(ast)) if allow_errors => Ok(ast),
+
+        Err(Err(e @ ParseError::InvalidSyntaxInCmdSub)) => Err(Error::SyntaxError(format!(
+            "command substitution: `{}'",
+            e,
+        ))),
+
+        Err(Ok(ast)) if ast.is_ok() => Err(Error::Incomplete(ast.to_string())),
+
+        Err(Ok(ast)) => Err(Error::SyntaxError(format!(
+            "`{}'",
             ast.unparsed.trim_start()
         ))),
+
+        Err(Err(e)) => Err(Error::ParseError(e)),
     }
 }
 
-pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
-    fn parse(&mut self) -> std::result::Result<SyntaxTree, SyntaxTree> {
+type StdResult<T, E> = std::result::Result<T, E>;
+
+pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized + Clone {
+    fn parse(
+        &mut self,
+        swallow_rest: bool,
+    ) -> StdResult<SyntaxTree, StdResult<SyntaxTree, ParseError>> {
         let linebreak = self.parse_linebreak();
         let commands = self.parse_complete_commands();
         let trailing_linebreak = self.parse_linebreak();
 
-        let unparsed = self.by_ref().map(|t| t.to_string()).collect();
+        let unparsed = if swallow_rest {
+            self.by_ref().map(|t| t.to_string()).collect()
+        } else {
+            let mut this = self.clone();
+            this.by_ref().map(|t| t.to_string()).collect()
+        };
 
         match commands {
             Ok(cmds) => {
@@ -60,15 +80,25 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized {
                 if ast.is_ok() {
                     Ok(ast)
                 } else {
-                    Err(ast)
+                    Err(Ok(ast))
                 }
             }
-            Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(SyntaxTree {
+
+            Err(ParseError::None) => Ok(SyntaxTree {
+                leading: linebreak,
+                commands: None,
+                unparsed,
+            }),
+
+            Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(Ok(SyntaxTree {
                 leading: linebreak,
                 commands: Some((cmds, trailing_linebreak)),
                 unparsed: format!("{ws}{unparsed}"),
-            }),
-            Err(e) => todo!("error: {e}"),
+            })),
+
+            Err(ParseError::InvalidSyntaxInCmdSub) => Err(Err(ParseError::InvalidSyntaxInCmdSub)),
+
+            Err(e) => Err(Err(e)),
         }
     }
 
@@ -575,8 +605,23 @@ where
         let mut prefixes = Vec::new();
         let mut suffixes = Vec::new();
 
-        while let Ok(prefix) = self.parse_cmd_prefix() {
-            prefixes.push(prefix);
+        loop {
+            match self.parse_cmd_prefix() {
+                Ok(prefix) => prefixes.push(prefix),
+                Err(ParseError::UnfinishedCmdPrefix(prefix)) => {
+                    prefixes.push(prefix);
+                    let cmd = SimpleCommand {
+                        prefixes,
+                        name: None,
+                        suffixes,
+                    };
+                    return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                }
+                Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
+                    return Err(e);
+                }
+                _ => break,
+            }
         }
 
         let name = match self.parse_word(false) {
@@ -588,6 +633,9 @@ where
                     suffixes,
                 };
                 return Err(ParseError::UnfinishedSimpleCommand(cmd));
+            }
+            Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
+                return Err(e);
             }
             Err(_) => None,
         };
@@ -603,6 +651,9 @@ where
                         suffixes,
                     };
                     return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                }
+                Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
+                    return Err(e);
                 }
                 _ => break,
             }
@@ -623,7 +674,16 @@ where
     fn parse_cmd_prefix(&mut self) -> ParseResult<CmdPrefix> {
         self.parse_redirection()
             .map(CmdPrefix::Redirection)
-            .or_else(|_| self.parse_variable_assignment().map(CmdPrefix::Assignment))
+            .or_else(|_| {
+                self.parse_variable_assignment()
+                    .map(CmdPrefix::Assignment)
+                    .map_err(|e| match e {
+                        ParseError::UnfinishedVariableAssignment(assg) => {
+                            ParseError::UnfinishedCmdPrefix(CmdPrefix::Assignment(assg))
+                        }
+                        e => e,
+                    })
+            })
     }
 
     fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> ParseResult<CmdSuffix> {
@@ -856,58 +916,182 @@ where
 
     fn parse_variable_assignment(&mut self) -> ParseResult<VariableAssignment> {
         let initial = self.clone();
+        let ws = self.swallow_whitespace();
 
-        if let Ok(Word {
-            whitespace, name, ..
-        }) = self.parse_word(false)
-        {
-            match name.split_once('=') {
-                Some((lhs, rhs)) if is_name(lhs) => {
-                    let lhs = Name {
-                        whitespace: "".to_string(),
-                        name: lhs.to_string(),
-                    };
+        let Ok(lhs) = self.parse_name() else {
+            *self = initial;
+            return Err(ParseError::None);
+        };
 
-                    let rhs = if !rhs.is_empty() {
-                        Some(Word::new(rhs, ""))
-                    } else {
-                        None
-                    };
-
-                    let var_assg = VariableAssignment::new(lhs, rhs, whitespace);
-                    return Ok(var_assg);
-                }
-                _ => {}
-            }
+        if self.consume_single(SemanticToken::Equals).is_none() {
+            *self = initial;
+            return Err(ParseError::None);
         }
 
-        *self = initial;
-        Err(ParseError::None)
+        let rhs = match self.parse_word(true) {
+            Ok(word) => Some(word),
+            Err(ParseError::None) => None,
+            Err(ParseError::UnfinishedWord(word)) => {
+                let assg = VariableAssignment::new(lhs, Some(word), ws);
+                return Err(ParseError::UnfinishedVariableAssignment(assg));
+            }
+            Err(e) => return Err(e),
+        };
+
+        Ok(VariableAssignment::new(lhs, rhs, ws))
     }
 
     fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
-        match self.next() {
-            Some(SemanticToken::Word(xs)) => {
-                let word = Word::new(&xs, ws);
-                if word.is_finished() {
-                    Ok(word)
-                } else {
-                    Err(ParseError::UnfinishedWord(word))
+        let mut full = String::new();
+        let mut expansions = Vec::new();
+        let mut is_escaped = false;
+        let mut cmd_sub_finished = true;
+        let mut in_double_quote = false;
+        let mut in_single_quote = false;
+        let mut index = 0;
+
+        loop {
+            match self.peek() {
+                Some(SemanticToken::DoubleQuote) if !is_escaped => {
+                    full += &self.next().unwrap().to_string();
+                    index += 1;
+                    is_escaped = false;
+                    if !in_single_quote {
+                        in_double_quote ^= true;
+                    }
                 }
-            }
 
-            Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
-                let word = Word::new(reserved.as_ref(), ws);
-                Ok(word)
-            }
+                Some(SemanticToken::SingleQuote) if !is_escaped => {
+                    full += &self.next().unwrap().to_string();
+                    index += 1;
+                    is_escaped = false;
+                    if !in_double_quote {
+                        in_single_quote ^= true;
+                    }
+                }
 
-            _ => {
-                *self = initial;
-                Err(ParseError::None)
+                Some(_) if is_escaped || in_single_quote => {
+                    let token = self.next().unwrap().to_string();
+                    full += &token;
+                    index += token.len();
+                    is_escaped = false;
+                }
+
+                Some(SemanticToken::Backslash) if in_single_quote || is_escaped => {
+                    full += &self.next().unwrap().to_string();
+                    index += 1;
+                    is_escaped = false;
+                }
+
+                Some(SemanticToken::Backslash) => {
+                    full += &self.next().unwrap().to_string();
+                    index += 1;
+                    is_escaped = true;
+                    if let Some(SemanticToken::Whitespace('\n')) = self.peek() {
+                        self.next();
+                        full += "\n";
+                        index += 1;
+                        is_escaped = false;
+                    }
+                }
+
+                Some(SemanticToken::Whitespace(c))
+                    if in_double_quote || in_single_quote || is_escaped =>
+                {
+                    full.push(*c);
+                    index += 1;
+                    is_escaped = false;
+                    self.next();
+                }
+
+                Some(SemanticToken::Equals) => {
+                    full += &self.next().unwrap().to_string();
+                    index += 1;
+                    is_escaped = false;
+                }
+
+                Some(SemanticToken::CmdSubStart) => {
+                    let token = self.next().unwrap();
+                    let mut part = token.to_string();
+                    let (mut ast, finished) = match self.parse(false) {
+                        Ok(ast) => (ast, false),
+                        Err(Ok(ast)) => {
+                            let finished = ast.unparsed.trim_start().starts_with(')');
+                            (ast, finished)
+                        }
+                        Err(Err(_)) => return Err(ParseError::InvalidSyntaxInCmdSub),
+                    };
+
+                    ast.unparsed.clear();
+                    part += &ast.to_string();
+
+                    if finished {
+                        let ws = self.swallow_whitespace();
+                        let Some(rparen @ SemanticToken::RParen) = self.next() else {
+                            // the only time `finished` is true, is if the first
+                            // non-whitespace unparsed part is a right paren, meaning
+                            // we'll never get to here if that is not the case
+                            unreachable!()
+                        };
+                        part += &ws;
+                        part += &rparen.to_string();
+                    }
+
+                    let len = part.len();
+                    full += &part;
+                    expansions.push(Expansion::Command {
+                        range: index..=index + len - 1,
+                        part,
+                        tree: ast,
+                        finished,
+                    });
+
+                    cmd_sub_finished = finished;
+                    index += len;
+                    is_escaped = false;
+                }
+
+                Some(dollar @ SemanticToken::Dollar) => {
+                    // TODO: actually handle this
+                    let dollar = dollar.to_string();
+                    full += &dollar;
+                    index += dollar.len();
+                    is_escaped = false;
+                    self.next();
+                }
+
+                Some(SemanticToken::Word(xs)) => {
+                    full += xs;
+                    index += xs.len();
+                    is_escaped = false;
+                    self.next();
+                }
+
+                Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
+                    let res = reserved.as_ref();
+                    full += res;
+                    index += res.len();
+                    is_escaped = false;
+                    self.next();
+                }
+
+                _ => break,
             }
+        }
+
+        let mut word = Word::new(&full, ws);
+        word.expansions.append(&mut expansions);
+
+        if word.name_with_escaped_newlines.is_empty() {
+            *self = initial;
+            Err(ParseError::None)
+        } else if cmd_sub_finished && !in_double_quote && !in_single_quote && !is_escaped {
+            Ok(word)
+        } else {
+            Err(ParseError::UnfinishedWord(word))
         }
     }
 

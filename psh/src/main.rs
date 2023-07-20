@@ -31,7 +31,7 @@ fn main() {
     }
 }
 
-fn run_command(command: &String, tokenize: bool, lex: bool, ast: bool) {
+fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool) {
     if tokenize {
         for token in tok::tokenize(command) {
             println!("{token:?}");

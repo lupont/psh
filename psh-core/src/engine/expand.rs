@@ -141,10 +141,14 @@ fn expand_tilde(mut word: Word) -> Word {
         //        the login name obtained using the getpwnam()
         //        function as defined in the System Interfaces
         //        volume of POSIX.1-2017
-        word.name.replace_range(range, &format!("/home/{name}"));
+        word.name_with_escaped_newlines
+            .replace_range(range, &format!("/home/{name}"));
     } else if name.is_empty() {
-        word.name.replace_range(range, &path::home_dir());
+        word.name_with_escaped_newlines
+            .replace_range(range, &path::home_dir());
     }
+
+    word.name = Word::remove_escaped_newlines(&word.name_with_escaped_newlines);
 
     word
 }
@@ -168,13 +172,16 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join("|");
-            word.name.replace_range(range, &status);
+            word.name_with_escaped_newlines
+                .replace_range(range, &status);
         } else if let Some(val) = engine.get_value_of(&name) {
-            word.name.replace_range(range, &val);
+            word.name_with_escaped_newlines.replace_range(range, &val);
         } else {
-            word.name.replace_range(range, "");
+            word.name_with_escaped_newlines.replace_range(range, "");
         }
     }
+
+    word.name = Word::remove_escaped_newlines(&word.name_with_escaped_newlines);
 
     word
 }

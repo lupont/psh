@@ -895,7 +895,7 @@ fn parse_file_redirection() {
 fn syntax_tree_back_to_string() {
     let input = "   foo='bar  baz'\\ quux  echo yo hello	2< file &&  !   true|cat> foo; hello";
     let mut tokens = tokenize(input);
-    let actual = tokens.parse().unwrap();
+    let actual = tokens.parse(true).unwrap();
 
     assert_eq!(input.to_string(), actual.to_string());
 }
@@ -903,7 +903,7 @@ fn syntax_tree_back_to_string() {
 #[test]
 fn parse_with_comment() {
     let mut tokens = tokenize("echo foo bar #this is a comment ");
-    let actual = tokens.parse().unwrap();
+    let actual = tokens.parse(true).unwrap();
 
     let expected = SyntaxTree {
         leading: Linebreak { newlines: None },

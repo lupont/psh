@@ -15,6 +15,8 @@ impl Colors {
 
     pub const TRAILING_WORD_COLOR: Color = Color::Grey;
 
+    pub const CMD_SUB_COLOR: Color = Color::Blue;
+
     pub const REDIRECTION_FD_COLOR: Color = Color::White;
     pub const REDIRECTION_OP_COLOR: Color = Color::Yellow;
     pub const REDIRECTION_TARGET_COLOR: Color = Color::White;

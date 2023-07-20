@@ -66,6 +66,7 @@ pub enum ParseError {
     None,
     Done,
     Unimplemented(String),
+    Unfinished,
     UnfinishedCompleteCommands(LeadingWhitespace, CompleteCommands),
     UnfinishedCompleteCommand(LeadingWhitespace, CompleteCommand),
     UnfinishedList(LeadingWhitespace, List),
@@ -74,7 +75,10 @@ pub enum ParseError {
     UnfinishedPipeSequence(LeadingWhitespace, PipeSequence),
     UnfinishedCommand(Command),
     UnfinishedSimpleCommand(SimpleCommand),
+    UnfinishedCmdPrefix(CmdPrefix),
+    UnfinishedVariableAssignment(VariableAssignment),
     UnfinishedWord(Word),
+    InvalidSyntaxInCmdSub, //(SyntaxTree),
 }
 
 impl fmt::Display for ParseError {
@@ -87,6 +91,7 @@ impl fmt::Display for ParseError {
                 Self::None => "could not parse this here".to_string(),
                 Self::Done => "all finished".to_string(),
                 Self::Unimplemented(s) => format!("not yet implemented: {s}"),
+                Self::Unfinished => "unfinished".to_string(),
                 Self::UnfinishedCompleteCommands(_, _) =>
                     "unfinished complete commands".to_string(),
                 Self::UnfinishedCompleteCommand(_, _) => "unfinished complete command".to_string(),
@@ -96,7 +101,11 @@ impl fmt::Display for ParseError {
                 Self::UnfinishedPipeSequence(_, _) => "unfinished pipe sequence".to_string(),
                 Self::UnfinishedCommand(_) => "unfinished command".to_string(),
                 Self::UnfinishedSimpleCommand(_) => "unfinished simple command".to_string(),
+                Self::UnfinishedCmdPrefix(_) => "unfinished command prefix".to_string(),
+                Self::UnfinishedVariableAssignment(_) =>
+                    "unfinished variable assignment".to_string(),
                 Self::UnfinishedWord(_) => "unfinished word".to_string(),
+                Self::InvalidSyntaxInCmdSub => "invalid syntax in command substitution".to_string(),
             }
         )
     }

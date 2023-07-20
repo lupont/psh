@@ -32,6 +32,10 @@ impl SyntaxTree {
     pub fn is_ok(&self) -> bool {
         self.unparsed.chars().all(char::is_whitespace)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_none()
+    }
 }
 
 /// ```[no_run]
@@ -802,7 +806,7 @@ pub struct Word {
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
         let expansions = Self::find_expansions(input);
-        let name = input.replace("\\\n", "");
+        let name = Self::remove_escaped_newlines(input);
         let name_with_escaped_newlines = input.to_string();
 
         Self {
@@ -811,6 +815,66 @@ impl Word {
             name_with_escaped_newlines,
             expansions,
         }
+    }
+
+    pub fn remove_escaped_newlines(input: &str) -> String {
+        let mut state = QuoteState::None;
+        let mut is_escaped = false;
+
+        let mut name = String::new();
+
+        let mut chars = input.chars().peekable();
+        while let Some(c) = chars.next() {
+            match (c, state, is_escaped) {
+                ('\'', QuoteState::Single, _) => {
+                    state = QuoteState::None;
+                    is_escaped = false;
+                    name.push('\'');
+                }
+                ('\'', QuoteState::None, false) => {
+                    state = QuoteState::Single;
+                    is_escaped = false;
+                    name.push('\'');
+                }
+                (c, QuoteState::Single, _) => {
+                    is_escaped = false;
+                    name.push(c);
+                }
+
+                ('"', QuoteState::Double, false) => {
+                    state = QuoteState::None;
+                    is_escaped = false;
+                    name.push('"');
+                }
+
+                ('"', QuoteState::None, false) => {
+                    state = QuoteState::Double;
+                    is_escaped = false;
+                    name.push('"');
+                }
+
+                ('\\', _, false) => {
+                    if let Some('\n') = chars.peek() {
+                        chars.next();
+                        is_escaped = false;
+                    } else {
+                        is_escaped = true;
+                        name.push('\\');
+                    }
+                }
+
+                (c, _, _) => {
+                    is_escaped = false;
+                    name.push(c);
+                }
+            }
+        }
+
+        name
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn is_empty(&self) -> bool {
@@ -846,10 +910,6 @@ impl Word {
 
         let parameters = Self::find_parameter_expansions(input);
         expansions.extend(&mut parameters.into_iter());
-
-        if let Some(cmd_sub) = Self::find_cmd_sub_expansions(input) {
-            expansions.push(cmd_sub);
-        }
 
         expansions
     }
@@ -960,34 +1020,6 @@ impl Word {
             range: 0..=slash_index - 1,
             name: name.to_string(),
         })
-    }
-
-    fn find_cmd_sub_expansions(input: &str) -> Option<Expansion> {
-        let unquoted_start_index = match Self::find(QuoteState::None, input, '$', true) {
-            Some(dollar_index) => match Self::find(QuoteState::None, input, '(', true) {
-                Some(lparen_index) if dollar_index + 1 == lparen_index => Some(dollar_index),
-
-                _ => None,
-            },
-
-            None => None,
-        };
-        let unquoted_end_index = Self::find(QuoteState::None, input, ')', false);
-
-        match (unquoted_start_index, unquoted_end_index) {
-            (Some(start), Some(end)) => {
-                let sub = &input[start + 2..=end - 1];
-                let expansion = Expansion::Command {
-                    range: start..=end,
-                    part: sub.to_string(),
-                    tree: parse(sub, false).unwrap(),
-                };
-
-                Some(expansion)
-            }
-
-            _ => None,
-        }
     }
 
     pub fn find_all(target_states: &[QuoteState], haystack: &str, needle: char) -> Vec<usize> {
@@ -1118,6 +1150,7 @@ pub enum Expansion {
         range: RangeInclusive<usize>,
         part: String,
         tree: SyntaxTree,
+        finished: bool,
     },
 
     Arithmetic {
