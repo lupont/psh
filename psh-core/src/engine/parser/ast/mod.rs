@@ -62,12 +62,23 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized + Clo
         let commands = self.parse_complete_commands();
         let trailing_linebreak = self.parse_linebreak();
 
-        let unparsed = if swallow_rest {
+        let mut unparsed: String = if swallow_rest {
             self.by_ref().map(|t| t.to_string()).collect()
         } else {
             let mut this = self.clone();
             this.by_ref().map(|t| t.to_string()).collect()
         };
+
+        // When in an interactive session, in order to keep track of
+        // what line of input a syntax error occurred, we insert the
+        // trailing newlines of the tree into the unparsed section.
+        // This is needed for command substitutions spanning multiple
+        // lines.
+        if !swallow_rest && !unparsed.is_empty() {
+            if let Some(newlines) = &trailing_linebreak.newlines {
+                unparsed.insert_str(0, &newlines.to_string());
+            }
+        }
 
         match commands {
             Ok(cmds) => {
@@ -176,11 +187,18 @@ where
 
         let mut tail = Vec::new();
 
-        while let Ok(thing) = self
-            .parse_newline_list()
-            .and_then(|n| self.parse_complete_command().map(|c| (n, c)))
-        {
-            tail.push(thing);
+        let mut prev = self.clone();
+
+        loop {
+            let Ok(newlines) = self.parse_newline_list() else {
+                break;
+            };
+            let Ok(cmd) = self.parse_complete_command() else {
+                *self = prev;
+                break;
+            };
+            tail.push((newlines, cmd));
+            prev = self.clone();
         }
 
         Ok(CompleteCommands { head, tail })
