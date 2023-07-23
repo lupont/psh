@@ -1,6 +1,26 @@
-echo 'foo bar'
-echo foo" bar"
-echo foo" ""bar"
-echo "\foo\ bar"
-echo "'foo' \"bar\""
-echo 'foo "bar"'
+echo 1 'foo bar'
+echo 2 foo" bar"
+echo 3 foo" ""bar"
+echo 4 "\foo\ bar"
+echo 5 "'foo' \"bar\""
+echo 6 'foo "bar"'
+echo 7 'foo
+bar'
+echo 8 "foo
+bar"
+echo 9 foo\
+bar
+echo 10 "foo\
+bar"
+echo 11 'foo\
+bar'
+echo 12 foo\
+\
+\
+\
+\
+
+echo 13 foo\
+bar"baz\
+quux\"
+"'abc\'
