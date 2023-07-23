@@ -376,8 +376,8 @@ fn write_highlighted_ast(
         state.line.clone()
     };
 
-    let starting_point = match std::env::var("PS2") {
-        Ok(ps2) => ps2.len() as u16,
+    let starting_point = match engine.get_value_of("PS2") {
+        Some(ps2) => ps2.len() as u16,
         _ => start_x,
     };
 
