@@ -15,23 +15,29 @@ use psh_core::ExitStatus;
 fn main() {
     let args = args::Args::parse();
 
+    #[cfg(feature = "serde")]
+    let json = args.json;
+
+    #[cfg(not(feature = "serde"))]
+    let json = false;
+
     if let Some(target) = args.target {
         if args.command {
-            run_command(&target, args.tokenize, args.lex, args.ast);
+            run_command(&target, args.tokenize, args.lex, args.ast, json);
         } else {
-            run_file(&target, args.tokenize, args.lex, args.ast);
+            run_file(&target, args.tokenize, args.lex, args.ast, json);
         }
     } else {
         let mut repl = repl::Repl::new();
 
-        if let Err(e) = repl.run(args.tokenize, args.lex, args.ast) {
+        if let Err(e) = repl.run(args.tokenize, args.lex, args.ast, json) {
             eprintln!("psh: Unrecoverable error occurred: {e}");
             std::process::exit(7);
         }
     }
 }
 
-fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool) {
+fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool, _json: bool) {
     if tokenize {
         for token in tok::tokenize(command) {
             println!("{token:?}");
@@ -44,7 +50,11 @@ fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool) {
         let ast = parse(command, true);
 
         #[cfg(feature = "serde")]
-        println!("{}", serde_json::to_string(&ast.unwrap()).unwrap());
+        if _json {
+            println!("{}", ast.unwrap().as_json().unwrap());
+        } else {
+            println!("{:#?}", ast);
+        }
 
         #[cfg(not(feature = "serde"))]
         println!("{:#?}", ast);
@@ -63,7 +73,7 @@ fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool) {
     }
 }
 
-fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool) {
+fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool, _json: bool) {
     let path = PathBuf::from(file);
     if tokenize {
         let content = std::fs::read_to_string(path).unwrap();
@@ -78,7 +88,16 @@ fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool) {
     } else if ast {
         let content = std::fs::read_to_string(path).unwrap();
         let ast = parse(content, true);
-        println!("{ast:#?}");
+
+        #[cfg(feature = "serde")]
+        if _json {
+            println!("{}", ast.unwrap().as_json().unwrap());
+        } else {
+            println!("{:#?}", ast);
+        }
+
+        #[cfg(not(feature = "serde"))]
+        println!("{:#?}", ast);
     } else {
         let code = match Engine::default().execute_file(path) {
             Ok(codes) if codes.is_empty() => 0,

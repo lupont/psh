@@ -21,6 +21,9 @@ pub enum Error {
     ParseError(ParseError),
     CancelledLine,
     Incomplete(String),
+
+    #[cfg(feature = "serde")]
+    Json(serde_json::Error),
 }
 
 impl fmt::Display for Error {
@@ -41,6 +44,9 @@ impl fmt::Display for Error {
                 Self::ParseError(e) => e.to_string(),
                 Self::CancelledLine => "line input cancelled".to_string(),
                 Self::Incomplete(line) => format!("incomplete line: '{line}'"),
+
+                #[cfg(feature = "serde")]
+                Self::Json(e) => e.to_string(),
             }
         )
     }
@@ -57,6 +63,13 @@ impl From<io::Error> for Error {
 impl From<ParseError> for Error {
     fn from(e: ParseError) -> Self {
         Self::ParseError(e)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl From<serde_json::Error> for Error {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Json(e)
     }
 }
 

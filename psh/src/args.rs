@@ -13,6 +13,10 @@ pub struct Args {
     #[arg(long, help("Only produce the AST of the input"))]
     pub ast: bool,
 
+    #[cfg(feature = "serde")]
+    #[arg(long, requires("ast"), help("Prints the AST in JSON format"))]
+    pub json: bool,
+
     #[arg(help("The file or command (if `-c`) to run"), value_name("target"))]
     pub target: Option<String>,
 }

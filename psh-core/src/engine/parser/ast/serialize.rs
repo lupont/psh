@@ -3,19 +3,6 @@ use serde::Serialize;
 
 use super::prelude::*;
 
-impl Serialize for LeadingWhitespace {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        if self.0.is_empty() {
-            serializer.serialize_none()
-        } else {
-            serializer.serialize_str(&self.0)
-        }
-    }
-}
-
 impl Serialize for SyntaxTree {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -440,6 +427,19 @@ impl Serialize for Separator {
                 state.serialize_field("newlines", newlines)?;
                 state.end()
             }
+        }
+    }
+}
+
+impl Serialize for LeadingWhitespace {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.0.is_empty() {
+            serializer.serialize_none()
+        } else {
+            serializer.serialize_str(&self.0)
         }
     }
 }

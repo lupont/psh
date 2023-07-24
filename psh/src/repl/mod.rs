@@ -29,7 +29,7 @@ impl Repl {
         }
     }
 
-    pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool) -> Result<()> {
+    pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool, _json: bool) -> Result<()> {
         self.read_init_file()?;
 
         if self.engine.get_value_of("PS1").is_none() {
@@ -63,6 +63,15 @@ impl Repl {
                 }
             } else if ast && line != "exit" {
                 let ast = parse(line, true)?;
+
+                #[cfg(feature = "serde")]
+                if _json {
+                    println!("{}", ast.as_json()?);
+                } else {
+                    println!("{ast:#?}");
+                }
+
+                #[cfg(not(feature = "serde"))]
                 println!("{ast:#?}");
             } else {
                 self.engine.history.append(&line)?;

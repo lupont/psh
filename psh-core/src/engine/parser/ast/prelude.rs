@@ -13,29 +13,6 @@ pub use super::parse;
 pub use super::reconstruct;
 pub use super::Parser;
 
-/// Wrapper type for String, used by data structures
-/// that keep track of leading whitespace.
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
-pub struct LeadingWhitespace(pub String);
-
-impl std::fmt::Display for LeadingWhitespace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl AsRef<str> for LeadingWhitespace {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<&str> for LeadingWhitespace {
-    fn from(s: &str) -> Self {
-        Self(s.to_string())
-    }
-}
-
 /// ```[no_run]
 /// program : linebreak complete_commands linebreak
 ///         | linebreak
@@ -55,6 +32,12 @@ impl SyntaxTree {
 
     pub fn is_empty(&self) -> bool {
         self.commands.is_none()
+    }
+
+    #[cfg(feature = "serde")]
+    pub fn as_json(&self) -> crate::Result<String> {
+        let json = serde_json::to_string(&self)?;
+        Ok(json)
     }
 }
 
@@ -1288,4 +1271,27 @@ pub struct Comment {
 pub struct Pipe {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
+}
+
+/// Wrapper type for String, used by data structures
+/// that keep track of leading whitespace.
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct LeadingWhitespace(pub String);
+
+impl std::fmt::Display for LeadingWhitespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl AsRef<str> for LeadingWhitespace {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for LeadingWhitespace {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
 }
