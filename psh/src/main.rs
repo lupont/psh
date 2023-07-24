@@ -42,7 +42,12 @@ fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool) {
         }
     } else if ast {
         let ast = parse(command, true);
+
+        #[cfg(feature = "serde")]
         println!("{}", serde_json::to_string(&ast.unwrap()).unwrap());
+
+        #[cfg(not(feature = "serde"))]
+        println!("{:#?}", ast);
     } else {
         let code = match Engine::default().execute_line(command) {
             Ok(codes) if codes.is_empty() => 0,

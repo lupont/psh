@@ -10,4 +10,8 @@ psh-core = { path = "../psh-core/" }
 clap = { version = "4", features = ["derive"] }
 crossterm = { version = "0.25.0", features = ["bracketed-paste"] }
 ctrlc = "3.2.5"
-serde_json = "1.0"
+serde_json = { version = "1.0", optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde_json"]

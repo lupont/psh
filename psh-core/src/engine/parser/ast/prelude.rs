@@ -1,6 +1,7 @@
-use serde::Serialize;
-
 use std::ops::RangeInclusive;
+
+#[cfg(feature = "serde")]
+use serde::Serialize;
 
 use crate::engine::builtin;
 use crate::engine::expand::remove_quotes;
@@ -14,7 +15,7 @@ pub use super::Parser;
 
 /// Wrapper type for String, used by data structures
 /// that keep track of leading whitespace.
-#[derive(Serialize, Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct LeadingWhitespace(pub String);
 
 impl std::fmt::Display for LeadingWhitespace {
@@ -40,9 +41,8 @@ impl From<&str> for LeadingWhitespace {
 ///         | linebreak
 ///         ;
 /// ```
-#[derive(Serialize, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct SyntaxTree {
-    #[serde(rename = "leading_linebreaks")]
     pub leading: Linebreak,
     pub commands: Option<(CompleteCommands, Linebreak)>,
     pub unparsed: String,
@@ -63,9 +63,8 @@ impl SyntaxTree {
 ///                   |                                complete_command
 ///                   ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CompleteCommands {
-    #[serde(rename = "complete_command")]
     pub head: CompleteCommand,
     pub tail: Vec<(NewlineList, CompleteCommand)>,
 }
@@ -85,18 +84,17 @@ impl CompleteCommands {
 ///                  | list
 ///                  ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type", content = "content")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CompleteCommand {
-    #[serde(rename = "list")]
     List {
         list: List,
         separator_op: Option<SeparatorOp>,
         comment: Option<Comment>,
     },
 
-    #[serde(rename = "comment")]
-    Comment { comment: Comment },
+    Comment {
+        comment: Comment,
+    },
 }
 
 impl CompleteCommand {
@@ -137,9 +135,8 @@ impl CompleteCommand {
 ///      |                   and_or
 ///      ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct List {
-    #[serde(rename = "and_or_list")]
     pub head: AndOrList,
     pub tail: Vec<(SeparatorOp, AndOrList)>,
 }
@@ -150,9 +147,8 @@ pub struct List {
 ///        | and_or OR_IF  linebreak pipeline
 ///        ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AndOrList {
-    #[serde(rename = "pipeline")]
     pub head: Pipeline,
 
     // As noted semantically by having it be the first part of
@@ -176,12 +172,9 @@ impl AndOrList {
 ///          | Bang pipe_sequence
 ///          ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Pipeline {
-    #[serde(flatten)]
     pub bang: Option<Bang>,
-
-    #[serde(rename = "pipe_sequence")]
     pub sequence: PipeSequence,
 }
 
@@ -212,11 +205,9 @@ impl Pipeline {
 ///               | pipe_sequence '|' linebreak command
 ///               ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PipeSequence {
-    #[serde(rename = "command")]
     pub head: Box<Command>,
-
     pub tail: Vec<(Pipe, Linebreak, Command)>,
 }
 
@@ -236,16 +227,10 @@ impl PipeSequence {
 ///         | function_definition
 ///         ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type", content = "content")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
-    #[serde(rename = "simple")]
     Simple(SimpleCommand),
-
-    #[serde(rename = "compound")]
     Compound(CompoundCommand, Vec<Redirection>),
-
-    #[serde(rename = "function_definition")]
     FunctionDefinition(FunctionDefinition),
 }
 
@@ -274,8 +259,7 @@ impl Command {
 ///                  | until_clause
 ///                  ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type", content = "content")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CompoundCommand {
     Brace(BraceGroup),
     Subshell(Subshell),
@@ -290,7 +274,8 @@ pub enum CompoundCommand {
 /// subshell : '(' compound_list ')'
 ///          ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Subshell {
     pub lparen_ws: LeadingWhitespace,
     pub body: CompoundList,
@@ -302,7 +287,8 @@ pub struct Subshell {
 ///               | linebreak term separator
 ///               ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompoundList {
     pub linebreak: Linebreak,
     pub term: Term,
@@ -314,7 +300,8 @@ pub struct CompoundList {
 ///      |                and_or
 ///      ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Term {
     pub head: AndOrList,
     pub tail: Vec<(Separator, AndOrList)>,
@@ -327,7 +314,8 @@ pub struct Term {
 ///            | For name linebreak in wordlist sequential_sep do_group
 ///            ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum ForClause {
     Simple(Name, DoGroup),
     Padded(Name, SequentialSeparator, DoGroup),
@@ -338,8 +326,10 @@ pub enum ForClause {
 /// name : NAME /* Apply rule 5 */
 ///      ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Name {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
     pub name: String,
 }
@@ -350,7 +340,8 @@ pub struct Name {
 ///             | Case WORD linebreak in linebreak              Esac
 ///             ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseClause {
     Normal(Word, Linebreak, Linebreak, CaseList),
     NoSeparator(Word, Linebreak, Linebreak, CaseListNs),
@@ -362,7 +353,8 @@ pub enum CaseClause {
 ///              |           case_item_ns
 ///              ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CaseListNs {
     pub case_list: Option<CaseList>,
     pub last: CaseItemNs,
@@ -373,7 +365,8 @@ pub struct CaseListNs {
 ///           |           case_item
 ///           ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CaseList {
     pub head: CaseItem,
     pub tail: Vec<CaseItem>,
@@ -386,7 +379,8 @@ pub struct CaseList {
 ///              | '(' pattern ')' compound_list
 ///              ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseItemNs {
     Empty(bool, Pattern, Linebreak),
     List(bool, Pattern, CompoundList),
@@ -399,7 +393,8 @@ pub enum CaseItemNs {
 ///           | '(' pattern ')' compound_list DSEMI linebreak
 ///           ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseItem {
     Empty(bool, Pattern, Linebreak, Linebreak),
     List(bool, Pattern, CompoundList, Linebreak),
@@ -410,7 +405,8 @@ pub enum CaseItem {
 ///         | pattern '|' WORD /* Do not apply rule 4 */
 ///         ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pattern {
     pub head: Word,
     pub tail: Vec<Word>,
@@ -421,7 +417,8 @@ pub struct Pattern {
 ///           | If compound_list Then compound_list           Fi
 ///           ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct IfClause {
     pub predicate: CompoundList,
     pub body: CompoundList,
@@ -434,7 +431,8 @@ pub struct IfClause {
 ///           | Else compound_list
 ///           ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct ElsePart {
     pub elseifs: Vec<(CompoundList, CompoundList)>,
     pub else_part: Option<CompoundList>,
@@ -444,7 +442,8 @@ pub struct ElsePart {
 /// while_clause : While compound_list do_group
 ///              ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct WhileClause {
     pub predicate: CompoundList,
     pub body: DoGroup,
@@ -454,7 +453,8 @@ pub struct WhileClause {
 /// until_clause : Until compound_list do_group
 ///              ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct UntilClause {
     pub predicate: CompoundList,
     pub body: DoGroup,
@@ -464,7 +464,8 @@ pub struct UntilClause {
 /// function_definition : fname '(' ')' linebreak function_body
 ///                     ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionDefinition {
     pub name: Name,
     pub parens: String,
@@ -476,7 +477,8 @@ pub struct FunctionDefinition {
 /// function_body : compound_command               /* Apply rule 9 */
 ///               | compound_command redirect_list /* Apply rule 9 */
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionBody {
     pub command: CompoundCommand,
     pub redirections: Vec<Redirection>,
@@ -486,7 +488,8 @@ pub struct FunctionBody {
 /// brace_group : Lbrace compound_list Rbrace
 ///             ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BraceGroup {
     pub lbrace_ws: LeadingWhitespace,
     pub body: CompoundList,
@@ -497,7 +500,8 @@ pub struct BraceGroup {
 /// do_group : Do compound_list Done /* Apply rule 6 */
 ///          ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DoGroup {
     pub body: CompoundList,
 }
@@ -510,7 +514,8 @@ pub struct DoGroup {
 ///                | cmd_name
 ///                ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct SimpleCommand {
     pub name: Option<Word>,
     pub prefixes: Vec<CmdPrefix>,
@@ -621,7 +626,7 @@ impl SimpleCommand {
 ///            | cmd_prefix ASSIGNMENT_WORD
 ///            ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CmdPrefix {
     Redirection(Redirection),
     Assignment(VariableAssignment),
@@ -634,13 +639,13 @@ pub enum CmdPrefix {
 ///            | cmd_suffix WORD
 ///            ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CmdSuffix {
     Redirection(Redirection),
     Word(Word),
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum FileDescriptor {
     Stdin,
     Stdout,
@@ -655,33 +660,42 @@ pub enum FileDescriptor {
 /// `OutputFd`:      `>&`
 /// `OutputAppend`:  `>>`
 /// `OutputClobber`: `>|`
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum RedirectionType {
+    #[cfg_attr(feature = "serde", serde(rename = "input"))]
     /// `<`
     Input,
 
+    #[cfg_attr(feature = "serde", serde(rename = "input_from_fd"))]
     /// `<&`
     InputFd,
 
+    #[cfg_attr(feature = "serde", serde(rename = "input_output"))]
     /// `<>`
     ReadWrite,
 
+    #[cfg_attr(feature = "serde", serde(rename = "output"))]
     /// `>`
     Output,
 
+    #[cfg_attr(feature = "serde", serde(rename = "output_to_fd"))]
     /// `>&`
     OutputFd,
 
+    #[cfg_attr(feature = "serde", serde(rename = "output_append"))]
     /// `>>`
     OutputAppend,
 
+    #[cfg_attr(feature = "serde", serde(rename = "output_clobber"))]
     /// `>|`
     OutputClobber,
 }
 
 /// `Normal`:    `<<`
 /// `StripTabs`: `<<-`
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum HereDocType {
     /// `<<`
     Normal,
@@ -710,19 +724,24 @@ pub enum HereDocType {
 ///         | DLESSDASH here_end
 ///         ;
 /// ```
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Redirection {
+    #[cfg_attr(feature = "serde", serde(rename = "fd_redirection"))]
     File {
         whitespace: LeadingWhitespace,
         input_fd: Option<FileDescriptor>,
+        #[cfg_attr(feature = "serde", serde(rename = "type"))]
         ty: RedirectionType,
         target: Word,
     },
 
+    #[cfg_attr(feature = "serde", serde(rename = "here_doc"))]
     Here {
         whitespace: LeadingWhitespace,
         input_fd: Option<FileDescriptor>,
 
+        #[cfg_attr(feature = "serde", serde(rename = "type"))]
         ty: HereDocType,
 
         /// The delimiter
@@ -791,7 +810,8 @@ impl Redirection {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct VariableAssignment {
     pub whitespace: LeadingWhitespace,
     pub lhs: Name,
@@ -808,14 +828,15 @@ impl VariableAssignment {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum QuoteState {
     Single,
     Double,
     None,
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Word {
     pub whitespace: LeadingWhitespace,
     pub name: String,
@@ -1143,7 +1164,8 @@ impl Word {
     }
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Expansion {
     Tilde {
         range: RangeInclusive<usize>,
@@ -1179,7 +1201,7 @@ pub enum Expansion {
     },
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LogicalOp {
     And(LeadingWhitespace),
     Or(LeadingWhitespace),
@@ -1188,7 +1210,7 @@ pub enum LogicalOp {
 /// newline_list :              NEWLINE
 ///              | newline_list NEWLINE
 ///              ;
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NewlineList {
     /// This String may contain a mix of ' ', \t, and \n
     pub whitespace: String,
@@ -1197,16 +1219,15 @@ pub struct NewlineList {
 /// linebreak : newline_list
 ///           | /* empty */
 ///           ;
-#[derive(Serialize, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Linebreak {
-    #[serde(flatten)]
     pub newlines: Option<NewlineList>,
 }
 
 /// separator_op : '&'
 ///              | ';'
 ///              ;
-#[derive(Serialize, Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SeparatorOp {
     Sync(LeadingWhitespace),
     Async(LeadingWhitespace),
@@ -1231,7 +1252,7 @@ impl Default for SeparatorOp {
 /// separator : separator_op linebreak
 ///           | newline_list
 ///           ;
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Separator {
     Explicit(SeparatorOp, Linebreak),
     Implicit(NewlineList),
@@ -1240,24 +1261,31 @@ pub enum Separator {
 /// sequential_sep : ';' linebreak
 ///                | newline_list
 ///                ;
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum SequentialSeparator {
     Semi(Linebreak),
     Implicit(NewlineList),
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Bang {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Comment {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
     pub content: String,
 }
 
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pipe {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
 }

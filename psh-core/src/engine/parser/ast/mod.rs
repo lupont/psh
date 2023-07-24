@@ -1,6 +1,9 @@
 pub mod prelude;
 pub mod reconstruct;
 
+#[cfg(feature = "serde")]
+mod serialize;
+
 #[cfg(test)]
 mod tests;
 
