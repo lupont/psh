@@ -12,8 +12,28 @@ pub use super::parse;
 pub use super::reconstruct;
 pub use super::Parser;
 
-/// Type alias used in data structures that keep track of whitespace.
-pub type LeadingWhitespace = String;
+/// Wrapper type for String, used by data structures
+/// that keep track of leading whitespace.
+#[derive(Serialize, Default, Debug, Clone, PartialEq, Eq)]
+pub struct LeadingWhitespace(pub String);
+
+impl std::fmt::Display for LeadingWhitespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl AsRef<str> for LeadingWhitespace {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for LeadingWhitespace {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
 
 /// ```[no_run]
 /// program : linebreak complete_commands linebreak

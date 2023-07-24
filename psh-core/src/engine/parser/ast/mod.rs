@@ -535,7 +535,7 @@ where
 
         let mut parens = String::new();
         for token in [SemanticToken::LParen, SemanticToken::RParen] {
-            parens.push_str(&self.swallow_whitespace());
+            parens.push_str(self.swallow_whitespace().as_ref());
             match self.consume_single(token) {
                 Some(token) => parens.push_str(&token.to_string()),
                 None => {
@@ -717,7 +717,7 @@ where
         loop {
             let ws = self.swallow_whitespace();
             if let Some(SemanticToken::Whitespace(c @ '\n')) = self.next() {
-                whitespace.push_str(&ws);
+                whitespace.push_str(ws.as_ref());
                 whitespace.push(c);
                 prev = self.clone();
             } else {
@@ -1054,7 +1054,7 @@ where
                             // we'll never get to here if that is not the case
                             unreachable!()
                         };
-                        part += &ws;
+                        part += ws.as_ref();
                         part += &rparen.to_string();
                     }
 
@@ -1190,9 +1190,9 @@ where
     }
 
     fn swallow_whitespace(&mut self) -> LeadingWhitespace {
-        let mut s = LeadingWhitespace::new();
+        let mut s = LeadingWhitespace::default();
         while let Some(SemanticToken::Whitespace(c @ (' ' | '\t'))) = self.peek() {
-            s.push(*c);
+            s.0.push(*c);
             self.next();
         }
         s

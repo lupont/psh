@@ -168,7 +168,7 @@ impl ToString for Subshell {
     fn to_string(&self) -> String {
         let mut s = format!("{}(", &self.lparen_ws);
         s.push_str(&self.body.to_string());
-        s.push_str(&self.rparen_ws);
+        s.push_str(self.rparen_ws.as_ref());
         s.push(')');
         s
     }
@@ -406,11 +406,11 @@ impl ToString for FunctionBody {
 impl ToString for BraceGroup {
     fn to_string(&self) -> String {
         let mut s = self.lbrace_ws.clone();
-        s.push('{');
-        s.push_str(&self.body.to_string());
-        s.push_str(&self.rbrace_ws);
-        s.push('}');
-        s
+        s.0.push('{');
+        s.0.push_str(&self.body.to_string());
+        s.0.push_str(self.rbrace_ws.as_ref());
+        s.0.push('}');
+        s.0
     }
 }
 

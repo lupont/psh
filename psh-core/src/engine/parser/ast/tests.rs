@@ -19,7 +19,7 @@ fn tokenize(
 fn name(name: &str) -> Name {
     Name {
         name: name.to_string(),
-        whitespace: "".to_string(),
+        whitespace: LeadingWhitespace::default(),
     }
 }
 
@@ -145,7 +145,7 @@ fn parse_simple_command() {
                 "",
             )),
             CmdPrefix::Redirection(Redirection::File {
-                whitespace: " ".to_string(),
+                whitespace: " ".into(),
                 input_fd: Some(FileDescriptor::Other(3)),
                 ty: RedirectionType::Output,
                 target: Word::new("foo", ""),
@@ -158,14 +158,14 @@ fn parse_simple_command() {
         ],
         suffixes: vec![
             CmdSuffix::Redirection(Redirection::File {
-                whitespace: " ".to_string(),
+                whitespace: " ".into(),
                 input_fd: Some(FileDescriptor::Other(4)),
                 ty: RedirectionType::Input,
                 target: Word::new("/dev/null", ""),
             }),
             CmdSuffix::Word(Word::new("foo", " ")),
             CmdSuffix::Redirection(Redirection::File {
-                whitespace: " ".to_string(),
+                whitespace: " ".into(),
                 input_fd: Some(FileDescriptor::Stderr),
                 ty: RedirectionType::OutputAppend,
                 target: Word::new("stderr.log", " "),
@@ -272,7 +272,7 @@ fn parse_simple_and_or_list() {
         },
         tail: vec![
             (
-                LogicalOp::And(" ".to_string()),
+                LogicalOp::And(" ".into()),
                 Linebreak { newlines: None },
                 Pipeline {
                     bang: None,
@@ -284,7 +284,7 @@ fn parse_simple_and_or_list() {
                         })),
                         tail: vec![(
                             Pipe {
-                                whitespace: " ".to_string(),
+                                whitespace: " ".into(),
                             },
                             Linebreak { newlines: None },
                             Command::Simple(SimpleCommand {
@@ -297,7 +297,7 @@ fn parse_simple_and_or_list() {
                 },
             ),
             (
-                LogicalOp::Or(" ".to_string()),
+                LogicalOp::Or(" ".into()),
                 Linebreak { newlines: None },
                 Pipeline {
                     bang: None,
@@ -338,7 +338,7 @@ fn parse_simple_list() {
             },
             tail: vec![
                 (
-                    LogicalOp::And(" ".to_string()),
+                    LogicalOp::And(" ".into()),
                     Linebreak { newlines: None },
                     Pipeline {
                         bang: None,
@@ -353,7 +353,7 @@ fn parse_simple_list() {
                     },
                 ),
                 (
-                    LogicalOp::Or(" ".to_string()),
+                    LogicalOp::Or(" ".into()),
                     Linebreak { newlines: None },
                     Pipeline {
                         bang: None,
@@ -371,7 +371,7 @@ fn parse_simple_list() {
         },
         tail: vec![
             (
-                SeparatorOp::Async(" ".to_string()),
+                SeparatorOp::Async(" ".into()),
                 AndOrList {
                     head: Pipeline {
                         bang: None,
@@ -388,7 +388,7 @@ fn parse_simple_list() {
                 },
             ),
             (
-                SeparatorOp::Sync("".to_string()),
+                SeparatorOp::Sync("".into()),
                 AndOrList {
                     head: Pipeline {
                         bang: None,
@@ -400,7 +400,7 @@ fn parse_simple_list() {
                             })),
                             tail: vec![(
                                 Pipe {
-                                    whitespace: " ".to_string(),
+                                    whitespace: " ".into(),
                                 },
                                 Linebreak { newlines: None },
                                 Command::Simple(SimpleCommand {
@@ -472,7 +472,7 @@ fn parse_complete_command() {
             },
             tail: Vec::new(),
         },
-        separator_op: Some(SeparatorOp::Sync(" ".to_string())),
+        separator_op: Some(SeparatorOp::Sync(" ".into())),
         comment: None,
     };
 
@@ -500,7 +500,7 @@ fn parse_complete_command() {
             },
             tail: Vec::new(),
         },
-        separator_op: Some(SeparatorOp::Async("".to_string())),
+        separator_op: Some(SeparatorOp::Async("".into())),
         comment: None,
     };
 
@@ -527,7 +527,7 @@ fn parse_complete_command() {
                 tail: Vec::new(),
             },
             tail: vec![(
-                SeparatorOp::Async("".to_string()),
+                SeparatorOp::Async("".into()),
                 AndOrList {
                     head: Pipeline {
                         bang: None,
@@ -544,7 +544,7 @@ fn parse_complete_command() {
                 },
             )],
         },
-        separator_op: Some(SeparatorOp::Sync(" ".to_string())),
+        separator_op: Some(SeparatorOp::Sync(" ".into())),
         comment: None,
     };
 
@@ -571,7 +571,7 @@ fn parse_complete_command() {
                 tail: Vec::new(),
             },
             tail: vec![(
-                SeparatorOp::Sync("".to_string()),
+                SeparatorOp::Sync("".into()),
                 AndOrList {
                     head: Pipeline {
                         bang: None,
@@ -588,7 +588,7 @@ fn parse_complete_command() {
                 },
             )],
         },
-        separator_op: Some(SeparatorOp::Async("".to_string())),
+        separator_op: Some(SeparatorOp::Async("".into())),
         comment: None,
     };
 
@@ -835,7 +835,7 @@ fn parse_here_doc_type() {
 fn parse_file_redirection() {
     let mut tokens = tokenize("  <& file");
     let expected = Redirection::File {
-        whitespace: "  ".to_string(),
+        whitespace: "  ".into(),
         input_fd: None,
         ty: RedirectionType::InputFd,
         target: Word::new("file", " "),
@@ -845,7 +845,7 @@ fn parse_file_redirection() {
 
     let mut tokens = tokenize("  1<> 'file'");
     let expected = Redirection::File {
-        whitespace: "  ".to_string(),
+        whitespace: "  ".into(),
         input_fd: Some(FileDescriptor::Stdout),
         ty: RedirectionType::ReadWrite,
         target: Word::new("'file'", " "),
@@ -855,7 +855,7 @@ fn parse_file_redirection() {
 
     let mut tokens = tokenize("0>'file'");
     let expected = Redirection::File {
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         input_fd: Some(FileDescriptor::Stdin),
         ty: RedirectionType::Output,
         target: Word::new("'file'", ""),
@@ -932,7 +932,7 @@ fn parse_with_comment() {
                     },
                     separator_op: None,
                     comment: Some(Comment {
-                        whitespace: " ".to_string(),
+                        whitespace: " ".into(),
                         content: "this is a comment ".to_string(),
                     }),
                 },
@@ -954,7 +954,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: "$foo".to_string(),
         name_with_escaped_newlines: "$foo".to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![Expansion::Parameter {
             range: 0..=3,
             name: "foo".to_string(),
@@ -969,7 +969,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: "\"$foo\"".to_string(),
         name_with_escaped_newlines: "\"$foo\"".to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![Expansion::Parameter {
             range: 1..=4,
             name: "foo".to_string(),
@@ -984,7 +984,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: "'$foo'".to_string(),
         name_with_escaped_newlines: "'$foo'".to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![],
     };
 
@@ -996,7 +996,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: "\"$foo..$bar_-\"".to_string(),
         name_with_escaped_newlines: "\"$foo..$bar_-\"".to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {
                 range: 1..=4,
@@ -1018,7 +1018,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: r#"$FOO\ $_"#.to_string(),
         name_with_escaped_newlines: r#"$FOO\ $_"#.to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {
                 range: 0..=3,
@@ -1039,7 +1039,7 @@ fn word_with_parameter_expansions() {
     let expected = Word {
         name: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
         name_with_escaped_newlines: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
-        whitespace: "".to_string(),
+        whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {
                 range: 0..=1,
