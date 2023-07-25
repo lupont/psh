@@ -49,7 +49,7 @@ pub fn get_cmds_from_path() -> Vec<String> {
 pub fn has_relative_command(cmd: impl AsRef<str>) -> bool {
     let cmd = cmd.as_ref();
 
-    if !cmd.starts_with('/') && !cmd.starts_with('.') {
+    if !cmd.starts_with('/') && !cmd.starts_with('.') && !cmd.contains('/') {
         return false;
     }
 
