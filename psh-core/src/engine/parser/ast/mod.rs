@@ -994,13 +994,6 @@ where
                     }
                 }
 
-                Some(_) if is_escaped || in_single_quote => {
-                    let token = self.next().unwrap().to_string();
-                    full += &token;
-                    index += token.len();
-                    is_escaped = false;
-                }
-
                 Some(SemanticToken::Backslash) if in_single_quote || is_escaped => {
                     full += &self.next().unwrap().to_string();
                     index += 1;
@@ -1017,6 +1010,13 @@ where
                         index += 1;
                         is_escaped = false;
                     }
+                }
+
+                Some(_) if is_escaped || in_single_quote || in_double_quote => {
+                    let token = self.next().unwrap().to_string();
+                    full += &token;
+                    index += token.len();
+                    is_escaped = false;
                 }
 
                 Some(SemanticToken::Whitespace(c))
