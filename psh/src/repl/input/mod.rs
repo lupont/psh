@@ -341,7 +341,7 @@ fn read_line(
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0),
         )?;
-    } else if !state.line.is_empty() {
+    } else if !state.line.is_empty() || !ps1 {
         execute!(engine.writer, cursor::MoveTo(0, next_y))?;
     } else {
         execute!(engine.writer, cursor::MoveToRow(next_y))?;
