@@ -581,7 +581,7 @@ impl ToString for VariableAssignment {
 
 impl ToString for Word {
     fn to_string(&self) -> String {
-        format!("{}{}", self.whitespace, self.name_with_escaped_newlines)
+        format!("{}{}", self.whitespace, self.name)
     }
 }
 

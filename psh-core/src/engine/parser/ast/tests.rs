@@ -953,7 +953,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: "$foo".to_string(),
-        name_with_escaped_newlines: "$foo".to_string(),
         whitespace: "".into(),
         expansions: vec![Expansion::Parameter {
             range: 0..=3,
@@ -968,7 +967,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: "\"$foo\"".to_string(),
-        name_with_escaped_newlines: "\"$foo\"".to_string(),
         whitespace: "".into(),
         expansions: vec![Expansion::Parameter {
             range: 1..=4,
@@ -983,7 +981,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: "'$foo'".to_string(),
-        name_with_escaped_newlines: "'$foo'".to_string(),
         whitespace: "".into(),
         expansions: vec![],
     };
@@ -995,7 +992,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: "\"$foo..$bar_-\"".to_string(),
-        name_with_escaped_newlines: "\"$foo..$bar_-\"".to_string(),
         whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {
@@ -1017,7 +1013,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: r#"$FOO\ $_"#.to_string(),
-        name_with_escaped_newlines: r#"$FOO\ $_"#.to_string(),
         whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {
@@ -1038,7 +1033,6 @@ fn word_with_parameter_expansions() {
 
     let expected = Word {
         name: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
-        name_with_escaped_newlines: r#"$a"$FOO\ $_foo"$b'$c'"#.to_string(),
         whitespace: "".into(),
         expansions: vec![
             Expansion::Parameter {

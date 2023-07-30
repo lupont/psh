@@ -502,11 +502,7 @@ impl Highlighter for Pipe {
 
 impl Highlighter for Word {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
-        let mut chars = self
-            .name_with_escaped_newlines
-            .chars()
-            .peekable()
-            .enumerate();
+        let mut chars = self.name.chars().peekable().enumerate();
 
         let mut cmd_sub_starts = HashMap::new();
         for exp in &self.expansions {

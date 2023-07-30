@@ -39,6 +39,17 @@ impl Expand for Command {
 
 impl Expand for SimpleCommand {
     fn expand(self, engine: &mut Engine) -> Self {
+        let mut suffixes = Vec::new();
+        for suffix in self.suffixes.into_iter() {
+            if let CmdSuffix::Word(w) = &suffix {
+                let is_only_escaped_newlines = w.name().replace("\\\n", "").is_empty();
+                if is_only_escaped_newlines {
+                    continue;
+                }
+            }
+            suffixes.push(suffix.expand(engine));
+        }
+
         Self {
             name: self.name.map(|w| w.expand(engine)),
             prefixes: self
@@ -46,11 +57,7 @@ impl Expand for SimpleCommand {
                 .into_iter()
                 .map(|p| p.expand(engine))
                 .collect(),
-            suffixes: self
-                .suffixes
-                .into_iter()
-                .map(|s| s.expand(engine))
-                .collect(),
+            suffixes,
         }
     }
 }
@@ -141,14 +148,10 @@ fn expand_tilde(mut word: Word) -> Word {
         //        the login name obtained using the getpwnam()
         //        function as defined in the System Interfaces
         //        volume of POSIX.1-2017
-        word.name_with_escaped_newlines
-            .replace_range(range, &format!("/home/{name}"));
+        word.name.replace_range(range, &format!("/home/{name}"));
     } else if name.is_empty() {
-        word.name_with_escaped_newlines
-            .replace_range(range, &path::home_dir());
+        word.name.replace_range(range, &path::home_dir());
     }
-
-    word.name = Word::remove_escaped_newlines(&word.name_with_escaped_newlines);
 
     word
 }
@@ -172,16 +175,13 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join("|");
-            word.name_with_escaped_newlines
-                .replace_range(range, &status);
+            word.name.replace_range(range, &status);
         } else if let Some(val) = engine.get_value_of(&name) {
-            word.name_with_escaped_newlines.replace_range(range, &val);
+            word.name.replace_range(range, &val);
         } else {
-            word.name_with_escaped_newlines.replace_range(range, "");
+            word.name.replace_range(range, "");
         }
     }
-
-    word.name = Word::remove_escaped_newlines(&word.name_with_escaped_newlines);
 
     word
 }
@@ -189,7 +189,6 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
 fn quote_removal(word: Word) -> Word {
     Word {
         name: remove_quotes(&word.name),
-        name_with_escaped_newlines: remove_quotes(&word.name_with_escaped_newlines),
         whitespace: word.whitespace,
         expansions: word.expansions,
     }
@@ -220,6 +219,13 @@ pub fn remove_quotes(s: &str) -> String {
 
             ('"', QuoteState::None, false) => {
                 state = QuoteState::Double;
+                is_escaped = false;
+            }
+
+            ('\\', QuoteState::None | QuoteState::Double, false)
+                if matches!(chars.peek(), Some('\n')) =>
+            {
+                chars.next();
                 is_escaped = false;
             }
 

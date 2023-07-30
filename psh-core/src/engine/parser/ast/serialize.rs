@@ -331,7 +331,7 @@ impl Serialize for Word {
         let mut state = serializer.serialize_struct("Word", 3)?;
 
         state.serialize_field("leading_whitespace", &self.whitespace)?;
-        state.serialize_field("name", &self.name_with_escaped_newlines)?;
+        state.serialize_field("name", &self.name)?;
         state.serialize_field("expansions", &self.expansions)?;
 
         state.end()

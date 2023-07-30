@@ -862,78 +862,19 @@ pub enum QuoteState {
 pub struct Word {
     pub whitespace: LeadingWhitespace,
     pub name: String,
-    pub name_with_escaped_newlines: String,
     pub expansions: Vec<Expansion>,
 }
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
         let expansions = Self::find_expansions(input);
-        let name = Self::remove_escaped_newlines(input);
-        let name_with_escaped_newlines = input.to_string();
+        let name = input.to_string();
 
         Self {
             whitespace: whitespace.into(),
             name,
-            name_with_escaped_newlines,
             expansions,
         }
-    }
-
-    pub fn remove_escaped_newlines(input: &str) -> String {
-        let mut state = QuoteState::None;
-        let mut is_escaped = false;
-
-        let mut name = String::new();
-
-        let mut chars = input.chars().peekable();
-        while let Some(c) = chars.next() {
-            match (c, state, is_escaped) {
-                ('\'', QuoteState::Single, _) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                    name.push('\'');
-                }
-                ('\'', QuoteState::None, false) => {
-                    state = QuoteState::Single;
-                    is_escaped = false;
-                    name.push('\'');
-                }
-                (c, QuoteState::Single, _) => {
-                    is_escaped = false;
-                    name.push(c);
-                }
-
-                ('"', QuoteState::Double, false) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                    name.push('"');
-                }
-
-                ('"', QuoteState::None, false) => {
-                    state = QuoteState::Double;
-                    is_escaped = false;
-                    name.push('"');
-                }
-
-                ('\\', _, false) => {
-                    if let Some('\n') = chars.peek() {
-                        chars.next();
-                        is_escaped = false;
-                    } else {
-                        is_escaped = true;
-                        name.push('\\');
-                    }
-                }
-
-                (c, _, _) => {
-                    is_escaped = false;
-                    name.push(c);
-                }
-            }
-        }
-
-        name
     }
 
     pub fn name(&self) -> &str {
@@ -944,8 +885,7 @@ impl Word {
         // FIXME: this should check if it's literally '\\\n',
         //        i.e. just the escaped newline, but something
         //        is currently wrong with this expansion
-        !self.name_with_escaped_newlines.is_empty()
-            && self.name_with_escaped_newlines.chars().all(|c| c == '\n')
+        !self.name.is_empty() && self.name.chars().all(|c| c == '\n')
     }
 
     pub fn is_finished(&self) -> bool {

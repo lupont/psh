@@ -1106,7 +1106,7 @@ where
         let mut word = Word::new(&full, ws);
         word.expansions.append(&mut expansions);
 
-        if word.name_with_escaped_newlines.is_empty() {
+        if word.name.is_empty() {
             *self = initial;
             Err(ParseError::None)
         } else if cmd_sub_finished && !in_double_quote && !in_single_quote && !is_escaped {
