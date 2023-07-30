@@ -499,32 +499,6 @@ impl ToString for Redirection {
                 content.to_string(),
                 end.to_string(),
             ),
-            // Redirection::Input {
-            //     file_descriptor,
-            //     target,
-            //     target_is_fd,
-            // } => format!(
-            //     "{}<{}{}",
-            //     file_descriptor.to_string(),
-            //     if *target_is_fd { "&" } else { "" },
-            //     target.to_string()
-            // ),
-            // Redirection::Output {
-            //     file_descriptor,
-            //     append,
-            //     target,
-            //     target_is_fd,
-            // } => format!(
-            //     "{}>{}{}{}",
-            //     file_descriptor.to_string(),
-            //     if *target_is_fd { "&" } else { "" },
-            //     if *append { ">" } else { "" },
-            //     target.to_string()
-            // ),
-            // Redirection::HereDocument {
-            //     file_descriptor,
-            //     delimiter,
-            // } => format!("{}<<{}", file_descriptor.to_string(), delimiter.to_string()),
         }
     }
 }

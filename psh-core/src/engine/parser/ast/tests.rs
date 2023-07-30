@@ -1,19 +1,8 @@
-use super::super::semtok::SemanticTokenizer;
 use super::super::tok::Tokenizer;
 use super::*;
 
-fn tokenize(
-    input: &str,
-) -> Peekable<impl Iterator<Item = SemanticToken> + Clone + std::fmt::Debug> {
-    input
-        .chars()
-        .peekable()
-        .tokenize()
-        .into_iter()
-        .peekable()
-        .tokenize()
-        .into_iter()
-        .peekable()
+fn tokenize(input: &str) -> Peekable<impl Iterator<Item = Token> + Clone + std::fmt::Debug> {
+    input.chars().peekable().tokenize().into_iter().peekable()
 }
 
 fn name(name: &str) -> Name {
@@ -197,60 +186,59 @@ fn parse_simple_command() {
 
 #[test]
 fn parse_simple_pipeline() {
-    // let mut tokens = tokenize("echo foo 2>/dev/null|rev 2< file | cat");
-    // let actual = tokens.parse_pipeline();
+    let mut tokens = tokenize("echo foo 2>/dev/null|rev 2< file | cat");
+    let actual = tokens.parse_pipeline();
 
-    // let expected = Pipeline {
-    //     bang: None,
+    let expected = Pipeline {
+        bang: None,
 
-    //     sequence: PipeSequence {
-    //         head: Box::new(Command::Simple(SimpleCommand {
-    //             name: Some(Word::new("echo", "")),
-    //             prefixes: Vec::new(),
-    //             suffixes: vec![
-    //                 CmdSuffix::Word(Word::new("foo", " ")),
-    //                 CmdSuffix::Redirection(Redirection::new_output(
-    //                     Word::new("2", " "),
-    //                     Word::new("/dev/null", ""),
-    //                     false,
-    //                     false,
-    //                 )),
-    //             ],
-    //         })),
+        sequence: PipeSequence {
+            head: Box::new(Command::Simple(SimpleCommand {
+                name: Some(Word::new("echo", "")),
+                prefixes: Vec::new(),
+                suffixes: vec![
+                    CmdSuffix::Word(Word::new("foo", " ")),
+                    CmdSuffix::Redirection(Redirection::new_output(
+                        " ",
+                        Some(FileDescriptor::Stderr),
+                        Word::new("/dev/null", ""),
+                    )),
+                ],
+            })),
 
-    //         tail: vec![
-    //             (
-    //                 Pipe {
-    //                     whitespace: "".to_string(),
-    //                 },
-    //                 Linebreak { newlines: None },
-    //                 Command::Simple(SimpleCommand {
-    //                     name: Some(Word::new("rev", "")),
-    //                     prefixes: Vec::new(),
-    //                     suffixes: vec![CmdSuffix::Redirection(Redirection::new_input(
-    //                         Word::new("2", " "),
-    //                         Word::new("file", " "),
-    //                         false,
-    //                     ))],
-    //                 }),
-    //             ),
-    //             (
-    //                 Pipe {
-    //                     whitespace: " ".to_string(),
-    //                 },
-    //                 Linebreak { newlines: None },
-    //                 Command::Simple(SimpleCommand {
-    //                     name: Some(Word::new("cat", " ")),
-    //                     prefixes: Vec::new(),
-    //                     suffixes: Vec::new(),
-    //                 }),
-    //             ),
-    //         ],
-    //     },
-    // };
+            tail: vec![
+                (
+                    Pipe {
+                        whitespace: LeadingWhitespace::default(),
+                    },
+                    Linebreak { newlines: None },
+                    Command::Simple(SimpleCommand {
+                        name: Some(Word::new("rev", "")),
+                        prefixes: Vec::new(),
+                        suffixes: vec![CmdSuffix::Redirection(Redirection::new_input(
+                            " ",
+                            Some(FileDescriptor::Stderr),
+                            Word::new("file", " "),
+                        ))],
+                    }),
+                ),
+                (
+                    Pipe {
+                        whitespace: LeadingWhitespace::from(" "),
+                    },
+                    Linebreak { newlines: None },
+                    Command::Simple(SimpleCommand {
+                        name: Some(Word::new("cat", " ")),
+                        prefixes: Vec::new(),
+                        suffixes: Vec::new(),
+                    }),
+                ),
+            ],
+        },
+    };
 
-    // assert_eq!(Ok(expected), actual);
-    // assert!(tokens.next().is_none());
+    assert_eq!(Ok(expected), actual);
+    assert!(tokens.next().is_none());
 }
 
 #[test]
@@ -597,112 +585,6 @@ fn parse_complete_command() {
 }
 
 #[test]
-fn ast() {
-    // let mut tokens = tokenize(" ! 2>&1 echo foo | rev&& exit ||die; sleep 3s  &");
-    // let ast = tokens.parse();
-
-    // let expected = SyntaxTree {
-    //     leading: Linebreak { newlines: None },
-    //     commands: Some((
-    //         CompleteCommands {
-    //             head: CompleteCommand::List(
-    //                 List {
-    //                     head: AndOrList {
-    //                         head: Pipeline {
-    //                             bang: Some(Bang {
-    //                                 whitespace: " ".to_string(),
-    //                             }),
-    //                             sequence: PipeSequence {
-    //                                 head: Box::new(Command::Simple(SimpleCommand {
-    //                                     name: Some(Word::new("echo", " ")),
-    //                                     prefixes: vec![CmdPrefix::Redirection(
-    //                                         Redirection::new_output(
-    //                                             Word::new("2", " "),
-    //                                             Word::new("1", ""),
-    //                                             false,
-    //                                             true,
-    //                                         ),
-    //                                     )],
-    //                                     suffixes: vec![CmdSuffix::Word(Word::new("foo", " "))],
-    //                                 })),
-    //                                 tail: vec![(
-    //                                     Pipe {
-    //                                         whitespace: " ".to_string(),
-    //                                     },
-    //                                     Linebreak { newlines: None },
-    //                                     Command::Simple(SimpleCommand {
-    //                                         name: Some(Word::new("rev", " ")),
-    //                                         prefixes: Vec::new(),
-    //                                         suffixes: Vec::new(),
-    //                                     }),
-    //                                 )],
-    //                             },
-    //                         },
-    //                         tail: vec![
-    //                             (
-    //                                 LogicalOp::And("".to_string()),
-    //                                 Linebreak { newlines: None },
-    //                                 Pipeline {
-    //                                     bang: None,
-    //                                     sequence: PipeSequence {
-    //                                         head: Box::new(Command::Simple(SimpleCommand {
-    //                                             name: Some(Word::new("exit", " ")),
-    //                                             prefixes: Vec::new(),
-    //                                             suffixes: Vec::new(),
-    //                                         })),
-    //                                         tail: Vec::new(),
-    //                                     },
-    //                                 },
-    //                             ),
-    //                             (
-    //                                 LogicalOp::Or(" ".to_string()),
-    //                                 Linebreak { newlines: None },
-    //                                 Pipeline {
-    //                                     bang: None,
-    //                                     sequence: PipeSequence {
-    //                                         head: Box::new(Command::Simple(SimpleCommand {
-    //                                             name: Some(Word::new("die", "")),
-    //                                             prefixes: Vec::new(),
-    //                                             suffixes: Vec::new(),
-    //                                         })),
-    //                                         tail: Vec::new(),
-    //                                     },
-    //                                 },
-    //                             ),
-    //                         ],
-    //                     },
-    //                     tail: vec![(
-    //                         SeparatorOp::Sync("".to_string()),
-    //                         AndOrList {
-    //                             head: Pipeline {
-    //                                 bang: None,
-    //                                 sequence: PipeSequence {
-    //                                     head: Box::new(Command::Simple(SimpleCommand {
-    //                                         name: Some(Word::new("sleep", " ")),
-    //                                         prefixes: Vec::new(),
-    //                                         suffixes: vec![CmdSuffix::Word(Word::new("3s", " "))],
-    //                                     })),
-    //                                     tail: Vec::new(),
-    //                                 },
-    //                             },
-    //                             tail: Vec::new(),
-    //                         },
-    //                     )],
-    //                 },
-    //                 Some(SeparatorOp::Async("  ".to_string())),
-    //                 None,
-    //             ),
-    //             tail: Vec::new(),
-    //         },
-    //         Linebreak { newlines: None },
-    //     )),
-    //     unparsed: "".to_string(),
-    // };
-    // assert_eq!(Ok(expected), ast);
-    // assert!(tokens.next().is_none());
-}
-
-#[test]
 fn parse_word() {
     let mut tokens = tokenize("  echo");
     let actual = tokens.parse_word(false);
@@ -738,20 +620,20 @@ fn parse_word() {
     let actual = tokens.parse_word(false);
     let expected = Word::new("echo", "");
     assert_eq!(Ok(expected), actual);
-    assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
-    assert_eq!(Some(SemanticToken::Word("foo".to_string())), tokens.next());
+    assert_eq!(Some(Token::Whitespace(' ')), tokens.next());
+    assert_eq!(Some(Token::Word("foo".to_string())), tokens.next());
     assert!(tokens.next().is_none());
 
     let mut tokens = tokenize(">foo");
     let actual = tokens.parse_word(false);
     assert!(actual.is_err());
-    assert_eq!(Some(SemanticToken::RedirectOutput), tokens.next());
+    assert_eq!(Some(Token::RedirectOutput), tokens.next());
 
     let mut tokens = tokenize("  >foo");
     let actual = tokens.parse_word(false);
     assert!(actual.is_err());
-    assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
-    assert_eq!(Some(SemanticToken::Whitespace(' ')), tokens.next());
+    assert_eq!(Some(Token::Whitespace(' ')), tokens.next());
+    assert_eq!(Some(Token::Whitespace(' ')), tokens.next());
 }
 
 #[test]
@@ -864,33 +746,6 @@ fn parse_file_redirection() {
     assert_eq!(Ok(expected), actual);
 }
 
-// #[test]
-// fn parse_redirection_fd() {
-//     let mut tokens = tokenize(" >");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Ok(Word::new("", " ")), actual);
-
-//     let mut tokens = tokenize(">>");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Ok(Word::new("", "")), actual);
-
-//     let mut tokens = tokenize(" <");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Ok(Word::new("", " ")), actual);
-
-//     let mut tokens = tokenize("2>");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Ok(Word::new("2", "")), actual);
-
-//     let mut tokens = tokenize(" 2");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(Ok(Word::new("2", " ")), actual);
-
-//     let mut tokens = tokenize("a");
-//     let actual = tokens.parse_redirection_fd();
-//     assert_eq!(None, actual);
-// }
-
 #[test]
 fn syntax_tree_back_to_string() {
     let input = "   foo='bar  baz'\\ quux  echo yo hello	2< file &&  !   true|cat> foo; hello";
@@ -957,6 +812,8 @@ fn word_with_parameter_expansions() {
         expansions: vec![Expansion::Parameter {
             range: 0..=3,
             name: "foo".to_string(),
+            finished: true,
+            quoted: false,
         }],
     };
 
@@ -971,6 +828,8 @@ fn word_with_parameter_expansions() {
         expansions: vec![Expansion::Parameter {
             range: 1..=4,
             name: "foo".to_string(),
+            finished: true,
+            quoted: true,
         }],
     };
 
@@ -997,10 +856,14 @@ fn word_with_parameter_expansions() {
             Expansion::Parameter {
                 range: 1..=4,
                 name: "foo".to_string(),
+                finished: true,
+                quoted: true,
             },
             Expansion::Parameter {
                 range: 7..=11,
                 name: "bar_".to_string(),
+                finished: true,
+                quoted: true,
             },
         ],
     };
@@ -1018,10 +881,14 @@ fn word_with_parameter_expansions() {
             Expansion::Parameter {
                 range: 0..=3,
                 name: "FOO".to_string(),
+                finished: true,
+                quoted: false,
             },
             Expansion::Parameter {
                 range: 6..=7,
                 name: "_".to_string(),
+                finished: true,
+                quoted: false,
             },
         ],
     };
@@ -1038,18 +905,26 @@ fn word_with_parameter_expansions() {
             Expansion::Parameter {
                 range: 0..=1,
                 name: "a".to_string(),
+                finished: true,
+                quoted: false,
             },
             Expansion::Parameter {
                 range: 3..=6,
                 name: "FOO".to_string(),
+                finished: true,
+                quoted: true,
             },
             Expansion::Parameter {
                 range: 9..=13,
                 name: "_foo".to_string(),
+                finished: true,
+                quoted: true,
             },
             Expansion::Parameter {
                 range: 15..=16,
                 name: "b".to_string(),
+                finished: true,
+                quoted: false,
             },
         ],
     };

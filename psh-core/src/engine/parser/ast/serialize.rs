@@ -288,10 +288,6 @@ impl Serialize for CmdSuffix {
     where
         S: serde::Serializer,
     {
-        // match self {
-        //     Self::Redirection(r) => r.serialize(serializer),
-        //     Self::Word(w) => w.serialize(serializer),
-        // }
         let mut state = serializer.serialize_struct("CmdSuffix", 2)?;
 
         match self {

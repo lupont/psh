@@ -1,25 +1,14 @@
-echo foo >file && cat file
-
-echo
-echo bar >>file && cat file
-
-echo
-rev <file
-
-echo
-rev <file 1<>file; cat file
-
-echo
-rev <file 1<>file; cat file
-
-echo
-sh ../test/res/errcho hello 2>file; cat file
-
-echo
-echo yo >foo\ bar; cat 'foo bar'
-
-echo
->'the file' echo hej; cat the\ file
-
-echo
-cat <foobar
+echo 1 foo >1 && cat 1
+echo bar >>1 && cat 1
+rev <1
+rev <1 1<>1; cat 1
+rev <1 1<>1; cat 1
+sh ../test/res/errcho 2 hello 2>2; cat 2
+echo 3 yo >file\ 3; cat 'file 3'
+>'4th file' echo 4 hej; cat 4th\ file
+cat <non-existent-file
+echo 5 foo \2>5 && cat 5
+echo 6 foo 2\>6
+echo 7 foo>7
+>7
+cat 7

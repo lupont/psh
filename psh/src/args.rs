@@ -4,9 +4,6 @@ pub struct Args {
     #[arg(short, long, help("Run the specified command and exit"))]
     pub command: bool,
 
-    #[arg(long, help("Only tokenize the input"))]
-    pub tokenize: bool,
-
     #[arg(long, help("Only lex the input"))]
     pub lex: bool,
 

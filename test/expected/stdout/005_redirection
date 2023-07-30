@@ -1,19 +1,14 @@
-foo
-
-foo
+1 foo
+1 foo
 bar
-
-oof
+oof 1
 rab
-
-oof
+oof 1
 rab
-
-foo
+1 foo
 bar
-
-hello
-
-yo
-
-hej
+2 hello
+3 yo
+4 hej
+5 foo 2
+6 foo 2>6

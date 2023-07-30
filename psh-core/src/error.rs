@@ -24,6 +24,7 @@ pub enum Error {
     Incomplete(String),
     Nix(nix::Error),
     Var(env::VarError),
+    NonExistentFile(String),
 
     #[cfg(feature = "serde")]
     Json(serde_json::Error),
@@ -49,6 +50,7 @@ impl fmt::Display for Error {
                 Self::Incomplete(line) => format!("incomplete line: '{line}'"),
                 Self::Nix(e) => format!("errno: {e}"),
                 Self::Var(e) => e.to_string(),
+                Self::NonExistentFile(file) => format!("{file}: no such file"),
 
                 #[cfg(feature = "serde")]
                 Self::Json(e) => e.to_string(),

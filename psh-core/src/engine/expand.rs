@@ -1,175 +1,134 @@
 use std::env;
+use std::ffi::{CStr, CString};
+use std::ops::RangeInclusive;
+
+use nix::libc::getpwnam;
 
 use crate::ast::prelude::*;
 use crate::{path, Engine, Result};
 
 pub trait Expand {
-    fn expand(self, engine: &mut Engine) -> Self;
-}
-
-impl Expand for Pipeline {
-    fn expand(self, engine: &mut Engine) -> Self {
-        Self {
-            bang: self.bang,
-            sequence: self.sequence.expand(engine),
-        }
-    }
-}
-
-impl Expand for PipeSequence {
-    fn expand(self, engine: &mut Engine) -> Self {
-        Self {
-            head: Box::new(self.head.expand(engine)),
-            tail: self
-                .tail
-                .into_iter()
-                .map(|(ws, linebreak, cmd)| (ws, linebreak, cmd.expand(engine)))
-                .collect(),
-        }
-    }
-}
-
-impl Expand for Command {
-    fn expand(self, engine: &mut Engine) -> Self {
-        match self {
-            Self::Simple(cmd) => Self::Simple(cmd.expand(engine)),
-            Self::Compound(_, _) => todo!(),
-            Self::FunctionDefinition(_) => todo!(),
-        }
-    }
-}
-
-impl Expand for SimpleCommand {
-    fn expand(self, engine: &mut Engine) -> Self {
-        let mut suffixes = Vec::new();
-        for suffix in self.suffixes.into_iter() {
-            if let CmdSuffix::Word(w) = &suffix {
-                let is_only_escaped_newlines = w.name().replace("\\\n", "").is_empty();
-                if is_only_escaped_newlines {
-                    continue;
-                }
-            }
-            suffixes.push(suffix.expand(engine));
-        }
-
-        Self {
-            name: self.name.map(|w| w.expand(engine)),
-            prefixes: self
-                .prefixes
-                .into_iter()
-                .map(|p| p.expand(engine))
-                .collect(),
-            suffixes,
-        }
-    }
-}
-
-impl Expand for CmdPrefix {
-    fn expand(self, engine: &mut Engine) -> Self {
-        match self {
-            Self::Redirection(r) => Self::Redirection(r.expand(engine)),
-            Self::Assignment(a) => Self::Assignment(a.expand(engine)),
-        }
-    }
-}
-
-impl Expand for CmdSuffix {
-    fn expand(self, engine: &mut Engine) -> Self {
-        match self {
-            Self::Redirection(r) => Self::Redirection(r.expand(engine)),
-            Self::Word(w) => Self::Word(w.expand(engine)),
-        }
-    }
-}
-
-impl Expand for Redirection {
-    fn expand(self, engine: &mut Engine) -> Self {
-        match self {
-            Self::File {
-                whitespace,
-                input_fd,
-                ty,
-                target,
-            } => Self::File {
-                whitespace,
-                input_fd,
-                ty,
-                target: target.expand(engine),
-            },
-            Self::Here {
-                whitespace,
-                input_fd,
-                ty,
-                end,
-                content,
-            } => Self::Here {
-                whitespace,
-                input_fd,
-                ty,
-                end: end.expand(engine),
-                content: content.expand(engine),
-            },
-        }
-    }
-}
-
-impl Expand for VariableAssignment {
-    fn expand(self, engine: &mut Engine) -> Self {
-        Self {
-            whitespace: self.whitespace,
-            lhs: self.lhs,
-            rhs: self.rhs.map(|w| w.expand(engine)),
-        }
-    }
+    fn expand(self, engine: &mut Engine) -> Vec<String>;
 }
 
 impl Expand for Word {
-    fn expand(self, engine: &mut Engine) -> Self {
-        let tilde_expanded = expand_tilde(self);
-        let parameter_expanded = expand_parameters(tilde_expanded, engine);
+    fn expand(mut self, engine: &mut Engine) -> Vec<String> {
+        let og = self.name.clone();
+
+        expand_tilde(&mut self.name, &mut self.expansions);
+
+        let field_split_candidates =
+            expand_parameters(&mut self.name, &mut self.expansions, engine);
+
         // FIXME: command substitution
         // FIXME: arithmetic expression
-        // FIXME: field split (should return one "main" word, and a list of trailing words
+
+        let remove_empty = !og.contains(['\'', '"']);
+
+        let it = field_split(self.name, field_split_candidates, remove_empty, engine);
+
         // FIXME: pathname expand
-        quote_removal(parameter_expanded)
+
+        it.into_iter()
+            .filter_map(|s| {
+                let remove_empty = !s.contains(['\'', '"']);
+                remove_quotes(&s, remove_empty)
+            })
+            .collect()
     }
 }
 
-fn expand_tilde(mut word: Word) -> Word {
-    let Some(index) = word.expansions.iter().position(|e| matches!(e, Expansion::Tilde { .. })) else {
-        return word;
-    };
+fn field_split(
+    input: String,
+    ranges: Vec<RangeInclusive<usize>>,
+    remove_empty: bool,
+    engine: &Engine,
+) -> Vec<String> {
+    let ifs_chars = engine
+        .get_value_of("IFS")
+        .unwrap_or_else(|| String::from(" \n\t"));
 
-    let Expansion::Tilde { range, name } = word.expansions.remove(index) else {
-        return word;
-    };
+    let mut fields = Vec::new();
+    let mut current_field: Option<String> = None;
 
-    if !name.is_empty() && path::is_portable_filename(&name) && path::system_has_user(&name) {
-        // FIXME: the tilde-prefix shall be replaced by a pathname
-        //        of the initial working directory associated with
-        //        the login name obtained using the getpwnam()
-        //        function as defined in the System Interfaces
-        //        volume of POSIX.1-2017
-        word.name.replace_range(range, &format!("/home/{name}"));
-    } else if name.is_empty() {
-        word.name.replace_range(range, &path::home_dir());
-    }
+    let mut chars = input.chars().enumerate().peekable();
 
-    word
-}
-
-fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
-    let mut expansion_indices = Vec::new();
-    for (i, exp) in word.expansions.iter().enumerate().rev() {
-        if matches!(exp, Expansion::Parameter { .. }) {
-            expansion_indices.push(i);
+    while let Some((i, c)) = chars.next() {
+        if ifs_chars.contains(c) && ranges.iter().any(|range| range.contains(&i)) {
+            if let Some(field) = current_field {
+                if !(remove_empty && field.is_empty()) {
+                    fields.push(field);
+                }
+            }
+            current_field = None;
+        } else if let Some(field) = current_field.as_mut() {
+            field.push(c);
+            if chars.peek().is_none() {
+                fields.push(field.to_string());
+            }
+        } else if chars.peek().is_none() {
+            fields.push(c.to_string());
+        } else {
+            current_field = Some(c.to_string());
         }
     }
 
-    for index in expansion_indices {
-        let Expansion::Parameter { range, name } = word.expansions.remove(index) else {
+    fields
+}
+
+fn expand_tilde(input: &mut String, expansions: &mut Vec<Expansion>) {
+    let mut indices = Vec::new();
+
+    for (i, exp) in expansions.iter().enumerate() {
+        if let Expansion::Tilde { .. } = exp {
+            indices.push(i);
+        }
+    }
+
+    while let Some(index) = indices.pop() {
+        let Expansion::Tilde { range, name } = expansions.remove(index) else {
             unreachable!()
         };
+
+        if !name.is_empty() && path::is_portable_filename(&name) {
+            let c_str = CString::new(name).unwrap();
+            let pointer = c_str.as_ptr();
+            // SAFETY: we own the pointer which was created via CString::new
+            //         from a known Rust string
+            let passwd = unsafe { getpwnam(pointer) };
+
+            if !passwd.is_null() {
+                // SAFETY: the input is the return value of the `getpwnam`
+                //         library function, and we know it is not null
+                let dir = unsafe { CStr::from_ptr((*passwd).pw_dir) };
+                let dir = dir.to_str().unwrap();
+                input.replace_range(range, dir);
+            }
+        } else if name.is_empty() {
+            input.replace_range(range, &path::home_dir());
+        }
+    }
+}
+
+fn expand_parameters(
+    input: &mut String,
+    expansions: &mut Vec<Expansion>,
+    engine: &mut Engine,
+) -> Vec<RangeInclusive<usize>> {
+    let mut indices = Vec::new();
+    for (i, exp) in expansions.iter().enumerate() {
+        if let Expansion::Parameter { .. } = exp {
+            indices.push(i);
+        }
+    }
+
+    let mut field_split_candidates = Vec::new();
+
+    while let Some(index) = indices.pop() {
+        let Expansion::Parameter { range, name, finished: true, quoted } = expansions.remove(index) else {
+            unreachable!()
+        };
+
         if name == "?" {
             let status = engine
                 .last_status
@@ -177,26 +136,29 @@ fn expand_parameters(mut word: Word, engine: &mut Engine) -> Word {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join("|");
-            word.name.replace_range(range, &status);
-        } else if let Some(val) = engine.get_value_of(&name) {
-            word.name.replace_range(range, &val);
+            if !quoted {
+                let start = *range.start();
+                let len = status.len();
+                let range = start..=start + len;
+                field_split_candidates.push(range);
+            }
+            input.replace_range(range, &status);
         } else {
-            word.name.replace_range(range, "");
+            let val = engine.get_value_of(&name).unwrap_or_default();
+            if !quoted {
+                let start = *range.start();
+                let len = val.len();
+                let range = start..=start + len;
+                field_split_candidates.push(range);
+            }
+            input.replace_range(range, &val);
         }
     }
 
-    word
+    field_split_candidates
 }
 
-fn quote_removal(word: Word) -> Word {
-    Word {
-        name: remove_quotes(&word.name),
-        whitespace: word.whitespace,
-        expansions: word.expansions,
-    }
-}
-
-pub fn remove_quotes(s: &str) -> String {
+pub fn remove_quotes(s: &str, remove_empty: bool) -> Option<String> {
     let mut name = String::new();
     let mut state = QuoteState::None;
     let mut is_escaped = false;
@@ -246,11 +208,15 @@ pub fn remove_quotes(s: &str) -> String {
         }
     }
 
-    name
+    if name.is_empty() && remove_empty {
+        None
+    } else {
+        Some(name)
+    }
 }
 
-pub fn expand_prompt(word: Word, engine: &mut Engine) -> Result<String> {
-    let word = expand_parameters(word, engine);
+pub fn expand_prompt(mut word: Word, engine: &mut Engine) -> Result<String> {
+    expand_parameters(&mut word.name, &mut word.expansions, engine);
     // FIXME: command substitution
     // FIXME: arithmetic expression
     // FIXME: ! expansion
@@ -275,19 +241,19 @@ mod tests {
     #[test]
     fn backslash_removal() {
         let input = "hello\\ there";
-        let output = remove_quotes(input);
-        assert_eq!("hello there", &output);
+        let output = remove_quotes(input, false);
+        assert_eq!(Some("hello there".to_string()), output);
 
         let input = "'hello\\ there'";
-        let output = remove_quotes(input);
-        assert_eq!("hello\\ there", &output);
+        let output = remove_quotes(input, false);
+        assert_eq!(Some("hello\\ there".to_string()), output);
 
         let input = "\"hello\\ there\"";
-        let output = remove_quotes(input);
-        assert_eq!("hello\\ there", &output);
+        let output = remove_quotes(input, false);
+        assert_eq!(Some("hello\\ there".to_string()), output);
 
         let input = r#""'foo' \"bar\"""#;
-        let output = remove_quotes(input);
-        assert_eq!(r#"'foo' "bar""#, &output);
+        let output = remove_quotes(input, false);
+        assert_eq!(Some(r#"'foo' "bar""#.to_string()), output);
     }
 }

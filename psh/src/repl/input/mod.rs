@@ -9,11 +9,10 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
-use psh_core::ast::prelude::Word;
 use psh_core::engine::expand::expand_prompt;
 use psh_core::{parse, Engine, Error, Result};
 
-use crate::config::Colors;
+use crate::config::{self, Colors};
 use crate::repl::input::syntax_highlighting::Highlighter;
 use crate::repl::RawMode;
 
@@ -46,13 +45,27 @@ pub fn read_full_command(engine: &mut Engine) -> Result<String> {
 
 fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
     let prompt = if ps2 {
-        engine.get_value_of("PS2").unwrap()
+        engine
+            .get_value_of("PS2")
+            .unwrap_or_else(|| config::PS2_PROMPT.to_string())
     } else {
-        engine.get_value_of("PS1").unwrap()
+        engine
+            .get_value_of("PS1")
+            .unwrap_or_else(|| config::PS1_USER_PROMPT.to_string())
     };
 
-    let word = Word::new(&prompt, "");
+    use psh_core::ast::Parser;
+    use psh_core::engine::parser::tok::Tokenizer;
+    let prompt = format!("\"{prompt}\"");
+    let word = prompt
+        .chars()
+        .peekable()
+        .tokenize()
+        .into_iter()
+        .peekable()
+        .parse_word(true)?;
     let word = expand_prompt(word, engine)?;
+    let word = &word[1..word.len() - 1];
 
     let color = Colors::prompt(engine);
 

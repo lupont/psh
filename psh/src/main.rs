@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use psh_core::engine::parser::semtok;
 use psh_core::engine::parser::tok;
 use psh_core::parse;
 use psh_core::Engine;
@@ -23,27 +22,23 @@ fn main() {
 
     if let Some(target) = args.target {
         if args.command {
-            run_command(&target, args.tokenize, args.lex, args.ast, json);
+            run_command(&target, args.lex, args.ast, json);
         } else {
-            run_file(&target, args.tokenize, args.lex, args.ast, json);
+            run_file(&target, args.lex, args.ast, json);
         }
     } else {
         let mut repl = repl::Repl::new();
 
-        if let Err(e) = repl.run(args.tokenize, args.lex, args.ast, json) {
+        if let Err(e) = repl.run(args.lex, args.ast, json) {
             eprintln!("psh: Unrecoverable error occurred: {e}");
             std::process::exit(7);
         }
     }
 }
 
-fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool, _json: bool) {
-    if tokenize {
-        for token in tok::tokenize(command) {
-            println!("{token:?}");
-        }
-    } else if lex {
-        for token in semtok::lex(command) {
+fn run_command(command: &str, lex: bool, ast: bool, _json: bool) {
+    if lex {
+        for token in tok::lex(command) {
             println!("{token:?}");
         }
     } else if ast {
@@ -73,16 +68,11 @@ fn run_command(command: &str, tokenize: bool, lex: bool, ast: bool, _json: bool)
     }
 }
 
-fn run_file(file: &String, tokenize: bool, lex: bool, ast: bool, _json: bool) {
+fn run_file(file: &String, lex: bool, ast: bool, _json: bool) {
     let path = PathBuf::from(file);
-    if tokenize {
+    if lex {
         let content = std::fs::read_to_string(path).unwrap();
-        for token in tok::tokenize(content) {
-            println!("{token:?}");
-        }
-    } else if lex {
-        let content = std::fs::read_to_string(path).unwrap();
-        for token in semtok::lex(content) {
+        for token in tok::lex(content) {
             println!("{token:?}");
         }
     } else if ast {

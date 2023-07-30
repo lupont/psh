@@ -75,18 +75,6 @@ pub fn is_portable_filename(input: impl AsRef<str>) -> bool {
         .all(|c| matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_'))
 }
 
-pub fn system_has_user(loginname: &str) -> bool {
-    std::process::Command::new("id")
-        .arg(loginname)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .expect("`id` command not found on system")
-        .code()
-        .expect("`id` command terminated by signal")
-        == 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

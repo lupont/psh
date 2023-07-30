@@ -11,8 +11,7 @@ use std::iter::Peekable;
 
 use self::prelude::*;
 use crate::engine::parser::consumer::Consumer;
-use crate::engine::parser::semtok::{ReservedWord, SemanticToken, SemanticTokenizer};
-use crate::engine::parser::tok::Tokenizer;
+use crate::engine::parser::tok::{ReservedWord, Token, Tokenizer};
 use crate::error::{ParseError, ParseResult};
 use crate::{Error, Result};
 
@@ -29,19 +28,11 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
         .tokenize()
         .into_iter()
         .peekable()
-        .tokenize()
-        .into_iter()
-        .peekable()
         .parse(true)
     {
         Ok(ast) => Ok(ast),
 
         Err(Ok(ast)) if allow_errors => Ok(ast),
-
-        Err(Err(e @ ParseError::InvalidSyntaxInCmdSub)) => Err(Error::SyntaxError(format!(
-            "command substitution: `{}'",
-            e,
-        ))),
 
         Err(Ok(ast)) if ast.is_ok() => Err(Error::Incomplete(ast.to_string())),
 
@@ -50,13 +41,18 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
             ast.unparsed.trim_start()
         ))),
 
+        Err(Err(e @ ParseError::InvalidSyntaxInCmdSub)) => Err(Error::SyntaxError(format!(
+            "command substitution: `{}'",
+            e,
+        ))),
+
         Err(Err(e)) => Err(Error::ParseError(e)),
     }
 }
 
 type StdResult<T, E> = std::result::Result<T, E>;
 
-pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized + Clone {
+pub trait Parser: Iterator<Item = Token> + Clone {
     fn parse(
         &mut self,
         swallow_rest: bool,
@@ -66,10 +62,10 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized + Clo
         let trailing_linebreak = self.parse_linebreak();
 
         let mut unparsed: String = if swallow_rest {
-            self.by_ref().map(|t| t.to_string()).collect()
+            self.by_ref().map(|t| t.as_str().to_string()).collect()
         } else {
             let mut this = self.clone();
-            this.by_ref().map(|t| t.to_string()).collect()
+            this.by_ref().map(|t| t.as_str().to_string()).collect()
         };
 
         // When in an interactive session, in order to keep track of
@@ -169,9 +165,9 @@ pub trait Parser: Iterator<Item = SemanticToken> + std::fmt::Debug + Sized + Clo
     fn swallow_whitespace(&mut self) -> LeadingWhitespace;
 }
 
-impl<T> Parser for Peekable<T>
+impl<I> Parser for Peekable<I>
 where
-    T: Iterator<Item = SemanticToken> + Clone + std::fmt::Debug,
+    I: Iterator<Item = Token> + Clone,
 {
     fn parse_complete_commands(&mut self) -> ParseResult<CompleteCommands> {
         let head = match self.parse_complete_command() {
@@ -422,7 +418,7 @@ where
         let initial = self.clone();
 
         let lparen_ws = self.swallow_whitespace();
-        let Some(_) = self.consume_single(SemanticToken::LParen) else {
+        if self.consume_single(Token::LParen).is_none() {
             *self = initial;
             return Err(ParseError::None);
         };
@@ -433,7 +429,7 @@ where
         };
 
         let rparen_ws = self.swallow_whitespace();
-        let Some(_) = self.consume_single(SemanticToken::RParen) else {
+        if self.consume_single(Token::RParen).is_none() {
             *self = initial;
             return Err(ParseError::None);
         };
@@ -537,10 +533,10 @@ where
         };
 
         let mut parens = String::new();
-        for token in [SemanticToken::LParen, SemanticToken::RParen] {
+        for token in [Token::LParen, Token::RParen] {
             parens.push_str(self.swallow_whitespace().as_ref());
             match self.consume_single(token) {
-                Some(token) => parens.push_str(&token.to_string()),
+                Some(token) => parens.push_str(&token.as_str()),
                 None => {
                     *self = initial;
                     return Err(ParseError::None);
@@ -578,7 +574,10 @@ where
         let initial = self.clone();
 
         let lbrace_ws = self.swallow_whitespace();
-        let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::LBrace)) else {
+        if self
+            .consume_single(Token::Reserved(ReservedWord::LBrace))
+            .is_none()
+        {
             *self = initial;
             return Err(ParseError::None);
         };
@@ -589,7 +588,10 @@ where
         };
 
         let rbrace_ws = self.swallow_whitespace();
-        let Some(_) = self.consume_single(SemanticToken::Reserved(ReservedWord::RBrace)) else {
+        if self
+            .consume_single(Token::Reserved(ReservedWord::RBrace))
+            .is_none()
+        {
             *self = initial;
             return Err(ParseError::None);
         };
@@ -605,11 +607,11 @@ where
         let initial = self.clone();
 
         // FIXME: whitespace
-        self.consume_single(SemanticToken::Reserved(ReservedWord::Do))
+        self.consume_single(Token::Reserved(ReservedWord::Do))
             .ok_or_else(|| ParseError::Unimplemented("do group (do)".to_string()))
             .and_then(|_| self.parse_compound_list())
             .and_then(|list| {
-                self.consume_single(SemanticToken::Reserved(ReservedWord::Done))
+                self.consume_single(Token::Reserved(ReservedWord::Done))
                     .map(|_| list)
                     .ok_or_else(|| ParseError::Unimplemented("do group (done)".to_string()))
             })
@@ -719,7 +721,7 @@ where
 
         loop {
             let ws = self.swallow_whitespace();
-            if let Some(SemanticToken::Whitespace(c @ '\n')) = self.next() {
+            if let Some(Token::Whitespace(c @ '\n')) = self.next() {
                 whitespace.push_str(ws.as_ref());
                 whitespace.push(c);
                 prev = self.clone();
@@ -744,18 +746,14 @@ where
     fn parse_separator_op(&mut self) -> ParseResult<SeparatorOp> {
         let initial = self.clone();
         let ws = self.swallow_whitespace();
-        self.consume_single(SemanticToken::SyncSeparator)
-            .or_else(|| self.consume_single(SemanticToken::AsyncSeparator))
-            .ok_or(ParseError::None)
-            .map(|t| match t {
-                SemanticToken::SyncSeparator => SeparatorOp::Sync(ws),
-                SemanticToken::AsyncSeparator => SeparatorOp::Async(ws),
-                _ => unreachable!(),
-            })
-            .map_err(|_| {
-                *self = initial;
-                ParseError::None
-            })
+        if self.consume_single(Token::SyncSeparator).is_some() {
+            Ok(SeparatorOp::Sync(ws))
+        } else if self.consume_single(Token::AsyncSeparator).is_some() {
+            Ok(SeparatorOp::Async(ws))
+        } else {
+            *self = initial;
+            Err(ParseError::None)
+        }
     }
 
     fn parse_separator(&mut self) -> ParseResult<Separator> {
@@ -765,43 +763,36 @@ where
             .parse_separator_op()
             .map(|op| (op, self.parse_linebreak()))
         {
-            return Ok(Separator::Explicit(separator_op, linebreak));
+            Ok(Separator::Explicit(separator_op, linebreak))
+        } else {
+            *self = initial;
+            self.parse_newline_list().map(Separator::Implicit)
         }
-
-        *self = initial;
-        self.parse_newline_list().map(Separator::Implicit)
     }
 
     fn parse_sequential_separator(&mut self) -> ParseResult<SequentialSeparator> {
         let initial = self.clone();
 
-        if self.consume_single(SemanticToken::SyncSeparator).is_some() {
+        if self.consume_single(Token::SyncSeparator).is_some() {
             let linebreak = self.parse_linebreak();
-            return Ok(SequentialSeparator::Semi(linebreak));
+            Ok(SequentialSeparator::Semi(linebreak))
+        } else {
+            *self = initial;
+            self.parse_newline_list().map(SequentialSeparator::Implicit)
         }
-
-        *self = initial;
-        self.parse_newline_list().map(SequentialSeparator::Implicit)
     }
 
     fn parse_name(&mut self) -> ParseResult<Name> {
         let initial = self.clone();
-        let ws = self.swallow_whitespace();
+        let whitespace = self.swallow_whitespace();
 
-        if let Some(SemanticToken::Word(word)) =
-            self.consume_if(|t| matches!(t, SemanticToken::Word(_)))
-        {
-            if is_name(&word) {
-                Ok(Name {
-                    whitespace: ws,
-                    name: word,
-                })
-            } else {
+        match self.next() {
+            Some(Token::Word(name)) if is_name(&name) => Ok(Name { whitespace, name }),
+
+            _ => {
                 *self = initial;
                 Err(ParseError::None)
             }
-        } else {
-            Err(ParseError::None)
         }
     }
 
@@ -879,7 +870,7 @@ where
     }
 
     fn parse_redirection_type(&mut self) -> ParseResult<RedirectionType> {
-        use SemanticToken::*;
+        use Token::*;
         let initial = self.clone();
 
         match self.next().zip(self.peek()) {
@@ -915,7 +906,7 @@ where
     }
 
     fn parse_here_doc_type(&mut self) -> ParseResult<HereDocType> {
-        use SemanticToken::*;
+        use Token::*;
         let initial = self.clone();
 
         match (self.next(), self.next(), self.peek()) {
@@ -944,7 +935,7 @@ where
             return Err(ParseError::None);
         };
 
-        if self.consume_single(SemanticToken::Equals).is_none() {
+        if self.consume_single(Token::Equals).is_none() {
             *self = initial;
             return Err(ParseError::None);
         }
@@ -969,15 +960,14 @@ where
         let mut full = String::new();
         let mut expansions = Vec::new();
         let mut is_escaped = false;
-        let mut cmd_sub_finished = true;
         let mut in_double_quote = false;
         let mut in_single_quote = false;
         let mut index = 0;
 
         loop {
             match self.peek() {
-                Some(SemanticToken::DoubleQuote) if !is_escaped => {
-                    full += &self.next().unwrap().to_string();
+                Some(Token::DoubleQuote) if !is_escaped => {
+                    full += &self.next().unwrap().as_str();
                     index += 1;
                     is_escaped = false;
                     if !in_single_quote {
@@ -985,8 +975,8 @@ where
                     }
                 }
 
-                Some(SemanticToken::SingleQuote) if !is_escaped => {
-                    full += &self.next().unwrap().to_string();
+                Some(Token::SingleQuote) if !is_escaped => {
+                    full += &self.next().unwrap().as_str();
                     index += 1;
                     is_escaped = false;
                     if !in_double_quote {
@@ -994,17 +984,23 @@ where
                     }
                 }
 
-                Some(SemanticToken::Backslash) if in_single_quote || is_escaped => {
-                    full += &self.next().unwrap().to_string();
+                Some(Token::Backslash) if in_single_quote || is_escaped => {
+                    full += &self.next().unwrap().as_str();
                     index += 1;
                     is_escaped = false;
                 }
 
-                Some(SemanticToken::Backslash) => {
-                    full += &self.next().unwrap().to_string();
+                Some(Token::QuestionMark) => {
+                    full += &self.next().unwrap().as_str();
+                    index += 1;
+                    is_escaped = false;
+                }
+
+                Some(Token::Backslash) => {
+                    full += &self.next().unwrap().as_str();
                     index += 1;
                     is_escaped = true;
-                    if let Some(SemanticToken::Whitespace('\n')) = self.peek() {
+                    if let Some(Token::Whitespace('\n')) = self.peek() {
                         self.next();
                         full += "\n";
                         index += 1;
@@ -1012,24 +1008,22 @@ where
                     }
                 }
 
-                Some(SemanticToken::Whitespace(c))
-                    if in_double_quote || in_single_quote || is_escaped =>
-                {
+                Some(Token::Whitespace(c)) if in_double_quote || in_single_quote || is_escaped => {
                     full.push(*c);
                     index += 1;
                     is_escaped = false;
                     self.next();
                 }
 
-                Some(SemanticToken::Equals) => {
-                    full += &self.next().unwrap().to_string();
+                Some(Token::Equals) => {
+                    full += &self.next().unwrap().as_str();
                     index += 1;
                     is_escaped = false;
                 }
 
-                Some(SemanticToken::CmdSubStart) => {
+                Some(Token::CmdSubStart) if !in_single_quote => {
                     let token = self.next().unwrap();
-                    let mut part = token.to_string();
+                    let mut part = String::from(token.as_str());
                     let (mut ast, finished) = match self.parse(false) {
                         Ok(ast) => (ast, false),
                         Err(Ok(ast)) => {
@@ -1044,14 +1038,14 @@ where
 
                     if finished {
                         let ws = self.swallow_whitespace();
-                        let Some(rparen @ SemanticToken::RParen) = self.next() else {
+                        let Some(rparen @ Token::RParen) = self.next() else {
                             // the only time `finished` is true, is if the first
                             // non-whitespace unparsed part is a right paren, meaning
                             // we'll never get to here if that is not the case
                             unreachable!()
                         };
                         part += ws.as_ref();
-                        part += &rparen.to_string();
+                        part += &rparen.as_str();
                     }
 
                     let len = part.len();
@@ -1061,37 +1055,128 @@ where
                         part,
                         tree: ast,
                         finished,
+                        quoted: in_double_quote,
                     });
 
-                    cmd_sub_finished = finished;
                     index += len;
                     is_escaped = false;
                 }
 
-                Some(dollar @ SemanticToken::Dollar) => {
-                    // TODO: actually handle this
-                    let dollar = dollar.to_string();
-                    full += &dollar;
-                    index += dollar.len();
-                    is_escaped = false;
+                Some(Token::Dollar) if !in_single_quote && !is_escaped => {
+                    // TODO: support ${}
                     self.next();
+                    let mut parameter = String::new();
+                    let mut rest = String::new();
+
+                    match self.peek() {
+                        Some(Token::QuestionMark) => {
+                            parameter.push('?');
+                            self.next();
+                        }
+
+                        Some(Token::Word(word)) => {
+                            let mut chars = word.chars().peekable();
+                            while let Some(c) = chars.peek() {
+                                if !is_valid_part_of_name(*c) {
+                                    break;
+                                }
+                                let c = chars.next().unwrap();
+                                parameter.push(c);
+                            }
+                            rest = chars.collect::<String>();
+                            self.next();
+                        }
+
+                        _ => {}
+                    }
+
+                    full.push('$');
+                    is_escaped = false;
+
+                    if !parameter.is_empty() {
+                        let len = parameter.len();
+                        full += &parameter;
+                        let expansion = Expansion::Parameter {
+                            range: index..=index + len,
+                            name: parameter,
+                            finished: true,
+                            quoted: in_double_quote,
+                        };
+                        index += len;
+                        expansions.push(expansion);
+                    }
+                    full += &rest;
+                    index += rest.len() + 1;
                 }
 
                 Some(_) if is_escaped || in_single_quote || in_double_quote => {
-                    let token = self.next().unwrap().to_string();
+                    let token = self.next().unwrap();
+                    let token = token.as_str();
                     full += &token;
                     index += token.len();
                     is_escaped = false;
                 }
 
-                Some(SemanticToken::Word(xs)) => {
+                Some(Token::Tilde) => {
+                    self.next();
+                    full.push('~');
+                    if full == "~" && !is_escaped {
+                        match self.peek() {
+                            Some(Token::Word(word)) => {
+                                let slash_index = word.find('/').unwrap_or(word.len());
+                                let name = &word[..slash_index];
+                                if name.is_empty() || is_name(name) {
+                                    expansions.push(Expansion::Tilde {
+                                        range: index..=index + name.len(),
+                                        name: name.to_string(),
+                                    });
+                                }
+                                full.push_str(word);
+                                index += word.len();
+                                self.next();
+                            }
+
+                            Some(Token::Whitespace(_)) | None => {
+                                expansions.push(Expansion::Tilde {
+                                    range: index..=index,
+                                    name: String::new(),
+                                });
+                            }
+
+                            Some(Token::Backslash) => {
+                                let prev = self.clone();
+                                self.next();
+                                if let Some(Token::Whitespace('\n')) = self.next() {
+                                    expansions.push(Expansion::Tilde {
+                                        range: index..=index,
+                                        name: String::new(),
+                                    });
+                                }
+                                *self = prev;
+                            }
+
+                            _ => {}
+                        }
+                    }
+                    index += 1;
+                    is_escaped = false;
+                }
+
+                Some(Token::Pound) if !full.is_empty() => {
+                    full.push('#');
+                    index += 1;
+                    is_escaped = false;
+                    self.next();
+                }
+
+                Some(Token::Word(xs)) => {
                     full += xs;
                     index += xs.len();
                     is_escaped = false;
                     self.next();
                 }
 
-                Some(SemanticToken::Reserved(reserved)) if allow_reserved_words => {
+                Some(Token::Reserved(reserved)) if allow_reserved_words => {
                     let res = reserved.as_ref();
                     full += res;
                     index += res.len();
@@ -1103,13 +1188,15 @@ where
             }
         }
 
+        let expansions_finished = expansions.iter().all(Expansion::is_finished);
+
         let mut word = Word::new(&full, ws);
         word.expansions.append(&mut expansions);
 
         if word.name.is_empty() {
             *self = initial;
             Err(ParseError::None)
-        } else if cmd_sub_finished && !in_double_quote && !in_single_quote && !is_escaped {
+        } else if !in_double_quote && !in_single_quote && !is_escaped && expansions_finished {
             Ok(word)
         } else {
             Err(ParseError::UnfinishedWord(word))
@@ -1119,7 +1206,7 @@ where
     fn parse_file_descriptor(&mut self) -> ParseResult<FileDescriptor> {
         let initial = self.clone();
 
-        if let Some(SemanticToken::Word(word)) = self.next() {
+        if let Some(Token::Word(word)) = self.next() {
             match word.as_str() {
                 "0" => return Ok(FileDescriptor::Stdin),
                 "1" => return Ok(FileDescriptor::Stdout),
@@ -1140,22 +1227,29 @@ where
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
-        if let Some(SemanticToken::Comment(comment)) = self.next() {
-            Ok(Comment {
-                whitespace: ws,
-                content: comment,
-            })
-        } else {
+        if self.consume_single(Token::Pound).is_none() {
             *self = initial;
-            Err(ParseError::None)
-        }
+            return Err(ParseError::None);
+        };
+
+        let content = self
+            .consume_until(|t| matches!(t, Token::Whitespace('\n')))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.as_str().to_string())
+            .collect();
+
+        Ok(Comment {
+            whitespace: ws,
+            content,
+        })
     }
 
     fn parse_pipe(&mut self) -> ParseResult<Pipe> {
         let initial = self.clone();
         let whitespace = self.swallow_whitespace();
 
-        self.consume_single(SemanticToken::Pipe)
+        self.consume_single(Token::Pipe)
             .map(|_| Pipe { whitespace })
             .ok_or_else(|| {
                 *self = initial;
@@ -1167,7 +1261,7 @@ where
         let initial = self.clone();
         let whitespace = self.swallow_whitespace();
 
-        self.consume_single(SemanticToken::Reserved(ReservedWord::Bang))
+        self.consume_single(Token::Reserved(ReservedWord::Bang))
             .map(|_| Bang { whitespace })
             .ok_or_else(|| {
                 *self = initial;
@@ -1179,22 +1273,19 @@ where
         let initial = self.clone();
         let ws = self.swallow_whitespace();
 
-        self.consume_single(SemanticToken::And)
-            .or_else(|| self.consume_single(SemanticToken::Or))
-            .map(|t| match t {
-                SemanticToken::And => LogicalOp::And(ws),
-                SemanticToken::Or => LogicalOp::Or(ws),
-                _ => unreachable!(),
-            })
-            .ok_or_else(|| {
-                *self = initial;
-                ParseError::None
-            })
+        if self.consume_single(Token::And).is_some() {
+            Ok(LogicalOp::And(ws))
+        } else if self.consume_single(Token::Or).is_some() {
+            Ok(LogicalOp::Or(ws))
+        } else {
+            *self = initial;
+            Err(ParseError::None)
+        }
     }
 
     fn swallow_whitespace(&mut self) -> LeadingWhitespace {
         let mut s = LeadingWhitespace::default();
-        while let Some(SemanticToken::Whitespace(c @ (' ' | '\t'))) = self.peek() {
+        while let Some(Token::Whitespace(c @ (' ' | '\t'))) = self.peek() {
             s.0.push(*c);
             self.next();
         }

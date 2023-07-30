@@ -7,7 +7,9 @@ use serde::Serialize;
 
 use crate::engine::builtin;
 use crate::engine::expand::remove_quotes;
-use crate::path;
+use crate::engine::expand::Expand;
+use crate::Engine;
+use crate::Error;
 
 pub use super::parse;
 pub use super::reconstruct;
@@ -513,18 +515,22 @@ impl SimpleCommand {
         }
     }
 
-    pub fn as_args(&self) -> impl Iterator<Item = &String> {
-        self.name().into_iter().chain(self.args())
-    }
+    pub fn expand_into_args(&self, engine: &mut Engine) -> Vec<String> {
+        let mut args = Vec::new();
 
-    pub fn args(&self) -> impl Iterator<Item = &String> {
-        self.suffixes
-            .iter()
-            .filter_map(|m| match m {
-                CmdSuffix::Word(w) if !w.is_empty() => Some(w),
-                _ => None,
-            })
-            .map(|w| &w.name)
+        if let Some(name) = self.name.clone() {
+            let mut expanded = name.expand(engine);
+            args.append(&mut expanded);
+        }
+
+        for suffix in &self.suffixes {
+            if let CmdSuffix::Word(word) = suffix.clone() {
+                let mut expanded = word.expand(engine);
+                args.append(&mut expanded);
+            }
+        }
+
+        args
     }
 
     pub fn assignments(&self) -> impl Iterator<Item = &VariableAssignment> {
@@ -548,7 +554,7 @@ impl SimpleCommand {
     }
 
     pub fn is_builtin(&self) -> bool {
-        matches!(&self.name, Some(Word { name, .. }) if builtin::has(&remove_quotes(name)))
+        matches!(&self.name, Some(Word { name, .. }) if builtin::has(&remove_quotes(name, false).unwrap()))
     }
 }
 
@@ -703,14 +709,21 @@ impl RedirectionType {
             Self::ReadWrite => {
                 options.read(true).write(true).create(true);
             }
-            Self::Output | Self::OutputClobber => {
+            Self::Output => {
+                options.write(true).truncate(true).create(true);
+            }
+            Self::OutputClobber => {
                 options.write(true).truncate(true).create(true);
             }
             Self::OutputAppend => {
                 options.write(true).append(true).create(true);
             }
         }
-        Ok(options.open(path)?.into_raw_fd().into())
+        Ok(options
+            .open(path)
+            .map_err(|_| Error::NonExistentFile(path.to_string()))?
+            .into_raw_fd()
+            .into())
     }
 }
 
@@ -775,51 +788,85 @@ pub enum Redirection {
 }
 
 impl Redirection {
-    pub fn new_file(input_fd: Option<FileDescriptor>, ty: RedirectionType, target: Word) -> Self {
+    pub fn new_file(
+        whitespace: impl Into<LeadingWhitespace>,
+        input_fd: Option<FileDescriptor>,
+        ty: RedirectionType,
+        target: Word,
+    ) -> Self {
         Self::File {
-            whitespace: Default::default(),
+            whitespace: whitespace.into(),
             input_fd,
             ty,
             target,
         }
     }
 
-    pub fn new_input(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::Input, target)
+    pub fn new_input(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::Input, target)
     }
 
-    pub fn new_input_fd(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::InputFd, target)
+    pub fn new_input_fd(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::InputFd, target)
     }
 
-    pub fn new_output(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::Output, target)
+    pub fn new_output(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::Output, target)
     }
 
-    pub fn new_output_fd(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::OutputFd, target)
+    pub fn new_output_fd(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::OutputFd, target)
     }
 
-    pub fn new_output_append(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::OutputAppend, target)
+    pub fn new_output_append(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::OutputAppend, target)
     }
 
-    pub fn new_output_clobber(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::OutputClobber, target)
+    pub fn new_output_clobber(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::OutputClobber, target)
     }
 
-    pub fn new_read_write(fd: Option<FileDescriptor>, target: Word) -> Self {
-        Self::new_file(fd, RedirectionType::ReadWrite, target)
+    pub fn new_read_write(
+        whitespace: impl Into<LeadingWhitespace>,
+        fd: Option<FileDescriptor>,
+        target: Word,
+    ) -> Self {
+        Self::new_file(whitespace, fd, RedirectionType::ReadWrite, target)
     }
 
     pub fn new_here(
+        whitespace: impl Into<LeadingWhitespace>,
         input_fd: Option<FileDescriptor>,
         strip_tabs: bool,
         content: Word,
         end: Word,
     ) -> Self {
         Self::Here {
-            whitespace: Default::default(),
+            whitespace: whitespace.into(),
             input_fd,
             ty: if strip_tabs {
                 HereDocType::StripTabs
@@ -867,166 +914,17 @@ pub struct Word {
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
-        let expansions = Self::find_expansions(input);
         let name = input.to_string();
 
         Self {
             whitespace: whitespace.into(),
             name,
-            expansions,
+            expansions: Default::default(),
         }
     }
 
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    pub fn is_empty(&self) -> bool {
-        // FIXME: this should check if it's literally '\\\n',
-        //        i.e. just the escaped newline, but something
-        //        is currently wrong with this expansion
-        !self.name.is_empty() && self.name.chars().all(|c| c == '\n')
-    }
-
-    pub fn is_finished(&self) -> bool {
-        let single_quotes =
-            Self::find_all(&[QuoteState::None, QuoteState::Single], &self.name, '\'').len();
-
-        let double_quotes =
-            Self::find_all(&[QuoteState::None, QuoteState::Double], &self.name, '"').len();
-
-        let mut trailing_backslash = false;
-
-        // FIXME: this does not take the current quote state into account,
-        //        meaning if a word is e.g. 'foo\, this will mark it as
-        //        a trailing backslash, when it should not
-        let mut iter = self.name.chars().rev();
-        while let Some('\\') = iter.next() {
-            trailing_backslash ^= true;
-        }
-
-        single_quotes % 2 == 0 && double_quotes % 2 == 0 && !trailing_backslash
-    }
-
-    fn find_expansions(input: &str) -> Vec<Expansion> {
-        let mut expansions = Vec::new();
-
-        if let Some(tilde) = Self::find_tilde_expansion(input) {
-            expansions.push(tilde);
-        }
-
-        let parameters = Self::find_parameter_expansions(input);
-        expansions.extend(&mut parameters.into_iter());
-
-        expansions
-    }
-
-    fn find_parameter_expansions(input: &str) -> Vec<Expansion> {
-        let mut state = QuoteState::None;
-        let mut is_escaped = false;
-
-        let mut expansions = Vec::new();
-        let mut curr_expansion = None::<String>;
-        let mut curr_expansion_start = 0;
-        let mut curr_expansion_end = 0;
-
-        let chars = input.chars().peekable();
-
-        for (index, c) in chars.enumerate() {
-            match (c, state) {
-                ('\'', QuoteState::Single) => {
-                    state = QuoteState::None;
-                }
-                ('\'', QuoteState::None) => {
-                    state = QuoteState::Single;
-                }
-
-                ('"', QuoteState::Double) if !is_escaped => {
-                    state = QuoteState::None;
-                }
-                ('"', QuoteState::None) => {
-                    state = QuoteState::Double;
-                }
-
-                ('\\', QuoteState::None | QuoteState::Double) => is_escaped = !is_escaped,
-
-                ('$', QuoteState::None | QuoteState::Double) if !is_escaped => {
-                    if matches!(&curr_expansion, Some(s) if !s.is_empty()) {
-                        expansions.push(Expansion::Parameter {
-                            range: curr_expansion_start..=curr_expansion_end,
-                            name: curr_expansion.unwrap(),
-                        });
-                    }
-                    curr_expansion = Some(String::new());
-                    curr_expansion_start = index;
-                }
-
-                ('?', QuoteState::None) if !is_escaped && curr_expansion.is_some() => {
-                    if matches!(&curr_expansion, Some(s) if s.is_empty()) {
-                        expansions.push(Expansion::Parameter {
-                            range: curr_expansion_start..=index,
-                            name: "?".to_string(),
-                        });
-                        curr_expansion = None;
-                    }
-                }
-
-                (c, _) if !is_escaped && curr_expansion.is_some() => {
-                    if super::is_valid_part_of_name(c) {
-                        curr_expansion.as_mut().unwrap().push(c);
-                        curr_expansion_end = index;
-                    } else {
-                        let parameter = curr_expansion.unwrap();
-                        if !parameter.is_empty() {
-                            expansions.push(Expansion::Parameter {
-                                range: curr_expansion_start..=curr_expansion_end,
-                                name: parameter,
-                            });
-                        }
-                        curr_expansion = None;
-                    }
-                }
-
-                (_, _) => {}
-            }
-
-            if !matches!((c, state), ('\\', QuoteState::None | QuoteState::Double)) {
-                is_escaped = false;
-            }
-        }
-
-        if let Some(exp) = curr_expansion {
-            if !exp.is_empty() {
-                expansions.push(Expansion::Parameter {
-                    range: curr_expansion_start..=curr_expansion_end,
-                    name: exp,
-                });
-            }
-        }
-
-        expansions
-    }
-
-    fn find_tilde_expansion(input: &str) -> Option<Expansion> {
-        if !matches!(input.chars().next(), Some('~')) {
-            return None;
-        }
-
-        let slash_index = match Self::find(QuoteState::None, input, '/', true) {
-            Some(index) => index,
-            None => input.len(),
-        };
-
-        let name = &input[1..slash_index];
-
-        if !path::is_portable_filename(name) {
-            return None;
-        }
-
-        Some(Expansion::Tilde {
-            range: 0..=slash_index - 1,
-            name: name.to_string(),
-        })
     }
 
     pub fn find_all(target_states: &[QuoteState], haystack: &str, needle: char) -> Vec<usize> {
@@ -1152,6 +1050,8 @@ pub enum Expansion {
     Parameter {
         range: RangeInclusive<usize>,
         name: String,
+        finished: bool,
+        quoted: bool,
     },
 
     Command {
@@ -1159,12 +1059,28 @@ pub enum Expansion {
         part: String,
         tree: SyntaxTree,
         finished: bool,
+        quoted: bool,
     },
 
     Arithmetic {
         range: RangeInclusive<usize>,
         expression: Word,
+        finished: bool,
+        quoted: bool,
     },
+}
+
+impl Expansion {
+    pub fn is_finished(&self) -> bool {
+        match self {
+            Self::Tilde { .. } => true,
+            Self::Glob { .. } => true,
+            Self::Brace { .. } => true,
+            Self::Parameter { finished, .. } => *finished,
+            Self::Command { finished, .. } => *finished,
+            Self::Arithmetic { finished, .. } => *finished,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

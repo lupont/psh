@@ -2,6 +2,7 @@ mod builtin;
 pub mod expand;
 pub mod history;
 pub mod parser;
+mod util;
 
 use std::collections::HashMap;
 use std::env;
@@ -13,9 +14,9 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::{close, dup, ForkResult};
+use nix::unistd::{close, dup};
 use nix::unistd::{dup2, execvp};
-use nix::unistd::{fork, pipe};
+use nix::unistd::pipe;
 
 use self::expand::Expand;
 use self::parser::ast::prelude::*;
@@ -38,6 +39,7 @@ struct ExecutionContext {
     stdout: RawFd,
     stderr: RawFd,
     fds: Vec<(FileDescriptor, FileDescriptor)>,
+    assignments: HashMap<String, String>,
     background: bool,
 }
 
@@ -48,15 +50,19 @@ impl ExecutionContext {
                 dup2(src.as_raw_fd(), dst.as_raw_fd())?;
             }
         }
+
         if !self.fds.iter().any(|&(_, dst)| dst.is_stdin()) {
             dup2(self.stdin, FileDescriptor::Stdin.as_raw_fd())?;
         }
+
         if !self.fds.iter().any(|&(_, dst)| dst.is_stdout()) {
             dup2(self.stdout, FileDescriptor::Stdout.as_raw_fd())?;
         }
+
         if !self.fds.iter().any(|&(_, dst)| dst.is_stderr()) {
             dup2(self.stderr, FileDescriptor::Stderr.as_raw_fd())?;
         }
+
         Ok(())
     }
 }
@@ -68,6 +74,7 @@ impl Default for ExecutionContext {
             stdout: 1,
             stderr: 2,
             fds: Default::default(),
+            assignments: Default::default(),
             background: false,
         }
     }
@@ -121,7 +128,7 @@ impl Engine {
     //        to replace the actual input string as needed, but this
     //        would require us to be able to take a SyntaxTree, update
     //        the originating string and re-parse
-    fn expand_alias(&self, name: &str) -> (String, Vec<String>) {
+    fn expand_alias(&self, name: &str) -> Vec<String> {
         let (mut name, mut args) = (name.to_string(), Vec::new());
         // should also be recursive
         if let Some(expanded) = self.aliases.get(&name) {
@@ -133,7 +140,8 @@ impl Engine {
                 .collect::<Vec<_>>();
             (name, args) = (a.to_string(), b);
         }
-        (name, args)
+        args.insert(0, name);
+        args
     }
 
     pub fn execute_line(&mut self, line: impl ToString) -> Result<Vec<ExitStatus>> {
@@ -166,47 +174,37 @@ impl Engine {
         Ok(status)
     }
 
-    fn execute_external_command<'a>(
+    fn execute_external_command(
         &mut self,
         args: &[impl AsRef<str>],
         context: ExecutionContext,
-        assignments: impl Iterator<Item = &'a VariableAssignment>,
     ) -> Result<ExitStatus> {
-        match unsafe { fork() } {
-            Ok(ForkResult::Parent { child }) => {
-                let mut rc = 0;
-                if !context.background {
-                    if let Ok(WaitStatus::Exited(_, code)) = waitpid(child, None) {
-                        rc = code;
-                    }
-                }
-                Ok(ExitStatus::from_code(rc))
+        let child = util::spawn_subshell(|| {
+            context.dup_fds()?;
+
+            for (key, val) in &context.assignments {
+                env::set_var(key, val);
             }
 
-            Ok(ForkResult::Child) => {
-                context.dup_fds()?;
+            let args = args
+                .iter()
+                .map(|s| CString::new(s.as_ref()).unwrap())
+                .collect::<Vec<_>>();
 
-                for assignment in assignments {
-                    let rhs = if let Some(rhs) = &assignment.rhs {
-                        rhs.to_string()
-                    } else {
-                        Default::default()
-                    };
-                    env::set_var(assignment.lhs.to_string(), rhs);
-                }
-
-                let args = args
-                    .iter()
-                    .map(|s| CString::new(s.as_ref()).unwrap())
-                    .collect::<Vec<_>>();
-
-                match execvp(&args[0], &args) {
-                    Ok(_) => unreachable!(),
-                    Err(e) => panic!("psh: error in exec: {e}"),
-                }
+            match execvp(&args[0], &args) {
+                Ok(_) => unreachable!(),
+                Err(e) => panic!("psh: error in exec: {e}"),
             }
-            Err(_e) => todo!(),
+        })?;
+
+        let mut rc = 0;
+        if !context.background {
+            if let Ok(WaitStatus::Exited(_, code)) = waitpid(child, None) {
+                rc = code;
+            }
         }
+
+        Ok(ExitStatus::from_code(rc))
     }
 
     pub fn execute_pipeline(&mut self, pipeline: Pipeline, background: bool) -> Result<ExitStatus> {
@@ -218,11 +216,8 @@ impl Engine {
         let mut stdin = 0;
         let mut last_status = ExitStatus::from_code(0);
 
-        while let Some(cmd) = pipeline_iter.next() {
-            let cmd = cmd.expand(self);
+        'outer: while let Some(cmd) = pipeline_iter.next() {
             if let Command::Simple(cmd) = cmd {
-                let mut args = cmd.as_args().collect::<Vec<_>>();
-
                 let (pipe_read, pipe_write) = pipe()?;
 
                 let stdout = if pipeline_iter.peek().is_some() {
@@ -243,15 +238,37 @@ impl Engine {
                         continue;
                     };
 
-                    let mut src_fd = ty.default_src_fd(target.name())?;
-                    let dst_fd = input_fd.unwrap_or_else(|| ty.default_dst_fd());
-                    if src_fd == FileDescriptor::Stdin {
-                        src_fd = FileDescriptor::from(stdin);
-                    } else if src_fd == FileDescriptor::Stdout {
-                        src_fd = FileDescriptor::from(stdout);
+                    let target = target.clone().expand(self).join(" ");
+                    match ty.default_src_fd(&target) {
+                        Ok(mut src_fd) => {
+                            let dst_fd = input_fd.unwrap_or_else(|| ty.default_dst_fd());
+                            if src_fd == FileDescriptor::Stdin {
+                                src_fd = FileDescriptor::from(stdin);
+                            } else if src_fd == FileDescriptor::Stdout {
+                                src_fd = FileDescriptor::from(stdout);
+                            }
+                            fds.push((src_fd, dst_fd));
+                        }
+                        Err(e) => {
+                            // writeln!(self.writer, "psh: {e}")?;
+                            eprintln!("psh: {e}");
+                            break 'outer;
+                        }
                     }
-                    fds.push((src_fd, dst_fd));
                 }
+
+                let assignments = {
+                    let mut assignments = HashMap::new();
+                    for assignment in cmd.assignments() {
+                        let rhs = if let Some(rhs) = &assignment.rhs {
+                            rhs.clone().expand(self).join(" ")
+                        } else {
+                            Default::default()
+                        };
+                        assignments.insert(assignment.lhs.to_string(), rhs);
+                    }
+                    assignments
+                };
 
                 let context = ExecutionContext {
                     stdin,
@@ -259,29 +276,27 @@ impl Engine {
                     stderr: 2,
                     fds,
                     background,
+                    assignments,
                 };
 
-                if let Some(name) = cmd.name() {
-                    let (expanded_alias, alias_args) = self.expand_alias(args[0]);
+                if cmd.name().is_some() {
+                    let mut args = cmd.expand_into_args(self);
 
-                    args[0] = &expanded_alias;
-                    args.splice(1..1, alias_args.iter());
-
-                    last_status = if !self.has_executable(args[0]) {
-                        return Err(Error::UnknownCommand(name.to_string()));
-                    } else if cmd.is_builtin() {
-                        self.execute_builtin(&args, context)?
-                    } else {
-                        self.execute_external_command(&args, context, cmd.assignments())?
-                    };
-                } else if pipeline_amount == 1 {
-                    for assignment in cmd.assignments() {
-                        let rhs = if let Some(rhs) = &assignment.rhs {
-                            rhs.to_string()
+                    if !args.is_empty() {
+                        let alias_args = self.expand_alias(&args[0]);
+                        args.splice(0..1, alias_args);
+                        last_status = if !self.has_executable(&args[0]) {
+                            return Err(Error::UnknownCommand(args[0].to_string()));
+                        } else if cmd.is_builtin() {
+                            // TODO: assignments
+                            self.execute_builtin(&args, context)?
                         } else {
-                            Default::default()
+                            self.execute_external_command(&args, context)?
                         };
-                        self.assignments.insert(assignment.lhs.to_string(), rhs);
+                    }
+                } else if pipeline_amount == 1 {
+                    for (key, val) in context.assignments {
+                        self.assignments.insert(key, val);
                     }
                 }
 

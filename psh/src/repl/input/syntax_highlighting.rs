@@ -263,7 +263,7 @@ impl Highlighter for SimpleCommand {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         let cmd_color = match &self.name {
             Some(word) => {
-                let name = remove_quotes(&word.name);
+                let name = remove_quotes(&word.name, false).unwrap();
                 if engine.has_executable(&name)
                     || engine.has_alias(&name)
                     || (engine.has_abbreviation(&name) && context.abbreviations)

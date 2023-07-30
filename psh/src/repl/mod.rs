@@ -5,7 +5,7 @@ use std::process;
 
 use crossterm::terminal;
 
-use psh_core::engine::parser::{semtok, tok};
+use psh_core::engine::parser::tok;
 use psh_core::{parse, path, Engine, Error, Result};
 
 use crate::config::{self, Colors};
@@ -29,7 +29,7 @@ impl Repl {
         }
     }
 
-    pub fn run(&mut self, tokenize: bool, lex: bool, ast: bool, _json: bool) -> Result<()> {
+    pub fn run(&mut self, lex: bool, ast: bool, _json: bool) -> Result<()> {
         self.read_init_file()?;
 
         if self.engine.get_value_of("PS1").is_none() {
@@ -53,12 +53,8 @@ impl Repl {
         loop {
             let line = input::read_full_command(&mut self.engine)?;
 
-            if tokenize && line != "exit" {
-                for token in tok::tokenize(line) {
-                    println!("{token:?}");
-                }
-            } else if lex && line != "exit" {
-                for token in semtok::lex(line) {
+            if lex && line != "exit" {
+                for token in tok::lex(line) {
                     println!("{token:?}");
                 }
             } else if ast && line != "exit" {
