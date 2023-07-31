@@ -54,11 +54,13 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
     let word = Word::new(&prompt, "");
     let word = expand_prompt(word, engine)?;
 
+    let color = Colors::prompt(engine);
+
     queue!(
         engine.writer,
         cursor::MoveToColumn(0),
-        style::SetForegroundColor(Colors::PROMPT),
-        style::Print(word.to_string()),
+        style::SetForegroundColor(color),
+        style::Print(word),
         style::ResetColor,
     )?;
 
@@ -363,11 +365,12 @@ fn write_highlighted_ast(
     let (start_x, start_y) = start_pos;
     let (x, y) = state.pos()?;
 
+    let color = Colors::normal(engine);
     queue!(
         engine.writer,
         cursor::MoveTo(start_x, start_y),
         terminal::Clear(terminal::ClearType::UntilNewLine),
-        style::SetForegroundColor(Colors::TRAILING_WORD_COLOR),
+        style::SetForegroundColor(color),
     )?;
 
     let line = if let Some(l) = old_line {

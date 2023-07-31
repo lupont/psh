@@ -30,7 +30,8 @@ impl Highlighter for SyntaxTree {
             linebreak.write_highlighted(engine, context)?;
         }
 
-        queue!(engine.writer, SetForegroundColor(Colors::UNPARSED),)?;
+        let unparsed_color = Colors::unparsed(engine);
+        queue!(engine.writer, SetForegroundColor(unparsed_color))?;
         for c in self.unparsed.chars() {
             if c == '\n' {
                 queue!(
@@ -211,10 +212,11 @@ impl Highlighter for Term {
 
 impl Highlighter for FunctionDefinition {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        let color = Colors::normal(engine);
         self.name.write_highlighted(engine, context)?;
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::FUNC_DEF_PAREN_COLOR),
+            SetForegroundColor(color),
             Print(&self.parens),
             ResetColor
         )?;
@@ -237,9 +239,10 @@ impl Highlighter for FunctionBody {
 
 impl Highlighter for BraceGroup {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        let separator_color = Colors::separator(engine);
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::BRACE_GROUP_COLOR),
+            SetForegroundColor(separator_color),
             Print(&self.lbrace_ws),
             Print('{'),
             ResetColor
@@ -247,7 +250,7 @@ impl Highlighter for BraceGroup {
         self.body.write_highlighted(engine, context)?;
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::BRACE_GROUP_COLOR),
+            SetForegroundColor(separator_color),
             Print(&self.rbrace_ws),
             Print('}'),
             ResetColor
@@ -265,12 +268,12 @@ impl Highlighter for SimpleCommand {
                     || engine.has_alias(&name)
                     || (engine.has_abbreviation(&name) && context.abbreviations)
                 {
-                    Colors::VALID_CMD_COLOR
+                    Colors::valid_cmd(engine)
                 } else {
-                    Colors::INVALID_CMD_COLOR
+                    Colors::invalid_cmd(engine)
                 }
             }
-            _ => Colors::INVALID_CMD_COLOR,
+            _ => Colors::invalid_cmd(engine),
         };
 
         for prefix in &self.prefixes {
@@ -306,10 +309,8 @@ impl Highlighter for CmdSuffix {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         match self {
             Self::Word(w) => {
-                queue!(
-                    engine.writer,
-                    SetForegroundColor(Colors::TRAILING_WORD_COLOR),
-                )?;
+                let color = Colors::normal(engine);
+                queue!(engine.writer, SetForegroundColor(color))?;
 
                 w.write_highlighted(engine, context)?;
 
@@ -324,6 +325,10 @@ impl Highlighter for CmdSuffix {
 
 impl Highlighter for Redirection {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let lhs_color = Colors::lhs(engine);
+        let op_color = Colors::op(engine);
+        let rhs_color = Colors::rhs(engine);
+
         match self {
             Redirection::File {
                 whitespace,
@@ -333,15 +338,15 @@ impl Highlighter for Redirection {
             } => Ok(queue!(
                 engine.writer,
                 Print(whitespace),
-                SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
+                SetForegroundColor(lhs_color),
                 Print(if let Some(fd) = input_fd {
                     fd.to_string()
                 } else {
                     String::new()
                 }),
-                SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
+                SetForegroundColor(op_color),
                 Print(ty.to_string()),
-                SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
+                SetForegroundColor(rhs_color),
                 Print(target.to_string()),
                 ResetColor,
             )?),
@@ -354,15 +359,15 @@ impl Highlighter for Redirection {
             } => Ok(queue!(
                 engine.writer,
                 Print(whitespace),
-                SetForegroundColor(Colors::REDIRECTION_FD_COLOR),
+                SetForegroundColor(lhs_color),
                 Print(if let Some(fd) = input_fd {
                     fd.to_string()
                 } else {
                     String::new()
                 }),
-                SetForegroundColor(Colors::REDIRECTION_OP_COLOR),
+                SetForegroundColor(op_color),
                 Print(ty.to_string()),
-                SetForegroundColor(Colors::REDIRECTION_TARGET_COLOR),
+                SetForegroundColor(rhs_color),
                 Print(end.to_string()),
                 ResetColor,
                 Print(content.to_string()),
@@ -373,14 +378,18 @@ impl Highlighter for Redirection {
 
 impl Highlighter for VariableAssignment {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        let lhs_color = Colors::lhs(engine);
+        let op_color = Colors::op(engine);
+        let rhs_color = Colors::rhs(engine);
+
         queue!(
             engine.writer,
             Print(&self.whitespace),
-            SetForegroundColor(Colors::ASSIGNMENT_LHS_COLOR),
+            SetForegroundColor(lhs_color),
             Print(self.lhs.to_string()),
-            SetForegroundColor(Colors::ASSIGNMENT_OP_COLOR),
+            SetForegroundColor(op_color),
             Print('='),
-            SetForegroundColor(Colors::ASSIGNMENT_RHS_COLOR),
+            SetForegroundColor(rhs_color),
         )?;
 
         if let Some(rhs) = &self.rhs {
@@ -424,9 +433,10 @@ impl Highlighter for Linebreak {
 
 impl Highlighter for SeparatorOp {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let separator_color = Colors::separator(engine);
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::SEPARATOR_COLOR),
+            SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
         )?;
@@ -448,9 +458,10 @@ impl Highlighter for Separator {
 
 impl Highlighter for LogicalOp {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let separator_color = Colors::separator(engine);
         Ok(queue!(
             engine.writer,
-            SetForegroundColor(Colors::LOGICAL_OP_COLOR),
+            SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
         )?)
@@ -466,9 +477,10 @@ impl Highlighter for Name {
 
 impl Highlighter for Bang {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let separator_color = Colors::separator(engine);
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::BANG_COLOR),
+            SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
         )?;
@@ -478,9 +490,10 @@ impl Highlighter for Bang {
 
 impl Highlighter for Comment {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let color = Colors::comment(engine);
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::COMMENT_COLOR),
+            SetForegroundColor(color),
             Print(self.to_string()),
             ResetColor
         )?;
@@ -490,9 +503,10 @@ impl Highlighter for Comment {
 
 impl Highlighter for Pipe {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let color = Colors::separator(engine);
         queue!(
             engine.writer,
-            SetForegroundColor(Colors::PIPE_COLOR),
+            SetForegroundColor(color),
             Print(self.to_string()),
             ResetColor,
         )?;
@@ -523,11 +537,12 @@ impl Highlighter for Word {
             Print(&self.whitespace)
         )?;
 
+        let cmd_sub_color = Colors::cmd_sub(engine);
         while let Some((i, c)) = chars.next() {
             if let Some((end, tree, &finished)) = cmd_sub_starts.get(&i) {
                 queue!(
                     engine.writer,
-                    SetForegroundColor(Colors::CMD_SUB_COLOR),
+                    SetForegroundColor(cmd_sub_color),
                     Print("$("),
                     ResetColor
                 )?;
@@ -535,7 +550,7 @@ impl Highlighter for Word {
                 if finished {
                     queue!(
                         engine.writer,
-                        SetForegroundColor(Colors::CMD_SUB_COLOR),
+                        SetForegroundColor(cmd_sub_color),
                         Print(')'),
                         ResetColor
                     )?;

@@ -1,37 +1,62 @@
 use crossterm::style::Color;
+use psh_core::Engine;
 
 pub struct Colors;
 
+fn from_var(var: &str, engine: &Engine) -> Color {
+    match engine.get_value_of(var) {
+        Some(color) => match color.parse::<u8>() {
+            Ok(val) => Color::AnsiValue(val),
+            Err(_) => Color::AnsiValue(15),
+        },
+        None => Color::AnsiValue(15),
+    }
+}
+
 impl Colors {
-    pub const UNPARSED: Color = Color::Red;
+    pub fn unparsed(engine: &Engine) -> Color {
+        from_var("PSH_UNPARSED_COL", engine)
+    }
 
-    pub const COMMENT_COLOR: Color = Color::DarkGrey;
+    pub fn comment(engine: &Engine) -> Color {
+        from_var("PSH_COMMENT_COL", engine)
+    }
 
-    pub const BANG_COLOR: Color = Color::Magenta;
-    pub const PIPE_COLOR: Color = Color::Magenta;
+    pub fn separator(engine: &Engine) -> Color {
+        from_var("PSH_SEPARATOR_COL", engine)
+    }
 
-    pub const VALID_CMD_COLOR: Color = Color::Yellow;
-    pub const INVALID_CMD_COLOR: Color = Color::DarkRed;
+    pub fn valid_cmd(engine: &Engine) -> Color {
+        from_var("PSH_VALID_CMD_COL", engine)
+    }
 
-    pub const TRAILING_WORD_COLOR: Color = Color::Grey;
+    pub fn invalid_cmd(engine: &Engine) -> Color {
+        from_var("PSH_INVALID_CMD_COL", engine)
+    }
 
-    pub const CMD_SUB_COLOR: Color = Color::Blue;
+    pub fn cmd_sub(engine: &Engine) -> Color {
+        from_var("PSH_CMD_SUB_COL", engine)
+    }
 
-    pub const REDIRECTION_FD_COLOR: Color = Color::White;
-    pub const REDIRECTION_OP_COLOR: Color = Color::Yellow;
-    pub const REDIRECTION_TARGET_COLOR: Color = Color::White;
+    pub fn normal(engine: &Engine) -> Color {
+        from_var("PSH_NORMAL_COL", engine)
+    }
 
-    pub const ASSIGNMENT_LHS_COLOR: Color = Color::White;
-    pub const ASSIGNMENT_OP_COLOR: Color = Color::Blue;
-    pub const ASSIGNMENT_RHS_COLOR: Color = Color::White;
+    pub fn op(engine: &Engine) -> Color {
+        from_var("PSH_OP_COL", engine)
+    }
 
-    pub const SEPARATOR_COLOR: Color = Color::Magenta;
-    pub const LOGICAL_OP_COLOR: Color = Color::Magenta;
+    pub fn lhs(engine: &Engine) -> Color {
+        from_var("PSH_LHS_COL", engine)
+    }
 
-    pub const FUNC_DEF_PAREN_COLOR: Color = Color::Grey;
-    pub const BRACE_GROUP_COLOR: Color = Color::DarkGreen;
+    pub fn rhs(engine: &Engine) -> Color {
+        from_var("PSH_RHS_COL", engine)
+    }
 
-    pub const PROMPT: Color = Color::DarkGrey;
+    pub fn prompt(engine: &Engine) -> Color {
+        from_var("PSH_PROMPT_COL", engine)
+    }
 }
 
 pub const PS1_USER_PROMPT: &str = "$ ";
