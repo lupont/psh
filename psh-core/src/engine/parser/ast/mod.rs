@@ -1012,13 +1012,6 @@ where
                     }
                 }
 
-                Some(_) if is_escaped || in_single_quote || in_double_quote => {
-                    let token = self.next().unwrap().to_string();
-                    full += &token;
-                    index += token.len();
-                    is_escaped = false;
-                }
-
                 Some(SemanticToken::Whitespace(c))
                     if in_double_quote || in_single_quote || is_escaped =>
                 {
@@ -1082,6 +1075,13 @@ where
                     index += dollar.len();
                     is_escaped = false;
                     self.next();
+                }
+
+                Some(_) if is_escaped || in_single_quote || in_double_quote => {
+                    let token = self.next().unwrap().to_string();
+                    full += &token;
+                    index += token.len();
+                    is_escaped = false;
                 }
 
                 Some(SemanticToken::Word(xs)) => {
