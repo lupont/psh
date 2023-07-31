@@ -10,7 +10,7 @@ use crossterm::style;
 use crossterm::terminal;
 
 use psh_core::ast::prelude::Word;
-use psh_core::engine::expand::Expand;
+use psh_core::engine::expand::expand_prompt;
 use psh_core::{parse, Engine, Error, Result};
 
 use crate::config::Colors;
@@ -52,7 +52,7 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
     };
 
     let word = Word::new(&prompt, "");
-    let word = word.expand(engine);
+    let word = expand_prompt(word, engine)?;
 
     queue!(
         engine.writer,

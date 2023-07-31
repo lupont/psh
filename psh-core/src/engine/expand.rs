@@ -1,5 +1,7 @@
+use std::env;
+
 use crate::ast::prelude::*;
-use crate::{path, Engine};
+use crate::{path, Engine, Result};
 
 pub trait Expand {
     fn expand(self, engine: &mut Engine) -> Self;
@@ -245,6 +247,25 @@ pub fn remove_quotes(s: &str) -> String {
     }
 
     name
+}
+
+pub fn expand_prompt(word: Word, engine: &mut Engine) -> Result<String> {
+    let word = expand_parameters(word, engine);
+    // FIXME: command substitution
+    // FIXME: arithmetic expression
+    // FIXME: ! expansion
+
+    let input = word.name;
+    let output = if input.contains("\\w") {
+        let cwd = env::var("PWD")?;
+        let compressed_cwd = path::compress_tilde(cwd);
+
+        input.replace("\\w", &compressed_cwd)
+    } else {
+        input
+    };
+
+    Ok(output)
 }
 
 #[cfg(test)]

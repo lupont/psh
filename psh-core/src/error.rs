@@ -1,3 +1,4 @@
+use std::env;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
@@ -22,6 +23,7 @@ pub enum Error {
     CancelledLine,
     Incomplete(String),
     Nix(nix::Error),
+    Var(env::VarError),
 
     #[cfg(feature = "serde")]
     Json(serde_json::Error),
@@ -46,6 +48,7 @@ impl fmt::Display for Error {
                 Self::CancelledLine => "line input cancelled".to_string(),
                 Self::Incomplete(line) => format!("incomplete line: '{line}'"),
                 Self::Nix(e) => format!("errno: {e}"),
+                Self::Var(e) => e.to_string(),
 
                 #[cfg(feature = "serde")]
                 Self::Json(e) => e.to_string(),
@@ -78,6 +81,12 @@ impl From<ParseError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Self::Json(e)
+    }
+}
+
+impl From<env::VarError> for Error {
+    fn from(e: env::VarError) -> Self {
+        Self::Var(e)
     }
 }
 
