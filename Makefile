@@ -1,5 +1,5 @@
 CARGO := cargo
-BASH := sh
+SH := sh
 SHELLCHECK := shellcheck
 
 all: lint test
@@ -21,6 +21,6 @@ test-rust:
 	${CARGO} test -q
 
 test: test-rust
-	${BASH} test.sh
+	${SH} test.sh
 
 .PHONY: all coverage fmt lint shellcheck test
