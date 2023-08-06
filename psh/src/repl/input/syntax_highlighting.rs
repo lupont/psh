@@ -7,7 +7,7 @@ use crossterm::terminal::{Clear, ClearType};
 use crossterm::{execute, queue};
 
 use psh_core::ast::prelude::*;
-use psh_core::engine::expand::remove_quotes;
+use psh_core::engine::expand::Expand;
 use psh_core::{Engine, Result};
 
 use crate::repl::Colors;
@@ -262,26 +262,23 @@ impl Highlighter for BraceGroup {
 
 impl Highlighter for SimpleCommand {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
-        let cmd_color = match &self.name {
-            Some(word) => {
-                let name = remove_quotes(&word.name, false).unwrap();
-                if engine.has_executable(&name)
-                    || engine.has_alias(&name)
-                    || (engine.has_abbreviation(&name) && context.abbreviations)
-                {
-                    Colors::valid_cmd(engine)
-                } else {
-                    Colors::invalid_cmd(engine)
-                }
-            }
-            _ => Colors::invalid_cmd(engine),
-        };
-
         for prefix in &self.prefixes {
             prefix.write_highlighted(engine, context)?;
         }
 
         if let Some(name) = &self.name {
+            let args = name.clone().expand(engine);
+
+            let has_cmd = |cmd| {
+                engine.has_executable(cmd)
+                    || (engine.has_abbreviation(cmd) && context.abbreviations)
+            };
+
+            let cmd_color = match args.first() {
+                Some(name) if has_cmd(name) => Colors::valid_cmd(engine),
+                _ => Colors::invalid_cmd(engine),
+            };
+
             queue!(stdout(), SetForegroundColor(cmd_color))?;
 
             name.write_highlighted(engine, context)?;
