@@ -7,16 +7,15 @@ mod util;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::CString;
-use std::io::{self, Stdout, Write};
 use std::ops::Not;
 use std::os::fd::RawFd;
 use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 
 use nix::sys::wait::{waitpid, WaitStatus};
+use nix::unistd::pipe;
 use nix::unistd::{close, dup};
 use nix::unistd::{dup2, execvp};
-use nix::unistd::pipe;
 
 use self::expand::Expand;
 use self::parser::ast::prelude::*;
@@ -24,7 +23,6 @@ pub use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
 
 pub struct Engine {
-    pub writer: Stdout,
     pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
@@ -84,7 +82,6 @@ impl Engine {
     pub fn new() -> Self {
         let history = FileHistory::init().expect("could not initialize history");
         Self {
-            writer: io::stdout(),
             commands: path::get_cmds_from_path(),
             history: Box::new(history),
             assignments: Default::default(),
@@ -250,7 +247,6 @@ impl Engine {
                             fds.push((src_fd, dst_fd));
                         }
                         Err(e) => {
-                            // writeln!(self.writer, "psh: {e}")?;
                             eprintln!("psh: {e}");
                             break 'outer;
                         }
@@ -341,7 +337,7 @@ impl Engine {
 
             if let Err(e @ Error::UnknownCommand(_)) = res {
                 codes.push(ExitStatus::from_code(127));
-                writeln!(self.writer, "psh: {e}")?;
+                eprintln!("psh: {e}");
             } else {
                 codes.append(&mut res?);
             }

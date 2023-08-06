@@ -1,6 +1,7 @@
 mod syntax_highlighting;
 
 use std::collections::HashMap;
+use std::io::{stderr, stdout};
 
 use crossterm::cursor;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
@@ -70,7 +71,7 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
     let color = Colors::prompt(engine);
 
     queue!(
-        engine.writer,
+        stderr(),
         cursor::MoveToColumn(0),
         style::SetForegroundColor(color),
         style::Print(word),
@@ -151,7 +152,7 @@ fn read_line(
     while !state.about_to_exit {
         write_highlighted_ast(engine, &state, start_pos, old_line)?;
 
-        execute!(engine.writer, event::EnableBracketedPaste)?;
+        execute!(stdout(), event::EnableBracketedPaste)?;
 
         let event = event::read()?;
 
@@ -160,7 +161,7 @@ fn read_line(
             state.index += s.len();
 
             execute!(
-                engine.writer,
+                stdout(),
                 style::Print(&state.line[state.index - 1..]),
                 state.next_pos(),
             )?;
@@ -168,7 +169,7 @@ fn read_line(
             write_highlighted_ast(engine, &state, start_pos, old_line)?;
         }
 
-        execute!(engine.writer, event::DisableBracketedPaste)?;
+        execute!(stdout(), event::DisableBracketedPaste)?;
 
         let (code, modifiers) = match event {
             Event::Key(KeyEvent {
@@ -211,20 +212,20 @@ fn read_line(
                 state.line = engine.history.prev()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
                 state.line = engine.history.next()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                 state.line.clear();
                 state.index = 0;
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
@@ -249,13 +250,13 @@ fn read_line(
                 state.line.replace_range(space_index..state.index, "");
                 state.index = space_index;
 
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                 let (start_x, _) = state.start_pos;
                 execute!(
-                    engine.writer,
+                    stdout(),
                     cursor::MoveTo(start_x, 0),
                     terminal::Clear(terminal::ClearType::FromCursorDown),
                 )?;
@@ -266,14 +267,14 @@ fn read_line(
             (KeyCode::Left, _) | (KeyCode::Char('b'), KeyModifiers::CONTROL) if state.index > 0 => {
                 state.index -= 1;
 
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Right, _) | (KeyCode::Char('f'), KeyModifiers::CONTROL)
                 if state.index < state.line.len() =>
             {
                 state.index += 1;
-                execute!(engine.writer, state.next_pos())?;
+                execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Char(' '), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
@@ -290,7 +291,7 @@ fn read_line(
                 }
 
                 execute!(
-                    engine.writer,
+                    stdout(),
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
                     state.next_pos(),
@@ -303,7 +304,7 @@ fn read_line(
                 state.expand_abbreviations = false;
 
                 execute!(
-                    engine.writer,
+                    stdout(),
                     terminal::Clear(terminal::ClearType::UntilNewLine),
                     style::Print(&state.line[state.index - 1..]),
                     state.next_pos(),
@@ -316,7 +317,7 @@ fn read_line(
                 state.expand_abbreviations = c != '|' && c != '&' && c != ';';
 
                 execute!(
-                    engine.writer,
+                    stdout(),
                     style::Print(&state.line[state.index - 1..]),
                     state.next_pos(),
                 )?;
@@ -328,7 +329,7 @@ fn read_line(
                 state.expand_abbreviations = true;
 
                 execute!(
-                    engine.writer,
+                    stdout(),
                     state.next_pos(),
                     style::Print(&state.line[state.index..]),
                     state.next_pos(),
@@ -347,19 +348,19 @@ fn read_line(
     let (_, height) = state.size;
     let next_y = start_y + 1;
     if next_y >= height {
-        queue!(engine.writer, terminal::ScrollUp(height - start_y))?;
+        queue!(stdout(), terminal::ScrollUp(height - start_y))?;
     }
 
     if state.cleared {
         execute!(
-            engine.writer,
+            stdout(),
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0),
         )?;
     } else if !state.line.is_empty() || !ps1 {
-        execute!(engine.writer, cursor::MoveTo(0, next_y))?;
+        execute!(stdout(), cursor::MoveTo(0, next_y))?;
     } else {
-        execute!(engine.writer, cursor::MoveToRow(next_y))?;
+        execute!(stdout(), cursor::MoveToRow(next_y))?;
     }
 
     match (state.cancelled, ps1) {
@@ -380,7 +381,7 @@ fn write_highlighted_ast(
 
     let color = Colors::normal(engine);
     queue!(
-        engine.writer,
+        stdout(),
         cursor::MoveTo(start_x, start_y),
         terminal::Clear(terminal::ClearType::UntilNewLine),
         style::SetForegroundColor(color),
@@ -407,10 +408,10 @@ fn write_highlighted_ast(
     )?;
 
     if state.cancelled {
-        queue!(engine.writer, style::ResetColor, style::Print("^C"))?;
+        queue!(stdout(), style::ResetColor, style::Print("^C"))?;
     }
 
-    execute!(engine.writer, style::ResetColor, cursor::MoveTo(x, y))?;
+    execute!(stdout(), style::ResetColor, cursor::MoveTo(x, y))?;
 
     Ok(())
 }

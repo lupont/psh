@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::stdout;
 
 use crossterm::cursor::{MoveDown, MoveToColumn};
 use crossterm::style::{Print, ResetColor, SetForegroundColor};
@@ -31,20 +32,20 @@ impl Highlighter for SyntaxTree {
         }
 
         let unparsed_color = Colors::unparsed(engine);
-        queue!(engine.writer, SetForegroundColor(unparsed_color))?;
+        queue!(stdout(), SetForegroundColor(unparsed_color))?;
         for c in self.unparsed.chars() {
             if c == '\n' {
                 queue!(
-                    engine.writer,
+                    stdout(),
                     MoveToColumn(context.start_x),
                     MoveDown(1),
                     Clear(ClearType::UntilNewLine)
                 )?;
             } else {
-                queue!(engine.writer, Print(c))?;
+                queue!(stdout(), Print(c))?;
             }
         }
-        execute!(engine.writer, ResetColor)?;
+        execute!(stdout(), ResetColor)?;
 
         Ok(())
     }
@@ -215,7 +216,7 @@ impl Highlighter for FunctionDefinition {
         let color = Colors::normal(engine);
         self.name.write_highlighted(engine, context)?;
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(color),
             Print(&self.parens),
             ResetColor
@@ -241,7 +242,7 @@ impl Highlighter for BraceGroup {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         let separator_color = Colors::separator(engine);
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(separator_color),
             Print(&self.lbrace_ws),
             Print('{'),
@@ -249,7 +250,7 @@ impl Highlighter for BraceGroup {
         )?;
         self.body.write_highlighted(engine, context)?;
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(separator_color),
             Print(&self.rbrace_ws),
             Print('}'),
@@ -281,11 +282,11 @@ impl Highlighter for SimpleCommand {
         }
 
         if let Some(name) = &self.name {
-            queue!(engine.writer, SetForegroundColor(cmd_color))?;
+            queue!(stdout(), SetForegroundColor(cmd_color))?;
 
             name.write_highlighted(engine, context)?;
 
-            queue!(engine.writer, ResetColor)?;
+            queue!(stdout(), ResetColor)?;
         }
 
         for suffix in &self.suffixes {
@@ -310,11 +311,11 @@ impl Highlighter for CmdSuffix {
         match self {
             Self::Word(w) => {
                 let color = Colors::normal(engine);
-                queue!(engine.writer, SetForegroundColor(color))?;
+                queue!(stdout(), SetForegroundColor(color))?;
 
                 w.write_highlighted(engine, context)?;
 
-                queue!(engine.writer, ResetColor)?;
+                queue!(stdout(), ResetColor)?;
 
                 Ok(())
             }
@@ -336,7 +337,7 @@ impl Highlighter for Redirection {
                 ty,
                 target,
             } => Ok(queue!(
-                engine.writer,
+                stdout(),
                 Print(whitespace),
                 SetForegroundColor(lhs_color),
                 Print(if let Some(fd) = input_fd {
@@ -357,7 +358,7 @@ impl Highlighter for Redirection {
                 end,
                 content,
             } => Ok(queue!(
-                engine.writer,
+                stdout(),
                 Print(whitespace),
                 SetForegroundColor(lhs_color),
                 Print(if let Some(fd) = input_fd {
@@ -383,7 +384,7 @@ impl Highlighter for VariableAssignment {
         let rhs_color = Colors::rhs(engine);
 
         queue!(
-            engine.writer,
+            stdout(),
             Print(&self.whitespace),
             SetForegroundColor(lhs_color),
             Print(self.lhs.to_string()),
@@ -396,21 +397,21 @@ impl Highlighter for VariableAssignment {
             rhs.write_highlighted(engine, context)?;
         }
 
-        queue!(engine.writer, ResetColor)?;
+        queue!(stdout(), ResetColor)?;
         Ok(())
     }
 }
 
 impl Highlighter for NewlineList {
-    fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+    fn write_highlighted(&self, _: &mut Engine, context: Context) -> Result<()> {
         let mut lines = self.whitespace.split('\n').peekable();
 
         let first = lines.next().unwrap();
-        queue!(engine.writer, Clear(ClearType::UntilNewLine), Print(first))?;
+        queue!(stdout(), Clear(ClearType::UntilNewLine), Print(first))?;
 
         for line in lines {
             queue!(
-                engine.writer,
+                stdout(),
                 MoveToColumn(context.start_x),
                 MoveDown(1),
                 Clear(ClearType::UntilNewLine),
@@ -435,7 +436,7 @@ impl Highlighter for SeparatorOp {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
         let separator_color = Colors::separator(engine);
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
@@ -460,7 +461,7 @@ impl Highlighter for LogicalOp {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
         let separator_color = Colors::separator(engine);
         Ok(queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
@@ -469,8 +470,8 @@ impl Highlighter for LogicalOp {
 }
 
 impl Highlighter for Name {
-    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
-        queue!(engine.writer, Print(self.to_string()))?;
+    fn write_highlighted(&self, _: &mut Engine, _: Context) -> Result<()> {
+        queue!(stdout(), Print(self.to_string()))?;
         Ok(())
     }
 }
@@ -479,7 +480,7 @@ impl Highlighter for Bang {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
         let separator_color = Colors::separator(engine);
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(separator_color),
             Print(self.to_string()),
             ResetColor
@@ -492,7 +493,7 @@ impl Highlighter for Comment {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
         let color = Colors::comment(engine);
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(color),
             Print(self.to_string()),
             ResetColor
@@ -505,7 +506,7 @@ impl Highlighter for Pipe {
     fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
         let color = Colors::separator(engine);
         queue!(
-            engine.writer,
+            stdout(),
             SetForegroundColor(color),
             Print(self.to_string()),
             ResetColor,
@@ -532,7 +533,7 @@ impl Highlighter for Word {
         }
 
         queue!(
-            engine.writer,
+            stdout(),
             Clear(ClearType::UntilNewLine),
             Print(&self.whitespace)
         )?;
@@ -541,7 +542,7 @@ impl Highlighter for Word {
         while let Some((i, c)) = chars.next() {
             if let Some((end, tree, &finished)) = cmd_sub_starts.get(&i) {
                 queue!(
-                    engine.writer,
+                    stdout(),
                     SetForegroundColor(cmd_sub_color),
                     Print("$("),
                     ResetColor
@@ -549,7 +550,7 @@ impl Highlighter for Word {
                 tree.write_highlighted(engine, context)?;
                 if finished {
                     queue!(
-                        engine.writer,
+                        stdout(),
                         SetForegroundColor(cmd_sub_color),
                         Print(')'),
                         ResetColor
@@ -560,13 +561,13 @@ impl Highlighter for Word {
                 }
             } else if c == '\n' {
                 queue!(
-                    engine.writer,
+                    stdout(),
                     MoveToColumn(context.start_x),
                     MoveDown(1),
                     Clear(ClearType::UntilNewLine)
                 )?;
             } else {
-                queue!(engine.writer, Print(c))?;
+                queue!(stdout(), Print(c))?;
             }
         }
 

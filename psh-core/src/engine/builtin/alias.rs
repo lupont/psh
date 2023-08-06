@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use crate::{Engine, ExitStatus, Result};
 
 const HELP: &str = "\
@@ -15,18 +13,13 @@ alias key=val    define alias from `key` to `val`";
 pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     match args {
         args if args.contains(&"-h") || args.contains(&"--help") => {
-            writeln!(engine.writer, "{}", HELP)?;
+            println!("{}", HELP);
             Ok(ExitStatus::from_code(0))
         }
 
         [] => {
             for (key, val) in &engine.aliases {
-                writeln!(
-                    engine.writer,
-                    "alias {}=\"{}\"",
-                    key,
-                    val.replace('"', "\\\"")
-                )?;
+                println!("alias {}=\"{}\"", key, val.replace('"', "\\\""));
             }
             Ok(ExitStatus::from_code(0))
         }
@@ -36,21 +29,16 @@ pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
                 engine.aliases.insert(lhs.to_string(), rhs.to_string());
                 Ok(ExitStatus::from_code(0))
             } else if let Some(val) = engine.aliases.get(expr) {
-                writeln!(
-                    engine.writer,
-                    "alias {}=\"{}\"",
-                    expr,
-                    val.replace('"', "\\\"")
-                )?;
+                println!("alias {}=\"{}\"", expr, val.replace('"', "\\\""));
                 Ok(ExitStatus::from_code(0))
             } else {
-                writeln!(engine.writer, "alias: {} not found", expr)?;
+                eprintln!("alias: {} not found", expr);
                 Ok(ExitStatus::from_code(1))
             }
         }
 
         _ => {
-            writeln!(engine.writer, "alias: Too many arguments")?;
+            eprintln!("alias: Too many arguments");
             Ok(ExitStatus::from_code(1))
         }
     }

@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use crate::{Engine, ExitStatus, Result};
 
 const HELP: &str = "\
@@ -11,10 +9,10 @@ builtins -h     print this text
 builtins cmd    returns with 0 if `cmd` is a builtin, otherwise 1
 builtins        print all available builtins";
 
-pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
+pub fn execute(_: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     match args {
         &["-h" | "--help"] => {
-            writeln!(engine.writer, "{}", HELP)?;
+            println!("{}", HELP);
             Ok(ExitStatus::from_code(0))
         }
 
@@ -31,13 +29,13 @@ pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
 
         [] => {
             for (name, _) in super::BUILTINS {
-                writeln!(engine.writer, "{}", name)?;
+                println!("{}", name);
             }
             Ok(ExitStatus::from_code(0))
         }
 
         _ => {
-            writeln!(engine.writer, "builtins: Too many arguments")?;
+            eprintln!("builtins: Too many arguments");
             Ok(ExitStatus::from_code(1))
         }
     }

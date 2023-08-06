@@ -1,6 +1,5 @@
 pub mod input;
 
-use std::io::Write;
 use std::process;
 
 use crossterm::terminal;
@@ -79,7 +78,7 @@ impl Repl {
                     }
 
                     Err(e) => {
-                        writeln!(self.engine.writer, "psh: {e}")?;
+                        eprintln!("psh: {e}");
                     }
                 }
             }
