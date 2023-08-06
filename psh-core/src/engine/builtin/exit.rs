@@ -2,7 +2,7 @@ use crate::{Engine, ExitStatus, Result};
 
 pub fn execute(_: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
     let code = match args {
-        [code] => {
+        [code] | [code, ..] => {
             if let Ok(code) = code.parse::<i32>() {
                 code
             } else {

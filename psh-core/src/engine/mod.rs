@@ -1,4 +1,4 @@
-mod builtin;
+pub mod builtin;
 pub mod expand;
 pub mod history;
 pub mod parser;
@@ -13,9 +13,7 @@ use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 
 use nix::sys::wait::{waitpid, WaitStatus};
-use nix::unistd::pipe;
-use nix::unistd::{close, dup};
-use nix::unistd::{dup2, execvp};
+use nix::unistd::{close, dup, dup2, execvp, pipe};
 
 use self::expand::Expand;
 use self::parser::ast::prelude::*;
