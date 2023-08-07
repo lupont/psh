@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use crate::ast::prelude::*;
+use crate::ast::nodes::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -1,4 +1,4 @@
-pub mod prelude;
+pub mod nodes;
 pub mod reconstruct;
 
 #[cfg(feature = "serde")]
@@ -9,10 +9,10 @@ mod tests;
 
 use std::iter::Peekable;
 
-use self::prelude::*;
-use crate::engine::parser::consumer::Consumer;
-use crate::engine::parser::tok::{ReservedWord, Token, Tokenizer};
+use crate::ast::nodes::*;
+use crate::consumer::Consumer;
 use crate::error::{ParseError, ParseResult};
+use crate::tok::{ReservedWord, Token, Tokenizer};
 use crate::{Error, Result};
 
 pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {

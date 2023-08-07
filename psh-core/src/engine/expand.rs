@@ -4,7 +4,7 @@ use std::ops::RangeInclusive;
 
 use nix::libc::getpwnam;
 
-use crate::ast::prelude::*;
+use crate::ast::nodes::*;
 use crate::{path, Engine, Result};
 
 pub trait Expand {
@@ -156,6 +156,13 @@ fn expand_parameters(
     }
 
     field_split_candidates
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum QuoteState {
+    Single,
+    Double,
+    None,
 }
 
 pub fn remove_quotes(s: &str, remove_empty: bool) -> Option<String> {

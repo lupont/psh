@@ -4,8 +4,7 @@ use std::process;
 
 use crossterm::terminal;
 
-use psh_core::engine::parser::tok;
-use psh_core::{parse, path, Engine, Error, Result};
+use psh_core::{ast, path, tok, Engine, Error, Result};
 
 use crate::config::{self, Colors};
 
@@ -57,7 +56,7 @@ impl Repl {
                     println!("{token:?}");
                 }
             } else if ast && line != "exit" {
-                let ast = parse(line, true)?;
+                let ast = ast::parse(line, true)?;
 
                 #[cfg(feature = "serde")]
                 if _json {

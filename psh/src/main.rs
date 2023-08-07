@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use psh_core::engine::parser::tok;
-use psh_core::parse;
+use psh_core::ast::parse;
+use psh_core::parser::tok;
 use psh_core::Engine;
 use psh_core::ExitStatus;
 

@@ -10,8 +10,9 @@ use crossterm::queue;
 use crossterm::style;
 use crossterm::terminal;
 
+use psh_core::ast::parse;
 use psh_core::engine::expand::expand_prompt;
-use psh_core::{parse, Engine, Error, Result};
+use psh_core::{Engine, Error, Result};
 
 use crate::config::{self, Colors};
 use crate::repl::input::syntax_highlighting::Highlighter;
@@ -55,8 +56,8 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
             .unwrap_or_else(|| config::PS1_USER_PROMPT.to_string())
     };
 
-    use psh_core::ast::Parser;
-    use psh_core::engine::parser::tok::Tokenizer;
+    use psh_core::parser::ast::Parser;
+    use psh_core::parser::tok::Tokenizer;
     let prompt = format!("\"{prompt}\"");
     let word = prompt
         .chars()
@@ -398,7 +399,7 @@ fn write_highlighted_ast(
         _ => start_x,
     };
 
-    let Ok(ast) = psh_core::parse(line, true) else { return Ok(()); };
+    let Ok(ast) = psh_core::ast::parse(line, true) else { return Ok(()); };
     ast.write_highlighted(
         engine,
         Context {

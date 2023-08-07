@@ -1,7 +1,7 @@
 use serde::ser::SerializeStruct;
 use serde::Serialize;
 
-use super::prelude::*;
+use super::nodes::*;
 
 impl Serialize for SyntaxTree {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

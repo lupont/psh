@@ -1,4 +1,4 @@
-use crate::ast::prelude::*;
+use crate::ast::nodes::*;
 
 impl ToString for SyntaxTree {
     fn to_string(&self) -> String {

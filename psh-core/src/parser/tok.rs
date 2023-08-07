@@ -1,6 +1,6 @@
 use std::{borrow::Cow, iter::Peekable};
 
-use crate::engine::parser::consumer::Consumer;
+use crate::parser::consumer::Consumer;
 
 pub fn lex(input: impl AsRef<str>) -> Vec<Token> {
     input.as_ref().chars().peekable().tokenize()

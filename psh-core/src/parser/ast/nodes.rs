@@ -11,10 +11,6 @@ use crate::engine::expand::Expand;
 use crate::Engine;
 use crate::Error;
 
-pub use super::parse;
-pub use super::reconstruct;
-pub use super::Parser;
-
 /// ```[no_run]
 /// program : linebreak complete_commands linebreak
 ///         | linebreak
@@ -897,14 +893,6 @@ impl VariableAssignment {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-#[cfg_attr(feature = "serde", derive(Serialize))]
-pub enum QuoteState {
-    Single,
-    Double,
-    None,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Word {
     pub whitespace: LeadingWhitespace,
@@ -914,117 +902,11 @@ pub struct Word {
 
 impl Word {
     pub fn new(input: &str, whitespace: impl Into<LeadingWhitespace>) -> Self {
-        let name = input.to_string();
-
         Self {
             whitespace: whitespace.into(),
-            name,
+            name: input.to_string(),
             expansions: Default::default(),
         }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn find_all(target_states: &[QuoteState], haystack: &str, needle: char) -> Vec<usize> {
-        let mut state = QuoteState::None;
-        let mut is_escaped = false;
-
-        let mut found = Vec::new();
-
-        for (i, c) in haystack.chars().enumerate() {
-            if needle == c && target_states.contains(&state) && !is_escaped {
-                found.push(i);
-            }
-            match (c, state, is_escaped) {
-                ('\'', QuoteState::Single, _) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                }
-                ('\'', QuoteState::None, false) => {
-                    state = QuoteState::Single;
-                    is_escaped = false;
-                }
-                (_, QuoteState::Single, _) => {
-                    is_escaped = false;
-                }
-
-                ('"', QuoteState::Double, false) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                }
-
-                ('"', QuoteState::None, false) => {
-                    state = QuoteState::Double;
-                    is_escaped = false;
-                }
-
-                ('\\', _, false) => {
-                    is_escaped = true;
-                }
-
-                (_, _, _) => {
-                    is_escaped = false;
-                }
-            }
-        }
-
-        found
-    }
-
-    pub fn find(
-        target_state: QuoteState,
-        haystack: &str,
-        needle: char,
-        first: bool,
-    ) -> Option<usize> {
-        let mut state = QuoteState::None;
-        let mut is_escaped = false;
-
-        let mut found = None;
-
-        for (i, c) in haystack.chars().enumerate() {
-            if needle == c && target_state == state && !is_escaped {
-                found = Some(i);
-            }
-            match (c, state, is_escaped) {
-                ('\'', QuoteState::Single, _) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                }
-                ('\'', QuoteState::None, false) => {
-                    state = QuoteState::Single;
-                    is_escaped = false;
-                }
-                (_, QuoteState::Single, _) => {
-                    is_escaped = false;
-                }
-
-                ('"', QuoteState::Double, false) => {
-                    state = QuoteState::None;
-                    is_escaped = false;
-                }
-
-                ('"', QuoteState::None, false) => {
-                    state = QuoteState::Double;
-                    is_escaped = false;
-                }
-
-                ('\\', _, false) => {
-                    is_escaped = true;
-                }
-
-                (_, _, _) => {
-                    is_escaped = false;
-                }
-            }
-            if found.is_some() && first {
-                break;
-            }
-        }
-
-        found
     }
 }
 

@@ -1,7 +1,6 @@
 pub mod builtin;
 pub mod expand;
 pub mod history;
-pub mod parser;
 mod util;
 
 use std::collections::HashMap;
@@ -15,9 +14,10 @@ use std::path::PathBuf;
 use nix::sys::wait::{waitpid, WaitStatus};
 use nix::unistd::{close, dup, dup2, execvp, pipe};
 
-use self::expand::Expand;
-use self::parser::ast::prelude::*;
-pub use crate::engine::history::{FileHistory, History};
+use crate::ast::nodes::*;
+use crate::ast::parse;
+use crate::engine::expand::Expand;
+use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
 
 pub struct Engine {

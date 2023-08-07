@@ -6,7 +6,7 @@ use crossterm::style::{Print, ResetColor, SetForegroundColor};
 use crossterm::terminal::{Clear, ClearType};
 use crossterm::{execute, queue};
 
-use psh_core::ast::prelude::*;
+use psh_core::ast::nodes::*;
 use psh_core::engine::expand::Expand;
 use psh_core::{Engine, Result};
 
