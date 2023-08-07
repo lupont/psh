@@ -322,7 +322,7 @@ impl Highlighter for CmdSuffix {
 }
 
 impl Highlighter for Redirection {
-    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+    fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
         let lhs_color = Colors::lhs(engine);
         let op_color = Colors::op(engine);
         let rhs_color = Colors::rhs(engine);
@@ -333,43 +333,52 @@ impl Highlighter for Redirection {
                 input_fd,
                 ty,
                 target,
-            } => Ok(queue!(
-                stdout(),
-                Print(whitespace),
-                SetForegroundColor(lhs_color),
-                Print(if let Some(fd) = input_fd {
-                    fd.to_string()
-                } else {
-                    String::new()
-                }),
-                SetForegroundColor(op_color),
-                Print(ty.to_string()),
-                SetForegroundColor(rhs_color),
-                Print(target.to_string()),
-                ResetColor,
-            )?),
+            } => {
+                queue!(
+                    stdout(),
+                    Print(whitespace),
+                    SetForegroundColor(lhs_color),
+                    Print(if let Some(fd) = input_fd {
+                        fd.to_string()
+                    } else {
+                        String::new()
+                    }),
+                    SetForegroundColor(op_color),
+                    Print(ty.to_string()),
+                    SetForegroundColor(rhs_color),
+                    ResetColor,
+                )?;
+                target.write_highlighted(engine, context)?;
+                queue!(stdout(), ResetColor)?;
+                Ok(())
+            }
             Redirection::Here {
                 whitespace,
                 input_fd,
                 ty,
                 end,
                 content,
-            } => Ok(queue!(
-                stdout(),
-                Print(whitespace),
-                SetForegroundColor(lhs_color),
-                Print(if let Some(fd) = input_fd {
-                    fd.to_string()
-                } else {
-                    String::new()
-                }),
-                SetForegroundColor(op_color),
-                Print(ty.to_string()),
-                SetForegroundColor(rhs_color),
-                Print(end.to_string()),
-                ResetColor,
-                Print(content.to_string()),
-            )?),
+            } => {
+                queue!(
+                    stdout(),
+                    Print(whitespace),
+                    SetForegroundColor(lhs_color),
+                    Print(if let Some(fd) = input_fd {
+                        fd.to_string()
+                    } else {
+                        String::new()
+                    }),
+                    SetForegroundColor(op_color),
+                    Print(ty.to_string()),
+                    SetForegroundColor(rhs_color),
+                    ResetColor,
+                    Print(end.to_string())
+                )?;
+                end.write_highlighted(engine, context)?;
+                content.write_highlighted(engine, context)?;
+                queue!(stdout(), ResetColor)?;
+                Ok(())
+            }
         }
     }
 }

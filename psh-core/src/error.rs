@@ -1,4 +1,5 @@
 use std::env;
+use std::error;
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use crate::ast::nodes::*;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub type ParseResult<T> = std::result::Result<T, ParseError>;
+pub type ParseResult<T> = std::result::Result<T, ParseError<T>>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -19,7 +20,7 @@ pub enum Error {
     UnknownBuiltin(String),
     Unimplemented(String),
     SyntaxError(String),
-    ParseError(ParseError),
+    ParseError(String),
     CancelledLine,
     Incomplete(String),
     Nix(nix::Error),
@@ -59,7 +60,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl error::Error for Error {}
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
@@ -73,9 +74,9 @@ impl From<nix::Error> for Error {
     }
 }
 
-impl From<ParseError> for Error {
-    fn from(e: ParseError) -> Self {
-        Self::ParseError(e)
+impl<T: fmt::Debug> From<ParseError<T>> for Error {
+    fn from(e: ParseError<T>) -> Self {
+        Self::ParseError(e.to_string())
     }
 }
 
@@ -93,27 +94,49 @@ impl From<env::VarError> for Error {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ParseError {
+pub enum ParseError<T: fmt::Debug> {
     InvalidName(String),
     None,
-    Done,
     Unimplemented(String),
-    Unfinished,
-    UnfinishedCompleteCommands(LeadingWhitespace, CompleteCommands),
-    UnfinishedCompleteCommand(LeadingWhitespace, CompleteCommand),
-    UnfinishedList(LeadingWhitespace, List),
-    UnfinishedAndOrList(LeadingWhitespace, AndOrList),
-    UnfinishedPipeline(LeadingWhitespace, Pipeline),
-    UnfinishedPipeSequence(LeadingWhitespace, PipeSequence),
-    UnfinishedCommand(Command),
-    UnfinishedSimpleCommand(SimpleCommand),
-    UnfinishedCmdPrefix(CmdPrefix),
-    UnfinishedVariableAssignment(VariableAssignment),
-    UnfinishedWord(Word),
+    Unfinished(Option<LeadingWhitespace>, T),
     InvalidSyntaxInCmdSub, //(SyntaxTree),
 }
 
-impl fmt::Display for ParseError {
+impl<T: fmt::Debug> ParseError<T> {
+    /// Casts self to the given type variant.
+    ///
+    /// # Panics
+    ///
+    /// This will panic if self is of the `Unfinished` variant.
+    /// To support casting this variant, see the `ParseError::cast_with` method.
+    pub fn force_cast<U>(self) -> ParseError<U>
+    where
+        U: fmt::Debug,
+    {
+        self.cast_with(|_| panic!("tried to force cast a generic variant"))
+    }
+
+    /// Casts self to the given type variant. If
+    /// self is of `Unfinished` variant, the supplied
+    /// function will be used to transform the type
+    /// into the new one.
+    pub fn cast_with<F, U>(self, f: F) -> ParseError<U>
+    where
+        U: fmt::Debug,
+        F: FnOnce(T) -> U,
+    {
+        match self {
+            Self::Unfinished(ws, t) => ParseError::Unfinished(ws, f(t)),
+
+            Self::InvalidName(name) => ParseError::InvalidName(name),
+            Self::None => ParseError::None,
+            Self::Unimplemented(thing) => ParseError::Unimplemented(thing),
+            Self::InvalidSyntaxInCmdSub => ParseError::InvalidSyntaxInCmdSub,
+        }
+    }
+}
+
+impl<T: fmt::Debug> fmt::Display for ParseError<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -121,26 +144,12 @@ impl fmt::Display for ParseError {
             match self {
                 Self::InvalidName(name) => format!("`{name}` is not a valid name"),
                 Self::None => "could not parse this here".to_string(),
-                Self::Done => "all finished".to_string(),
                 Self::Unimplemented(s) => format!("not yet implemented: {s}"),
-                Self::Unfinished => "unfinished".to_string(),
-                Self::UnfinishedCompleteCommands(_, _) =>
-                    "unfinished complete commands".to_string(),
-                Self::UnfinishedCompleteCommand(_, _) => "unfinished complete command".to_string(),
-                Self::UnfinishedList(_, _) => "unfinished list".to_string(),
-                Self::UnfinishedAndOrList(_, _) => "unfinished and or list".to_string(),
-                Self::UnfinishedPipeline(_, _) => "unfinished pipeline".to_string(),
-                Self::UnfinishedPipeSequence(_, _) => "unfinished pipe sequence".to_string(),
-                Self::UnfinishedCommand(_) => "unfinished command".to_string(),
-                Self::UnfinishedSimpleCommand(_) => "unfinished simple command".to_string(),
-                Self::UnfinishedCmdPrefix(_) => "unfinished command prefix".to_string(),
-                Self::UnfinishedVariableAssignment(_) =>
-                    "unfinished variable assignment".to_string(),
-                Self::UnfinishedWord(_) => "unfinished word".to_string(),
+                Self::Unfinished(_ws, node) => format!("unfinished {node:?}"),
                 Self::InvalidSyntaxInCmdSub => "invalid syntax in command substitution".to_string(),
             }
         )
     }
 }
 
-impl std::error::Error for ParseError {}
+impl<T: fmt::Debug> error::Error for ParseError<T> {}

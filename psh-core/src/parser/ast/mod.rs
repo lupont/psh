@@ -46,7 +46,7 @@ pub fn parse(input: impl AsRef<str>, allow_errors: bool) -> Result<SyntaxTree> {
             e,
         ))),
 
-        Err(Err(e)) => Err(Error::ParseError(e)),
+        Err(Err(e)) => Err(Error::ParseError(e.to_string())),
     }
 }
 
@@ -56,7 +56,7 @@ pub trait Parser: Iterator<Item = Token> + Clone {
     fn parse(
         &mut self,
         swallow_rest: bool,
-    ) -> StdResult<SyntaxTree, StdResult<SyntaxTree, ParseError>> {
+    ) -> StdResult<SyntaxTree, StdResult<SyntaxTree, ParseError<SyntaxTree>>> {
         let linebreak = self.parse_linebreak();
         let commands = self.parse_complete_commands();
         let trailing_linebreak = self.parse_linebreak();
@@ -100,15 +100,15 @@ pub trait Parser: Iterator<Item = Token> + Clone {
                 unparsed,
             }),
 
-            Err(ParseError::UnfinishedCompleteCommands(ws, cmds)) => Err(Ok(SyntaxTree {
+            Err(ParseError::Unfinished(ws, cmds)) => Err(Ok(SyntaxTree {
                 leading: linebreak,
                 commands: Some((cmds, trailing_linebreak)),
-                unparsed: format!("{ws}{unparsed}"),
+                unparsed: format!("{}{unparsed}", ws.unwrap_or_default()),
             })),
 
             Err(ParseError::InvalidSyntaxInCmdSub) => Err(Err(ParseError::InvalidSyntaxInCmdSub)),
 
-            Err(e) => Err(Err(e)),
+            Err(e) => Err(Err(e.force_cast())),
         }
     }
 
@@ -172,16 +172,12 @@ where
     fn parse_complete_commands(&mut self) -> ParseResult<CompleteCommands> {
         let head = match self.parse_complete_command() {
             Ok(cmd) => cmd,
-            Err(ParseError::UnfinishedCompleteCommand(ws, head)) => {
-                return Err(ParseError::UnfinishedCompleteCommands(
-                    ws,
-                    CompleteCommands {
-                        head,
-                        tail: Default::default(),
-                    },
-                ));
+            Err(e) => {
+                return Err(e.cast_with(|head| CompleteCommands {
+                    head,
+                    tail: Default::default(),
+                }))
             }
-            Err(e) => return Err(e),
         };
 
         let mut tail = Vec::new();
@@ -218,8 +214,8 @@ where
             })
         } else if let Ok(comment) = comment {
             Ok(CompleteCommand::Comment { comment })
-        } else if let Err(ParseError::UnfinishedList(ws, list)) = list_and_separator {
-            Err(ParseError::UnfinishedCompleteCommand(
+        } else if let Err(ParseError::Unfinished(ws, list)) = list_and_separator {
+            Err(ParseError::Unfinished(
                 ws,
                 CompleteCommand::List {
                     list,
@@ -235,16 +231,12 @@ where
     fn parse_list(&mut self) -> ParseResult<List> {
         let head = match self.parse_and_or_list() {
             Ok(list) => list,
-            Err(ParseError::UnfinishedAndOrList(ws, head)) => {
-                return Err(ParseError::UnfinishedList(
-                    ws,
-                    List {
-                        head,
-                        tail: Default::default(),
-                    },
-                ));
+            Err(e) => {
+                return Err(e.cast_with(|head| List {
+                    head,
+                    tail: Default::default(),
+                }))
             }
-            Err(e) => return Err(e),
         };
 
         let mut tail = Vec::new();
@@ -257,16 +249,15 @@ where
             };
             let and_or_list = match self.parse_and_or_list() {
                 Ok(list) => list,
-                Err(ParseError::UnfinishedAndOrList(ws, and_or_list)) => {
-                    tail.push((sep_op, and_or_list));
-                    return Err(ParseError::UnfinishedList(ws, List { head, tail }));
-                }
                 Err(ParseError::None) => {
                     *self = prev;
                     break;
                 }
                 Err(e) => {
-                    return Err(e);
+                    return Err(e.cast_with(|and_or_list| {
+                        tail.push((sep_op, and_or_list));
+                        List { head, tail }
+                    }))
                 }
             };
             tail.push((sep_op, and_or_list));
@@ -279,16 +270,12 @@ where
     fn parse_and_or_list(&mut self) -> ParseResult<AndOrList> {
         let head = match self.parse_pipeline() {
             Ok(pipeline) => pipeline,
-            Err(ParseError::UnfinishedPipeline(ws, head)) => {
-                return Err(ParseError::UnfinishedAndOrList(
-                    ws,
-                    AndOrList {
-                        head,
-                        tail: Default::default(),
-                    },
-                ));
+            Err(e) => {
+                return Err(e.cast_with(|head| AndOrList {
+                    head,
+                    tail: Default::default(),
+                }))
             }
-            Err(e) => return Err(e),
         };
 
         let mut tail = Vec::new();
@@ -298,21 +285,19 @@ where
             let linebreak = self.parse_linebreak();
             let pipeline = match self.parse_pipeline() {
                 Ok(pipeline) => pipeline,
-                Err(ParseError::UnfinishedPipeline(ws, pipeline)) => {
-                    tail.push((logical_op, linebreak, pipeline));
-                    return Err(ParseError::UnfinishedAndOrList(
-                        ws,
-                        AndOrList { head, tail },
-                    ));
-                }
                 Err(ParseError::None) => {
                     tail.push((logical_op, linebreak, Pipeline::noop()));
-                    return Err(ParseError::UnfinishedAndOrList(
+                    return Err(ParseError::Unfinished(
                         Default::default(),
                         AndOrList { head, tail },
                     ));
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    return Err(e.cast_with(|pipeline| {
+                        tail.push((logical_op, linebreak, pipeline));
+                        AndOrList { head, tail }
+                    }))
+                }
             };
             tail.push((logical_op, linebreak, pipeline));
         }
@@ -326,12 +311,12 @@ where
 
         match self.parse_pipe_sequence() {
             Ok(sequence) => Ok(Pipeline { bang, sequence }),
-            Err(ParseError::UnfinishedPipeSequence(ws, sequence)) => Err(
-                ParseError::UnfinishedPipeline(ws, Pipeline { bang, sequence }),
-            ),
+            Err(ParseError::Unfinished(ws, sequence)) => {
+                Err(ParseError::Unfinished(ws, Pipeline { bang, sequence }))
+            }
             Err(e) => {
                 *self = initial;
-                Err(e)
+                Err(e.force_cast())
             }
         }
     }
@@ -339,14 +324,12 @@ where
     fn parse_pipe_sequence(&mut self) -> ParseResult<PipeSequence> {
         let head = match self.parse_command() {
             Ok(cmd) => cmd,
-            Err(ParseError::UnfinishedCommand(cmd)) => {
-                let seq = PipeSequence {
+            Err(e) => {
+                return Err(e.cast_with(|cmd| PipeSequence {
                     head: Box::new(cmd),
                     tail: Default::default(),
-                };
-                return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
+                }))
             }
-            Err(e) => return Err(e),
         };
 
         let mut tail = Vec::new();
@@ -356,23 +339,23 @@ where
             let linebreak = self.parse_linebreak();
             let cmd = match self.parse_command() {
                 Ok(cmd) => cmd,
-                Err(ParseError::UnfinishedCommand(cmd)) => {
-                    tail.push((pipe, linebreak, cmd));
-                    let seq = PipeSequence {
-                        head: Box::new(head),
-                        tail,
-                    };
-                    return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
-                }
                 Err(ParseError::None) => {
                     tail.push((pipe, linebreak, Command::noop()));
                     let seq = PipeSequence {
                         head: Box::new(head),
                         tail,
                     };
-                    return Err(ParseError::UnfinishedPipeSequence(Default::default(), seq));
+                    return Err(ParseError::Unfinished(Default::default(), seq));
                 }
-                Err(e) => return Err(e),
+                Err(e) => {
+                    return Err(e.cast_with(|cmd| {
+                        tail.push((pipe, linebreak, cmd));
+                        PipeSequence {
+                            head: Box::new(head),
+                            tail,
+                        }
+                    }))
+                }
             };
             tail.push((pipe, linebreak, cmd));
         }
@@ -384,34 +367,41 @@ where
     }
 
     fn parse_command(&mut self) -> ParseResult<Command> {
-        self.parse_function_definition()
-            .map(Command::FunctionDefinition)
-            .or_else(|_| {
-                self.parse_compound_command()
-                    .map(|c| (c, self.parse_redirection_list()))
-                    .map(|(c, r)| Command::Compound(c, r))
-            })
-            .or_else(|_| {
-                self.parse_simple_command()
-                    .map(Command::Simple)
-                    .map_err(|e| match e {
-                        ParseError::UnfinishedSimpleCommand(cmd) => {
-                            ParseError::UnfinishedCommand(Command::Simple(cmd))
-                        }
-                        e => e,
-                    })
-            })
+        match self.parse_function_definition() {
+            Ok(f) => Ok(Command::FunctionDefinition(f)),
+
+            Err(e @ ParseError::Unfinished(_, _)) => Err(e.cast_with(Command::FunctionDefinition)),
+
+            _ => match self.parse_compound_command() {
+                Ok(c) => Ok(Command::Compound(c, self.parse_redirection_list())),
+
+                Err(e @ ParseError::Unfinished(_, _)) => {
+                    let redirs = self.parse_redirection_list();
+                    Err(e.cast_with(|c| Command::Compound(c, redirs)))
+                }
+
+                _ => match self.parse_simple_command() {
+                    Ok(s) => Ok(Command::Simple(s)),
+
+                    Err(e @ ParseError::Unfinished(_, _)) => Err(e.cast_with(Command::Simple)),
+
+                    Err(e) => Err(e.force_cast()),
+                },
+            },
+        }
     }
 
     fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand> {
-        self.parse_brace_group()
-            .map(CompoundCommand::Brace)
-            .or_else(|_| self.parse_subshell().map(CompoundCommand::Subshell))
-            .or_else(|_| self.parse_for_clause().map(CompoundCommand::For))
-            .or_else(|_| self.parse_case_clause().map(CompoundCommand::Case))
-            .or_else(|_| self.parse_if_clause().map(CompoundCommand::If))
-            .or_else(|_| self.parse_while_clause().map(CompoundCommand::While))
-            .or_else(|_| self.parse_until_clause().map(CompoundCommand::Until))
+        // TODO
+        Err(ParseError::None)
+        // self.parse_brace_group()
+        //     .map(CompoundCommand::Brace)
+        //     .or_else(|_| self.parse_subshell().map(CompoundCommand::Subshell))
+        //     .or_else(|_| self.parse_for_clause().map(CompoundCommand::For))
+        //     .or_else(|_| self.parse_case_clause().map(CompoundCommand::Case))
+        //     .or_else(|_| self.parse_if_clause().map(CompoundCommand::If))
+        //     .or_else(|_| self.parse_while_clause().map(CompoundCommand::While))
+        //     .or_else(|_| self.parse_until_clause().map(CompoundCommand::Until))
     }
 
     fn parse_subshell(&mut self) -> ParseResult<Subshell> {
@@ -460,14 +450,23 @@ where
     }
 
     fn parse_term(&mut self) -> ParseResult<Term> {
-        let head = self.parse_and_or_list()?;
+        let head = match self.parse_and_or_list() {
+            Ok(list) => list,
+            Err(e) => {
+                return Err(e.cast_with(|head| Term {
+                    head,
+                    tail: Default::default(),
+                }))
+            }
+        };
 
         let mut prev = self.clone();
         let mut tail = Vec::new();
-        while let Ok((sep, and_or)) = self
-            .parse_separator()
-            .and_then(|sep| self.parse_and_or_list().map(|a| (sep, a)))
-        {
+        while let Ok((sep, and_or)) = self.parse_separator().and_then(|sep| {
+            self.parse_and_or_list()
+                .map(|a| (sep, a))
+                .map_err(|e| e.force_cast())
+        }) {
             tail.push((sep, and_or));
             prev = self.clone();
         }
@@ -528,7 +527,12 @@ where
             Ok(name) => name,
             Err(e) => {
                 *self = initial;
-                return Err(e);
+                return Err(e.cast_with(|name| FunctionDefinition {
+                    name,
+                    parens: Default::default(),
+                    linebreak: Default::default(),
+                    body: FunctionBody::noop(),
+                }));
             }
         };
 
@@ -560,7 +564,15 @@ where
     }
 
     fn parse_function_body(&mut self) -> ParseResult<FunctionBody> {
-        let command = self.parse_compound_command()?;
+        let command = match self.parse_compound_command() {
+            Ok(cmd) => cmd,
+            Err(e) => {
+                return Err(e.cast_with(|command| FunctionBody {
+                    command,
+                    redirections: Default::default(),
+                }))
+            }
+        };
 
         let redirections = self.parse_redirection_list();
 
@@ -631,17 +643,17 @@ where
         loop {
             match self.parse_cmd_prefix() {
                 Ok(prefix) => prefixes.push(prefix),
-                Err(ParseError::UnfinishedCmdPrefix(prefix)) => {
+                Err(ParseError::Unfinished(ws, prefix)) => {
                     prefixes.push(prefix);
                     let cmd = SimpleCommand {
                         prefixes,
                         name: None,
                         suffixes,
                     };
-                    return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                    return Err(ParseError::Unfinished(ws, cmd));
                 }
-                Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
-                    return Err(e);
+                Err(ParseError::InvalidSyntaxInCmdSub) => {
+                    return Err(ParseError::InvalidSyntaxInCmdSub);
                 }
                 _ => break,
             }
@@ -649,16 +661,16 @@ where
 
         let name = match self.parse_word(false) {
             Ok(word) => Some(word),
-            Err(ParseError::UnfinishedWord(word)) => {
+            Err(ParseError::Unfinished(ws, word)) => {
                 let cmd = SimpleCommand {
                     prefixes,
                     name: Some(word),
                     suffixes,
                 };
-                return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                return Err(ParseError::Unfinished(ws, cmd));
             }
-            Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
-                return Err(e);
+            Err(ParseError::InvalidSyntaxInCmdSub) => {
+                return Err(ParseError::InvalidSyntaxInCmdSub);
             }
             Err(_) => None,
         };
@@ -666,17 +678,17 @@ where
         loop {
             match self.parse_cmd_suffix(name.is_some()) {
                 Ok(suffix) => suffixes.push(suffix),
-                Err(ParseError::UnfinishedWord(word)) => {
-                    suffixes.push(CmdSuffix::Word(word));
+                Err(ParseError::Unfinished(ws, suffix)) => {
+                    suffixes.push(suffix);
                     let cmd = SimpleCommand {
                         prefixes,
                         name,
                         suffixes,
                     };
-                    return Err(ParseError::UnfinishedSimpleCommand(cmd));
+                    return Err(ParseError::Unfinished(ws, cmd));
                 }
-                Err(e @ ParseError::InvalidSyntaxInCmdSub) => {
-                    return Err(e);
+                Err(ParseError::InvalidSyntaxInCmdSub) => {
+                    return Err(ParseError::InvalidSyntaxInCmdSub);
                 }
                 _ => break,
             }
@@ -695,24 +707,29 @@ where
     }
 
     fn parse_cmd_prefix(&mut self) -> ParseResult<CmdPrefix> {
-        self.parse_redirection()
-            .map(CmdPrefix::Redirection)
-            .or_else(|_| {
-                self.parse_variable_assignment()
-                    .map(CmdPrefix::Assignment)
-                    .map_err(|e| match e {
-                        ParseError::UnfinishedVariableAssignment(assg) => {
-                            ParseError::UnfinishedCmdPrefix(CmdPrefix::Assignment(assg))
-                        }
-                        e => e,
-                    })
-            })
+        match self.parse_redirection() {
+            Ok(redirection) => Ok(CmdPrefix::Redirection(redirection)),
+
+            Err(ParseError::None) => match self.parse_variable_assignment() {
+                Ok(assg) => Ok(CmdPrefix::Assignment(assg)),
+                Err(e) => Err(e.cast_with(CmdPrefix::Assignment)),
+            },
+
+            Err(e) => Err(e.cast_with(CmdPrefix::Redirection)),
+        }
     }
 
     fn parse_cmd_suffix(&mut self, allow_reserved_words: bool) -> ParseResult<CmdSuffix> {
-        self.parse_redirection()
-            .map(CmdSuffix::Redirection)
-            .or_else(|_| self.parse_word(allow_reserved_words).map(CmdSuffix::Word))
+        match self.parse_redirection() {
+            Ok(redirection) => Ok(CmdSuffix::Redirection(redirection)),
+
+            Err(ParseError::None) => match self.parse_word(allow_reserved_words) {
+                Ok(word) => Ok(CmdSuffix::Word(word)),
+                Err(e) => Err(e.cast_with(CmdSuffix::Word)),
+            },
+
+            Err(e) => Err(e.cast_with(CmdSuffix::Redirection)),
+        }
     }
 
     fn parse_newline_list(&mut self) -> ParseResult<NewlineList> {
@@ -766,7 +783,9 @@ where
             Ok(Separator::Explicit(separator_op, linebreak))
         } else {
             *self = initial;
-            self.parse_newline_list().map(Separator::Implicit)
+            self.parse_newline_list()
+                .map(Separator::Implicit)
+                .map_err(|e| e.force_cast())
         }
     }
 
@@ -778,7 +797,9 @@ where
             Ok(SequentialSeparator::Semi(linebreak))
         } else {
             *self = initial;
-            self.parse_newline_list().map(SequentialSeparator::Implicit)
+            self.parse_newline_list()
+                .map(SequentialSeparator::Implicit)
+                .map_err(|e| e.force_cast())
         }
     }
 
@@ -805,14 +826,21 @@ where
     }
 
     fn parse_redirection(&mut self) -> ParseResult<Redirection> {
-        self.parse_file_redirection()
-            .or_else(|_| self.parse_here_redirection())
+        match self.parse_file_redirection() {
+            Err(e @ ParseError::Unfinished(_, _)) => Err(e),
+            Err(ParseError::None) => match self.parse_here_redirection() {
+                Ok(redirection) => Ok(redirection),
+                Err(e @ ParseError::Unfinished(_, _)) => Err(e),
+                Err(e) => Err(e),
+            },
+            otherwise => otherwise,
+        }
     }
 
     fn parse_file_redirection(&mut self) -> ParseResult<Redirection> {
         let initial = self.clone();
 
-        let ws = self.swallow_whitespace();
+        let whitespace = self.swallow_whitespace();
 
         let input_fd = self.parse_file_descriptor().ok();
 
@@ -823,14 +851,25 @@ where
 
         let target = match self.parse_word(true) {
             Ok(word) => word,
+            Err(ParseError::Unfinished(ws, target)) => {
+                return Err(ParseError::Unfinished(
+                    ws,
+                    Redirection::File {
+                        whitespace,
+                        input_fd,
+                        ty,
+                        target,
+                    },
+                ));
+            }
             Err(e) => {
                 *self = initial;
-                return Err(e);
+                return Err(e.force_cast());
             }
         };
 
         Ok(Redirection::File {
-            whitespace: ws,
+            whitespace,
             input_fd,
             ty,
             target,
@@ -840,7 +879,7 @@ where
     fn parse_here_redirection(&mut self) -> ParseResult<Redirection> {
         let initial = self.clone();
 
-        let ws = self.swallow_whitespace();
+        let whitespace = self.swallow_whitespace();
 
         let input_fd = self.parse_file_descriptor().ok();
 
@@ -851,9 +890,22 @@ where
 
         let end = match self.parse_word(true) {
             Ok(word) => word,
+            Err(ParseError::Unfinished(ws, end)) => {
+                return Err(ParseError::Unfinished(
+                    ws,
+                    Redirection::Here {
+                        whitespace,
+                        input_fd,
+                        ty,
+                        end,
+                        // FIXME: actually parse content
+                        content: Word::new("", ""),
+                    },
+                ));
+            }
             Err(e) => {
                 *self = initial;
-                return Err(e);
+                return Err(e.force_cast());
             }
         };
 
@@ -861,7 +913,7 @@ where
         let content = Word::new("", "");
 
         Ok(Redirection::Here {
-            whitespace: ws,
+            whitespace,
             input_fd,
             ty,
             end,
@@ -928,7 +980,7 @@ where
 
     fn parse_variable_assignment(&mut self) -> ParseResult<VariableAssignment> {
         let initial = self.clone();
-        let ws = self.swallow_whitespace();
+        let whitespace = self.swallow_whitespace();
 
         let Ok(lhs) = self.parse_name() else {
             *self = initial;
@@ -943,14 +995,12 @@ where
         let rhs = match self.parse_word(true) {
             Ok(word) => Some(word),
             Err(ParseError::None) => None,
-            Err(ParseError::UnfinishedWord(word)) => {
-                let assg = VariableAssignment::new(lhs, Some(word), ws);
-                return Err(ParseError::UnfinishedVariableAssignment(assg));
+            Err(e) => {
+                return Err(e.cast_with(|word| VariableAssignment::new(lhs, Some(word), whitespace)))
             }
-            Err(e) => return Err(e),
         };
 
-        Ok(VariableAssignment::new(lhs, rhs, ws))
+        Ok(VariableAssignment::new(lhs, rhs, whitespace))
     }
 
     fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word> {
@@ -1021,7 +1071,7 @@ where
                     is_escaped = false;
                 }
 
-                Some(Token::CmdSubStart) if !in_single_quote => {
+                Some(Token::CmdSubStart) if !in_single_quote && !is_escaped => {
                     let token = self.next().unwrap();
                     let mut part = String::from(token.as_str());
                     let (mut ast, finished) = match self.parse(false) {
@@ -1199,7 +1249,7 @@ where
         } else if !in_double_quote && !in_single_quote && !is_escaped && expansions_finished {
             Ok(word)
         } else {
-            Err(ParseError::UnfinishedWord(word))
+            Err(ParseError::Unfinished(None, word))
         }
     }
 

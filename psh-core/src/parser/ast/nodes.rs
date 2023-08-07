@@ -139,6 +139,13 @@ pub struct AndOrList {
 }
 
 impl AndOrList {
+    pub fn noop() -> Self {
+        Self {
+            head: Pipeline::noop(),
+            tail: Default::default(),
+        }
+    }
+
     pub fn all_pipelines(self) -> Vec<Pipeline> {
         let mut pipelines = vec![self.head];
         for (_, _, p) in self.tail {
@@ -242,6 +249,12 @@ pub enum CompoundCommand {
     Until(UntilClause),
 }
 
+impl CompoundCommand {
+    pub fn noop() -> Self {
+        Self::Brace(BraceGroup::noop())
+    }
+}
+
 /// ```[no_run]
 /// subshell : '(' compound_list ')'
 ///          ;
@@ -267,6 +280,16 @@ pub struct CompoundList {
     pub separator: Option<Separator>,
 }
 
+impl CompoundList {
+    pub fn noop() -> Self {
+        Self {
+            linebreak: Default::default(),
+            term: Term::noop(),
+            separator: None,
+        }
+    }
+}
+
 /// ```[no_run]
 /// term : term separator and_or
 ///      |                and_or
@@ -277,6 +300,15 @@ pub struct CompoundList {
 pub struct Term {
     pub head: AndOrList,
     pub tail: Vec<(Separator, AndOrList)>,
+}
+
+impl Term {
+    pub fn noop() -> Self {
+        Self {
+            head: AndOrList::noop(),
+            tail: Default::default(),
+        }
+    }
 }
 
 /// ```[no_run]
@@ -456,6 +488,15 @@ pub struct FunctionBody {
     pub redirections: Vec<Redirection>,
 }
 
+impl FunctionBody {
+    pub fn noop() -> Self {
+        Self {
+            command: CompoundCommand::noop(),
+            redirections: Default::default(),
+        }
+    }
+}
+
 /// ```[no_run]
 /// brace_group : Lbrace compound_list Rbrace
 ///             ;
@@ -466,6 +507,16 @@ pub struct BraceGroup {
     pub lbrace_ws: LeadingWhitespace,
     pub body: CompoundList,
     pub rbrace_ws: LeadingWhitespace,
+}
+
+impl BraceGroup {
+    pub fn noop() -> Self {
+        Self {
+            lbrace_ws: Default::default(),
+            body: CompoundList::noop(),
+            rbrace_ws: Default::default(),
+        }
+    }
 }
 
 /// ```[no_run]
