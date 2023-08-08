@@ -1,5 +1,6 @@
 mod abbr;
 mod alias;
+mod ast;
 mod builtins;
 mod cd;
 mod colon;
@@ -15,6 +16,7 @@ pub(crate) const BUILTINS: &[(&str, Builtin)] = &[
     (":", colon::execute),
     ("abbr", abbr::execute),
     ("alias", alias::execute),
+    ("ast", ast::execute),
     ("builtins", builtins::execute),
     ("cd", cd::execute),
     ("exit", exit::execute),
