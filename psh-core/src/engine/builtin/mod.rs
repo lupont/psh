@@ -3,6 +3,7 @@ mod alias;
 mod builtins;
 mod cd;
 mod colon;
+mod dot;
 mod exit;
 mod unabbr;
 mod unalias;
@@ -12,6 +13,7 @@ use crate::{Engine, Error, ExitStatus, Result};
 type Builtin = fn(&mut Engine, &[&str]) -> Result<ExitStatus>;
 
 pub(crate) const BUILTINS: &[(&str, Builtin)] = &[
+    (".", dot::execute),
     (":", colon::execute),
     ("abbr", abbr::execute),
     ("alias", alias::execute),
