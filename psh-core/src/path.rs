@@ -1,5 +1,4 @@
 use std::env;
-use std::fs;
 use std::os::unix::prelude::PermissionsExt;
 use std::path::PathBuf;
 
@@ -29,21 +28,6 @@ pub fn init_file() -> PathBuf {
 
 pub fn history_file() -> PathBuf {
     cfg_file("history", "PSH_HISTORY")
-}
-
-pub fn get_cmds_from_path() -> Vec<String> {
-    let raw_path = env::var("PATH").unwrap();
-    let raw_path = raw_path.split(':');
-
-    let mut cmds = Vec::new();
-
-    for path in raw_path {
-        if let Ok(dirs) = fs::read_dir(path) {
-            cmds.extend(dirs.map(|d| format!("{}", d.unwrap().path().display())));
-        }
-    }
-
-    cmds
 }
 
 pub fn has_relative_command(cmd: impl AsRef<str>) -> bool {

@@ -21,7 +21,6 @@ use crate::engine::history::{FileHistory, History};
 use crate::{path, Error, Result};
 
 pub struct Engine {
-    pub commands: Vec<String>,
     pub history: Box<dyn History>,
     pub assignments: HashMap<String, String>,
     pub aliases: HashMap<String, String>,
@@ -80,13 +79,30 @@ impl Engine {
     pub fn new() -> Self {
         let history = FileHistory::init().expect("could not initialize history");
         Self {
-            commands: path::get_cmds_from_path(),
             history: Box::new(history),
             assignments: Default::default(),
             aliases: Default::default(),
             abbreviations: Default::default(),
             last_status: vec![ExitStatus::from_code(0)],
         }
+    }
+
+    pub fn get_file_in_path(&self, file: &str) -> Option<String> {
+        if let Some(path) = self.get_value_of("PATH") {
+            let paths = path.split(':');
+
+            for path in paths {
+                if let Ok(dirs) = std::fs::read_dir(path) {
+                    for entry in dirs.filter_map(|f| f.ok()) {
+                        if file == entry.file_name() {
+                            return Some(format!("{}", entry.path().display()));
+                        }
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn get_value_of(&self, var_name: impl AsRef<str>) -> Option<String> {
@@ -103,10 +119,10 @@ impl Engine {
 
     pub fn has_command(&self, cmd: &str) -> bool {
         path::has_relative_command(cmd)
-            || self
-                .commands
-                .iter()
-                .any(|c| c == cmd || c.ends_with(&format!("/{}", cmd)))
+            || (self
+                .get_file_in_path(cmd)
+                .map(|file| util::is_executable(&file))
+                .unwrap_or(false))
     }
 
     pub fn has_alias(&self, cmd: impl AsRef<str>) -> bool {
