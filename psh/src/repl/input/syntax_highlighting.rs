@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::io::stdout;
 
 use crossterm::cursor::{MoveDown, MoveToColumn};
+use crossterm::queue;
 use crossterm::style::{Print, ResetColor, SetForegroundColor};
 use crossterm::terminal::{Clear, ClearType};
-use crossterm::{execute, queue};
 
 use psh_core::ast::nodes::*;
 use psh_core::engine::expand::Expand;
@@ -32,20 +32,12 @@ impl Highlighter for SyntaxTree {
         }
 
         let unparsed_color = Colors::unparsed(engine);
-        queue!(stdout(), SetForegroundColor(unparsed_color))?;
-        for c in self.unparsed.chars() {
-            if c == '\n' {
-                queue!(
-                    stdout(),
-                    MoveToColumn(context.start_x),
-                    MoveDown(1),
-                    Clear(ClearType::UntilNewLine)
-                )?;
-            } else {
-                queue!(stdout(), Print(c))?;
-            }
-        }
-        execute!(stdout(), ResetColor)?;
+        queue!(
+            stdout(),
+            SetForegroundColor(unparsed_color),
+            Print(self.unparsed.replace('\n', "\n\r")),
+            ResetColor
+        )?;
 
         Ok(())
     }

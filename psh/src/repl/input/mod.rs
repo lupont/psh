@@ -75,7 +75,7 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
         stderr(),
         cursor::MoveToColumn(0),
         style::SetForegroundColor(color),
-        style::Print(word),
+        style::Print(word.replace('\n', "\n\r")),
         style::ResetColor,
     )?;
 
