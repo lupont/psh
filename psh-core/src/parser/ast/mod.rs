@@ -393,7 +393,9 @@ where
 
     fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand> {
         // TODO
-        Err(ParseError::None)
+        self.parse_while_clause()
+            .map(CompoundCommand::While)
+            .map_err(|e| e.cast_with(CompoundCommand::While))
         // self.parse_brace_group()
         //     .map(CompoundCommand::Brace)
         //     .or_else(|_| self.parse_subshell().map(CompoundCommand::Subshell))
@@ -432,12 +434,17 @@ where
     }
 
     fn parse_compound_list(&mut self) -> ParseResult<CompoundList> {
-        let initial = self.clone();
         let linebreak = self.parse_linebreak();
 
-        let Ok(term) = self.parse_term() else {
-            *self = initial;
-            return Err(ParseError::None);
+        let term = match self.parse_term() {
+            Ok(term) => term,
+            Err(e) => {
+                return Err(e.cast_with(|term| CompoundList {
+                    linebreak,
+                    term,
+                    separator: None,
+                }))
+            }
         };
 
         let separator = self.parse_separator().ok();
@@ -513,7 +520,42 @@ where
     }
 
     fn parse_while_clause(&mut self) -> ParseResult<WhileClause> {
-        Err(ParseError::Unimplemented("while clause".to_string()))
+        let while_ws = self.swallow_whitespace();
+
+        if self
+            .consume_single(Token::Reserved(ReservedWord::While))
+            .is_none()
+        {
+            return Err(ParseError::None);
+        }
+
+        let predicate = match self.parse_compound_list() {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(e.cast_with(|predicate| WhileClause {
+                    while_ws,
+                    predicate,
+                    body: DoGroup::noop(),
+                }))
+            }
+        };
+
+        let body = match self.parse_do_group() {
+            Ok(group) => group,
+            Err(e) => {
+                return Err(e.cast_with(|body| WhileClause {
+                    while_ws,
+                    predicate,
+                    body,
+                }))
+            }
+        };
+
+        Ok(WhileClause {
+            while_ws,
+            predicate,
+            body,
+        })
     }
 
     fn parse_until_clause(&mut self) -> ParseResult<UntilClause> {
@@ -618,20 +660,62 @@ where
     fn parse_do_group(&mut self) -> ParseResult<DoGroup> {
         let initial = self.clone();
 
-        // FIXME: whitespace
-        self.consume_single(Token::Reserved(ReservedWord::Do))
-            .ok_or_else(|| ParseError::Unimplemented("do group (do)".to_string()))
-            .and_then(|_| self.parse_compound_list())
-            .and_then(|list| {
-                self.consume_single(Token::Reserved(ReservedWord::Done))
-                    .map(|_| list)
-                    .ok_or_else(|| ParseError::Unimplemented("do group (done)".to_string()))
-            })
-            .map(|body| DoGroup { body })
-            .map_err(|_| {
-                *self = initial;
-                ParseError::None
-            })
+        let do_ws = self.swallow_whitespace();
+
+        if self
+            .consume_single(Token::Reserved(ReservedWord::Do))
+            .is_none()
+        {
+            *self = initial;
+            return Err(ParseError::None);
+        }
+
+        let body = match self.parse_compound_list() {
+            Ok(body) => body,
+            Err(e) => {
+                return Err(e.cast_with(|body| DoGroup {
+                    do_ws,
+                    body,
+                    done_ws: LeadingWhitespace::default(),
+                }))
+            }
+        };
+
+        let done_ws = self.swallow_whitespace();
+        if self
+            .consume_single(Token::Reserved(ReservedWord::Done))
+            .is_none()
+        {
+            return Err(ParseError::Unfinished(
+                None,
+                DoGroup {
+                    do_ws,
+                    body,
+                    done_ws,
+                },
+            ));
+        }
+
+        Ok(DoGroup {
+            do_ws,
+            body,
+            done_ws,
+        })
+
+        // // FIXME: whitespace
+        // self.consume_single(Token::Reserved(ReservedWord::Do))
+        //     .ok_or_else(|| ParseError::Unimplemented("do group (do)".to_string()))
+        //     .and_then(|_| self.parse_compound_list())
+        //     .and_then(|list| {
+        //         self.consume_single(Token::Reserved(ReservedWord::Done))
+        //             .map(|_| list)
+        //             .ok_or_else(|| ParseError::Unimplemented("do group (done)".to_string()))
+        //     })
+        //     .map(|body| DoGroup { body })
+        //     .map_err(|_| {
+        //         *self = initial;
+        //         ParseError::None
+        //     })
     }
 
     fn parse_simple_command(&mut self) -> ParseResult<SimpleCommand> {

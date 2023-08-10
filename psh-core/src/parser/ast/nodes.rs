@@ -449,6 +449,7 @@ pub struct ElsePart {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct WhileClause {
+    pub while_ws: LeadingWhitespace,
     pub predicate: CompoundList,
     pub body: DoGroup,
 }
@@ -526,7 +527,19 @@ impl BraceGroup {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DoGroup {
+    pub do_ws: LeadingWhitespace,
     pub body: CompoundList,
+    pub done_ws: LeadingWhitespace,
+}
+
+impl DoGroup {
+    pub fn noop() -> Self {
+        Self {
+            do_ws: LeadingWhitespace::default(),
+            body: CompoundList::noop(),
+            done_ws: LeadingWhitespace::default(),
+        }
+    }
 }
 
 /// ```[no_run]
