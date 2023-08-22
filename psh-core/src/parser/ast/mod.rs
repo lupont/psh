@@ -394,14 +394,6 @@ where
     fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand> {
         // TODO
         Err(ParseError::None)
-        // self.parse_brace_group()
-        //     .map(CompoundCommand::Brace)
-        //     .or_else(|_| self.parse_subshell().map(CompoundCommand::Subshell))
-        //     .or_else(|_| self.parse_for_clause().map(CompoundCommand::For))
-        //     .or_else(|_| self.parse_case_clause().map(CompoundCommand::Case))
-        //     .or_else(|_| self.parse_if_clause().map(CompoundCommand::If))
-        //     .or_else(|_| self.parse_while_clause().map(CompoundCommand::While))
-        //     .or_else(|_| self.parse_until_clause().map(CompoundCommand::Until))
     }
 
     fn parse_subshell(&mut self) -> ParseResult<Subshell> {
