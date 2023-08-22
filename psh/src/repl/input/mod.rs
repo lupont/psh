@@ -217,7 +217,7 @@ fn read_line(
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                state.line = engine.history.next()?.cloned().unwrap_or_default();
+                state.line = engine.history.next_entry()?.cloned().unwrap_or_default();
                 state.index = state.line.len();
 
                 execute!(stdout(), state.next_pos())?;

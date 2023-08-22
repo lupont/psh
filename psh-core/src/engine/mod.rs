@@ -17,11 +17,11 @@ use nix::unistd::{close, dup, dup2, execvp, pipe};
 use crate::ast::nodes::*;
 use crate::ast::parse;
 use crate::engine::expand::Expand;
-use crate::engine::history::{FileHistory, History};
+use crate::engine::history::History;
 use crate::{path, Error, Result};
 
 pub struct Engine {
-    pub history: Box<dyn History>,
+    pub history: History,
     pub assignments: HashMap<String, String>,
     pub aliases: HashMap<String, String>,
     pub abbreviations: HashMap<String, String>,
@@ -77,9 +77,8 @@ impl Default for ExecutionContext {
 
 impl Engine {
     pub fn new() -> Self {
-        let history = FileHistory::init().expect("could not initialize history");
         Self {
-            history: Box::new(history),
+            history: History::init().expect("could not initialize history"),
             assignments: Default::default(),
             aliases: Default::default(),
             abbreviations: Default::default(),

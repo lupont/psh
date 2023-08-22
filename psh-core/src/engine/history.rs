@@ -5,23 +5,13 @@ use std::path::PathBuf;
 use crate::path::history_file;
 use crate::{Error, Result};
 
-pub trait History {
-    fn prev(&mut self) -> Result<Option<&String>>;
-    fn next(&mut self) -> Result<Option<&String>>;
-    fn read(&mut self) -> Result<Option<&String>>;
-    fn read_lines(&mut self) -> Result<Vec<String>>;
-    fn append(&mut self, line: &str) -> Result<()>;
-    fn reload(&mut self) -> Result<()>;
-    fn clear(&mut self) -> Result<()>;
-}
-
-pub struct FileHistory {
+pub struct History {
     pub path: PathBuf,
     lines: Vec<String>,
     cursor: usize,
 }
 
-impl FileHistory {
+impl History {
     pub fn init() -> Result<Self> {
         let path = history_file();
 
@@ -51,10 +41,8 @@ impl FileHistory {
             lines,
         })
     }
-}
 
-impl History for FileHistory {
-    fn clear(&mut self) -> Result<()> {
+    pub fn clear(&mut self) -> Result<()> {
         fs::OpenOptions::new()
             .write(true)
             .open(&self.path)?
@@ -62,7 +50,7 @@ impl History for FileHistory {
         self.reload()
     }
 
-    fn reload(&mut self) -> Result<()> {
+    pub fn reload(&mut self) -> Result<()> {
         if !self.path.exists() {
             self.lines = Default::default();
         } else {
@@ -76,7 +64,7 @@ impl History for FileHistory {
         Ok(())
     }
 
-    fn append(&mut self, line: &str) -> Result<()> {
+    pub fn append(&mut self, line: &str) -> Result<()> {
         self.reload()?;
 
         self.lines.push(line.to_string());
@@ -92,7 +80,7 @@ impl History for FileHistory {
         Ok(())
     }
 
-    fn read_lines(&mut self) -> Result<Vec<String>> {
+    pub fn read_lines(&mut self) -> Result<Vec<String>> {
         self.reload()?;
 
         let prev_cursor = self.cursor;
@@ -104,7 +92,7 @@ impl History for FileHistory {
             vec.push(line.clone());
         }
 
-        while let Ok(Some(line)) = self.next() {
+        while let Ok(Some(line)) = self.next_entry() {
             vec.push(line.clone());
         }
 
@@ -113,7 +101,7 @@ impl History for FileHistory {
         Ok(vec)
     }
 
-    fn read(&mut self) -> Result<Option<&String>> {
+    pub fn read(&mut self) -> Result<Option<&String>> {
         self.reload()?;
 
         if self.cursor >= self.lines.len() {
@@ -126,81 +114,19 @@ impl History for FileHistory {
         }
     }
 
-    fn prev(&mut self) -> Result<Option<&String>> {
+    pub fn prev(&mut self) -> Result<Option<&String>> {
         if self.cursor > 0 {
             self.cursor -= 1;
         }
         self.read()
     }
 
-    fn next(&mut self) -> Result<Option<&String>> {
+    // TODO: clippy complained when this was called `next`,
+    //       and said to implement Iterator instead. Do that!
+    pub fn next_entry(&mut self) -> Result<Option<&String>> {
         if self.cursor < self.lines.len() {
             self.cursor += 1;
         }
         self.read()
-    }
-}
-
-pub struct FileHistoryIntoIterator {
-    history: FileHistory,
-    index: usize,
-}
-
-impl Iterator for FileHistoryIntoIterator {
-    type Item = String;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.history.lines.len() - 1 {
-            return None;
-        }
-
-        let entry = self.history.lines.swap_remove(self.index);
-        self.index += 1;
-        Some(entry)
-    }
-}
-
-impl IntoIterator for FileHistory {
-    type Item = String;
-
-    type IntoIter = FileHistoryIntoIterator;
-
-    fn into_iter(self) -> Self::IntoIter {
-        Self::IntoIter {
-            history: self,
-            index: 0,
-        }
-    }
-}
-
-pub struct DummyHistory;
-
-impl History for DummyHistory {
-    fn prev(&mut self) -> Result<Option<&String>> {
-        Ok(None)
-    }
-
-    fn next(&mut self) -> Result<Option<&String>> {
-        Ok(None)
-    }
-
-    fn read(&mut self) -> Result<Option<&String>> {
-        Ok(None)
-    }
-
-    fn read_lines(&mut self) -> Result<Vec<String>> {
-        Ok(vec![])
-    }
-
-    fn append(&mut self, _line: &str) -> Result<()> {
-        Ok(())
-    }
-
-    fn reload(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn clear(&mut self) -> Result<()> {
-        Ok(())
     }
 }
