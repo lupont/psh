@@ -210,14 +210,16 @@ fn read_line(
             }
 
             (KeyCode::Up, _) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-                state.line = engine.history.prev()?.cloned().unwrap_or_default();
+                if let Ok(line) = engine.history.prev_entry() {
+                    state.line = line.clone();
+                }
                 state.index = state.line.len();
 
                 execute!(stdout(), state.next_pos())?;
             }
 
             (KeyCode::Down, _) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                state.line = engine.history.next_entry()?.cloned().unwrap_or_default();
+                state.line = engine.history.next_entry().cloned().unwrap_or_default();
                 state.index = state.line.len();
 
                 execute!(stdout(), state.next_pos())?;

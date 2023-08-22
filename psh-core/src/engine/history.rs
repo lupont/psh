@@ -88,11 +88,11 @@ impl History {
 
         let mut vec = Vec::with_capacity(self.lines.len());
 
-        if let Ok(Some(line)) = self.read() {
+        if let Ok(line) = self.read() {
             vec.push(line.clone());
         }
 
-        while let Ok(Some(line)) = self.next_entry() {
+        while let Ok(line) = self.next_entry() {
             vec.push(line.clone());
         }
 
@@ -101,20 +101,16 @@ impl History {
         Ok(vec)
     }
 
-    pub fn read(&mut self) -> Result<Option<&String>> {
+    pub fn read(&mut self) -> Result<&String> {
         self.reload()?;
 
-        if self.cursor >= self.lines.len() {
-            return Ok(None);
-        }
-
         match self.lines.get(self.cursor) {
-            Some(line) => Ok(Some(line)),
+            Some(line) => Ok(line),
             None => Err(Error::HistoryOutOfBounds),
         }
     }
 
-    pub fn prev(&mut self) -> Result<Option<&String>> {
+    pub fn prev_entry(&mut self) -> Result<&String> {
         if self.cursor > 0 {
             self.cursor -= 1;
         }
@@ -123,7 +119,7 @@ impl History {
 
     // TODO: clippy complained when this was called `next`,
     //       and said to implement Iterator instead. Do that!
-    pub fn next_entry(&mut self) -> Result<Option<&String>> {
+    pub fn next_entry(&mut self) -> Result<&String> {
         if self.cursor < self.lines.len() {
             self.cursor += 1;
         }
