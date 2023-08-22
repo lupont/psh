@@ -128,7 +128,7 @@ pub struct List {
 ///        | and_or OR_IF  linebreak pipeline
 ///        ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct AndOrList {
     pub head: Pipeline,
 
@@ -139,13 +139,6 @@ pub struct AndOrList {
 }
 
 impl AndOrList {
-    pub fn noop() -> Self {
-        Self {
-            head: Pipeline::noop(),
-            tail: Default::default(),
-        }
-    }
-
     pub fn all_pipelines(self) -> Vec<Pipeline> {
         let mut pipelines = vec![self.head];
         for (_, _, p) in self.tail {
@@ -160,7 +153,7 @@ impl AndOrList {
 ///          | Bang pipe_sequence
 ///          ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct Pipeline {
     pub bang: Option<Bang>,
     pub sequence: PipeSequence,
@@ -179,13 +172,6 @@ impl Pipeline {
     pub fn has_bang(&self) -> bool {
         self.bang.is_some()
     }
-
-    pub fn noop() -> Self {
-        Self {
-            bang: None,
-            sequence: PipeSequence::noop(),
-        }
-    }
 }
 
 /// ```[no_run]
@@ -193,19 +179,10 @@ impl Pipeline {
 ///               | pipe_sequence '|' linebreak command
 ///               ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct PipeSequence {
     pub head: Box<Command>,
     pub tail: Vec<(Pipe, Linebreak, Command)>,
-}
-
-impl PipeSequence {
-    pub fn noop() -> Self {
-        Self {
-            head: Box::new(Command::noop()),
-            tail: Default::default(),
-        }
-    }
 }
 
 /// ```[no_run]
@@ -222,9 +199,9 @@ pub enum Command {
     FunctionDefinition(FunctionDefinition),
 }
 
-impl Command {
-    pub fn noop() -> Self {
-        Self::Simple(SimpleCommand::noop())
+impl Default for Command {
+    fn default() -> Self {
+        Self::Simple(SimpleCommand::default())
     }
 }
 
@@ -249,9 +226,9 @@ pub enum CompoundCommand {
     Until(UntilClause),
 }
 
-impl CompoundCommand {
-    pub fn noop() -> Self {
-        Self::Brace(BraceGroup::noop())
+impl Default for CompoundCommand {
+    fn default() -> Self {
+        Self::Brace(BraceGroup::default())
     }
 }
 
@@ -272,7 +249,7 @@ pub struct Subshell {
 ///               | linebreak term separator
 ///               ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompoundList {
     pub linebreak: Linebreak,
@@ -280,35 +257,16 @@ pub struct CompoundList {
     pub separator: Option<Separator>,
 }
 
-impl CompoundList {
-    pub fn noop() -> Self {
-        Self {
-            linebreak: Default::default(),
-            term: Term::noop(),
-            separator: None,
-        }
-    }
-}
-
 /// ```[no_run]
 /// term : term separator and_or
 ///      |                and_or
 ///      ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Term {
     pub head: AndOrList,
     pub tail: Vec<(Separator, AndOrList)>,
-}
-
-impl Term {
-    pub fn noop() -> Self {
-        Self {
-            head: AndOrList::noop(),
-            tail: Default::default(),
-        }
-    }
 }
 
 /// ```[no_run]
@@ -481,42 +439,23 @@ pub struct FunctionDefinition {
 /// function_body : compound_command               /* Apply rule 9 */
 ///               | compound_command redirect_list /* Apply rule 9 */
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionBody {
     pub command: CompoundCommand,
     pub redirections: Vec<Redirection>,
 }
 
-impl FunctionBody {
-    pub fn noop() -> Self {
-        Self {
-            command: CompoundCommand::noop(),
-            redirections: Default::default(),
-        }
-    }
-}
-
 /// ```[no_run]
 /// brace_group : Lbrace compound_list Rbrace
 ///             ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BraceGroup {
     pub lbrace_ws: LeadingWhitespace,
     pub body: CompoundList,
     pub rbrace_ws: LeadingWhitespace,
-}
-
-impl BraceGroup {
-    pub fn noop() -> Self {
-        Self {
-            lbrace_ws: Default::default(),
-            body: CompoundList::noop(),
-            rbrace_ws: Default::default(),
-        }
-    }
 }
 
 /// ```[no_run]
@@ -537,7 +476,7 @@ pub struct DoGroup {
 ///                | cmd_name
 ///                ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct SimpleCommand {
     pub name: Option<Word>,
@@ -551,14 +490,6 @@ impl SimpleCommand {
             Some(&word.name)
         } else {
             None
-        }
-    }
-
-    pub fn noop() -> Self {
-        Self {
-            name: None,
-            prefixes: Default::default(),
-            suffixes: Default::default(),
         }
     }
 

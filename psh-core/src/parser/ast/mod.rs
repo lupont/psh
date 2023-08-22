@@ -286,7 +286,7 @@ where
             let pipeline = match self.parse_pipeline() {
                 Ok(pipeline) => pipeline,
                 Err(ParseError::None) => {
-                    tail.push((logical_op, linebreak, Pipeline::noop()));
+                    tail.push((logical_op, linebreak, Pipeline::default()));
                     return Err(ParseError::Unfinished(
                         Default::default(),
                         AndOrList { head, tail },
@@ -340,7 +340,7 @@ where
             let cmd = match self.parse_command() {
                 Ok(cmd) => cmd,
                 Err(ParseError::None) => {
-                    tail.push((pipe, linebreak, Command::noop()));
+                    tail.push((pipe, linebreak, Command::default()));
                     let seq = PipeSequence {
                         head: Box::new(head),
                         tail,
@@ -531,7 +531,7 @@ where
                     name,
                     parens: Default::default(),
                     linebreak: Default::default(),
-                    body: FunctionBody::noop(),
+                    body: FunctionBody::default(),
                 }));
             }
         };
