@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::path::history_file;
 use crate::{Error, Result};
 
+#[derive(Default)]
 pub struct History {
     pub path: PathBuf,
     lines: Vec<String>,

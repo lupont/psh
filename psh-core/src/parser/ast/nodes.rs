@@ -16,7 +16,7 @@ use crate::Error;
 ///         | linebreak
 ///         ;
 /// ```
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SyntaxTree {
     pub leading: Linebreak,
     pub commands: Option<(CompleteCommands, Linebreak)>,
@@ -26,10 +26,6 @@ pub struct SyntaxTree {
 impl SyntaxTree {
     pub fn is_ok(&self) -> bool {
         self.unparsed.chars().all(char::is_whitespace)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.commands.is_none()
     }
 
     #[cfg(feature = "serde")]
@@ -44,7 +40,7 @@ impl SyntaxTree {
 ///                   |                                complete_command
 ///                   ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompleteCommands {
     pub head: CompleteCommand,
     pub tail: Vec<(NewlineList, CompleteCommand)>,
@@ -65,7 +61,7 @@ impl CompleteCommands {
 ///                  | list
 ///                  ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompleteCommand {
     List {
         list: List,
@@ -116,7 +112,7 @@ impl CompleteCommand {
 ///      |                   and_or
 ///      ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct List {
     pub head: AndOrList,
     pub tail: Vec<(SeparatorOp, AndOrList)>,
@@ -128,7 +124,7 @@ pub struct List {
 ///        | and_or OR_IF  linebreak pipeline
 ///        ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct AndOrList {
     pub head: Pipeline,
 
@@ -138,22 +134,12 @@ pub struct AndOrList {
     pub tail: Vec<(LogicalOp, Linebreak, Pipeline)>,
 }
 
-impl AndOrList {
-    pub fn all_pipelines(self) -> Vec<Pipeline> {
-        let mut pipelines = vec![self.head];
-        for (_, _, p) in self.tail {
-            pipelines.push(p);
-        }
-        pipelines
-    }
-}
-
 /// ```[no_run]
 /// pipeline :      pipe_sequence
 ///          | Bang pipe_sequence
 ///          ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Pipeline {
     pub bang: Option<Bang>,
     pub sequence: PipeSequence,
@@ -179,7 +165,7 @@ impl Pipeline {
 ///               | pipe_sequence '|' linebreak command
 ///               ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PipeSequence {
     pub head: Box<Command>,
     pub tail: Vec<(Pipe, Linebreak, Command)>,
@@ -192,7 +178,7 @@ pub struct PipeSequence {
 ///         | function_definition
 ///         ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Simple(SimpleCommand),
     Compound(CompoundCommand, Vec<Redirection>),
@@ -215,7 +201,7 @@ impl Default for Command {
 ///                  | until_clause
 ///                  ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompoundCommand {
     Brace(BraceGroup),
     Subshell(Subshell),
@@ -236,7 +222,7 @@ impl Default for CompoundCommand {
 /// subshell : '(' compound_list ')'
 ///          ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Subshell {
     pub lparen_ws: LeadingWhitespace,
@@ -249,7 +235,7 @@ pub struct Subshell {
 ///               | linebreak term separator
 ///               ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompoundList {
     pub linebreak: Linebreak,
@@ -262,7 +248,7 @@ pub struct CompoundList {
 ///      |                and_or
 ///      ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Term {
     pub head: AndOrList,
@@ -276,7 +262,7 @@ pub struct Term {
 ///            | For name linebreak in wordlist sequential_sep do_group
 ///            ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum ForClause {
     Simple(Name, DoGroup),
@@ -288,7 +274,7 @@ pub enum ForClause {
 /// name : NAME /* Apply rule 5 */
 ///      ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Name {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
@@ -302,7 +288,7 @@ pub struct Name {
 ///             | Case WORD linebreak in linebreak              Esac
 ///             ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseClause {
     Normal(Word, Linebreak, Linebreak, CaseList),
@@ -315,7 +301,7 @@ pub enum CaseClause {
 ///              |           case_item_ns
 ///              ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CaseListNs {
     pub case_list: Option<CaseList>,
@@ -327,7 +313,7 @@ pub struct CaseListNs {
 ///           |           case_item
 ///           ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CaseList {
     pub head: CaseItem,
@@ -341,7 +327,7 @@ pub struct CaseList {
 ///              | '(' pattern ')' compound_list
 ///              ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseItemNs {
     Empty(bool, Pattern, Linebreak),
@@ -355,7 +341,7 @@ pub enum CaseItemNs {
 ///           | '(' pattern ')' compound_list DSEMI linebreak
 ///           ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum CaseItem {
     Empty(bool, Pattern, Linebreak, Linebreak),
@@ -367,7 +353,7 @@ pub enum CaseItem {
 ///         | pattern '|' WORD /* Do not apply rule 4 */
 ///         ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pattern {
     pub head: Word,
@@ -379,7 +365,7 @@ pub struct Pattern {
 ///           | If compound_list Then compound_list           Fi
 ///           ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct IfClause {
     pub predicate: CompoundList,
@@ -393,7 +379,7 @@ pub struct IfClause {
 ///           | Else compound_list
 ///           ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct ElsePart {
     pub elseifs: Vec<(CompoundList, CompoundList)>,
@@ -404,7 +390,7 @@ pub struct ElsePart {
 /// while_clause : While compound_list do_group
 ///              ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct WhileClause {
     pub predicate: CompoundList,
@@ -415,7 +401,7 @@ pub struct WhileClause {
 /// until_clause : Until compound_list do_group
 ///              ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct UntilClause {
     pub predicate: CompoundList,
@@ -426,7 +412,7 @@ pub struct UntilClause {
 /// function_definition : fname '(' ')' linebreak function_body
 ///                     ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionDefinition {
     pub name: Name,
@@ -439,7 +425,7 @@ pub struct FunctionDefinition {
 /// function_body : compound_command               /* Apply rule 9 */
 ///               | compound_command redirect_list /* Apply rule 9 */
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionBody {
     pub command: CompoundCommand,
@@ -450,7 +436,7 @@ pub struct FunctionBody {
 /// brace_group : Lbrace compound_list Rbrace
 ///             ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BraceGroup {
     pub lbrace_ws: LeadingWhitespace,
@@ -462,7 +448,7 @@ pub struct BraceGroup {
 /// do_group : Do compound_list Done /* Apply rule 6 */
 ///          ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DoGroup {
     pub body: CompoundList,
@@ -476,7 +462,7 @@ pub struct DoGroup {
 ///                | cmd_name
 ///                ;
 /// ```
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct SimpleCommand {
     pub name: Option<Word>,
@@ -543,7 +529,7 @@ impl SimpleCommand {
 ///            | cmd_prefix ASSIGNMENT_WORD
 ///            ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CmdPrefix {
     Redirection(Redirection),
     Assignment(VariableAssignment),
@@ -556,13 +542,13 @@ pub enum CmdPrefix {
 ///            | cmd_suffix WORD
 ///            ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CmdSuffix {
     Redirection(Redirection),
     Word(Word),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FileDescriptor {
     Stdin,
     Stdout,
@@ -619,7 +605,7 @@ impl From<RawFd> for FileDescriptor {
 /// `OutputFd`:      `>&`
 /// `OutputAppend`:  `>>`
 /// `OutputClobber`: `>|`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum RedirectionType {
     #[cfg_attr(feature = "serde", serde(rename = "input"))]
@@ -707,7 +693,7 @@ impl RedirectionType {
 
 /// `Normal`:    `<<`
 /// `StripTabs`: `<<-`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum HereDocType {
     /// `<<`
@@ -737,7 +723,7 @@ pub enum HereDocType {
 ///         | DLESSDASH here_end
 ///         ;
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Redirection {
     #[cfg_attr(feature = "serde", serde(rename = "fd_redirection"))]
@@ -788,14 +774,6 @@ impl Redirection {
         Self::new_file(whitespace, fd, RedirectionType::Input, target)
     }
 
-    pub fn new_input_fd(
-        whitespace: impl Into<LeadingWhitespace>,
-        fd: Option<FileDescriptor>,
-        target: Word,
-    ) -> Self {
-        Self::new_file(whitespace, fd, RedirectionType::InputFd, target)
-    }
-
     pub fn new_output(
         whitespace: impl Into<LeadingWhitespace>,
         fd: Option<FileDescriptor>,
@@ -803,61 +781,9 @@ impl Redirection {
     ) -> Self {
         Self::new_file(whitespace, fd, RedirectionType::Output, target)
     }
-
-    pub fn new_output_fd(
-        whitespace: impl Into<LeadingWhitespace>,
-        fd: Option<FileDescriptor>,
-        target: Word,
-    ) -> Self {
-        Self::new_file(whitespace, fd, RedirectionType::OutputFd, target)
-    }
-
-    pub fn new_output_append(
-        whitespace: impl Into<LeadingWhitespace>,
-        fd: Option<FileDescriptor>,
-        target: Word,
-    ) -> Self {
-        Self::new_file(whitespace, fd, RedirectionType::OutputAppend, target)
-    }
-
-    pub fn new_output_clobber(
-        whitespace: impl Into<LeadingWhitespace>,
-        fd: Option<FileDescriptor>,
-        target: Word,
-    ) -> Self {
-        Self::new_file(whitespace, fd, RedirectionType::OutputClobber, target)
-    }
-
-    pub fn new_read_write(
-        whitespace: impl Into<LeadingWhitespace>,
-        fd: Option<FileDescriptor>,
-        target: Word,
-    ) -> Self {
-        Self::new_file(whitespace, fd, RedirectionType::ReadWrite, target)
-    }
-
-    pub fn new_here(
-        whitespace: impl Into<LeadingWhitespace>,
-        input_fd: Option<FileDescriptor>,
-        strip_tabs: bool,
-        content: Word,
-        end: Word,
-    ) -> Self {
-        Self::Here {
-            whitespace: whitespace.into(),
-            input_fd,
-            ty: if strip_tabs {
-                HereDocType::StripTabs
-            } else {
-                HereDocType::Normal
-            },
-            content,
-            end,
-        }
-    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct VariableAssignment {
     pub whitespace: LeadingWhitespace,
@@ -875,7 +801,7 @@ impl VariableAssignment {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Word {
     pub whitespace: LeadingWhitespace,
     pub name: String,
@@ -892,7 +818,7 @@ impl Word {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Expansion {
     Tilde {
@@ -947,7 +873,7 @@ impl Expansion {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LogicalOp {
     And(LeadingWhitespace),
     Or(LeadingWhitespace),
@@ -956,7 +882,7 @@ pub enum LogicalOp {
 /// newline_list :              NEWLINE
 ///              | newline_list NEWLINE
 ///              ;
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NewlineList {
     /// This String may contain a mix of ' ', \t, and \n
     pub whitespace: String,
@@ -965,7 +891,7 @@ pub struct NewlineList {
 /// linebreak : newline_list
 ///           | /* empty */
 ///           ;
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Linebreak {
     pub newlines: Option<NewlineList>,
 }
@@ -973,7 +899,7 @@ pub struct Linebreak {
 /// separator_op : '&'
 ///              | ';'
 ///              ;
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SeparatorOp {
     Sync(LeadingWhitespace),
     Async(LeadingWhitespace),
@@ -998,7 +924,7 @@ impl Default for SeparatorOp {
 /// separator : separator_op linebreak
 ///           | newline_list
 ///           ;
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Separator {
     Explicit(SeparatorOp, Linebreak),
     Implicit(NewlineList),
@@ -1007,21 +933,21 @@ pub enum Separator {
 /// sequential_sep : ';' linebreak
 ///                | newline_list
 ///                ;
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum SequentialSeparator {
     Semi(Linebreak),
     Implicit(NewlineList),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Bang {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Comment {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
@@ -1029,7 +955,7 @@ pub struct Comment {
     pub content: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pipe {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
@@ -1038,7 +964,7 @@ pub struct Pipe {
 
 /// Wrapper type for String, used by data structures
 /// that keep track of leading whitespace.
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LeadingWhitespace(pub String);
 
 impl std::fmt::Display for LeadingWhitespace {

@@ -6,9 +6,7 @@ mod util;
 use std::collections::HashMap;
 use std::env;
 use std::ffi::CString;
-use std::ops::Not;
 use std::os::fd::RawFd;
-use std::os::unix::prelude::ExitStatusExt;
 use std::path::PathBuf;
 
 use nix::sys::wait::{waitpid, WaitStatus};
@@ -19,14 +17,6 @@ use crate::ast::parse;
 use crate::engine::expand::Expand;
 use crate::engine::history::History;
 use crate::{path, Error, Result};
-
-pub struct Engine {
-    pub history: History,
-    pub assignments: HashMap<String, String>,
-    pub aliases: HashMap<String, String>,
-    pub abbreviations: HashMap<String, String>,
-    pub last_status: Vec<ExitStatus>,
-}
 
 #[derive(Debug, Clone)]
 struct ExecutionContext {
@@ -62,30 +52,27 @@ impl ExecutionContext {
     }
 }
 
-impl Default for ExecutionContext {
-    fn default() -> Self {
-        Self {
-            stdin: 0,
-            stdout: 1,
-            stderr: 2,
-            fds: Default::default(),
-            assignments: Default::default(),
-            background: false,
-        }
-    }
+pub struct Engine {
+    pub history: History,
+    pub assignments: HashMap<String, String>,
+    pub aliases: HashMap<String, String>,
+    pub abbreviations: HashMap<String, String>,
+    pub last_status: Vec<ExitStatus>,
 }
 
-impl Engine {
-    pub fn new() -> Self {
+impl Default for Engine {
+    fn default() -> Self {
         Self {
             history: History::init().expect("could not initialize history"),
             assignments: Default::default(),
             aliases: Default::default(),
             abbreviations: Default::default(),
-            last_status: vec![ExitStatus::from_code(0)],
+            last_status: vec![Default::default()],
         }
     }
+}
 
+impl Engine {
     pub fn get_file_in_path(&self, file: &str) -> Option<String> {
         if let Some(path) = self.get_value_of("PATH") {
             let paths = path.split(':');
@@ -370,16 +357,16 @@ impl Engine {
     }
 }
 
-impl Default for Engine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum ExitStatus {
     Code(i32),
     Signal(i32),
+}
+
+impl Default for ExitStatus {
+    fn default() -> Self {
+        Self::Code(0)
+    }
 }
 
 impl ExitStatus {
@@ -446,19 +433,7 @@ impl ToString for ExitStatus {
     }
 }
 
-impl From<std::process::ExitStatus> for ExitStatus {
-    fn from(status: std::process::ExitStatus) -> Self {
-        if let Some(code) = status.code() {
-            Self::Code(code)
-        } else if let Some(signal) = status.signal() {
-            Self::Signal(signal)
-        } else {
-            todo!()
-        }
-    }
-}
-
-impl Not for ExitStatus {
+impl std::ops::Not for ExitStatus {
     type Output = Self;
 
     fn not(self) -> Self::Output {

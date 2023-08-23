@@ -6,19 +6,12 @@ use crossterm::terminal;
 
 use psh_core::{ast, path, tok, Engine, Error, Result};
 
-use crate::config::{self, Colors};
-
+#[derive(Default)]
 pub struct Repl {
     engine: Engine,
 }
 
 impl Repl {
-    pub fn new() -> Self {
-        Self {
-            engine: Engine::default(),
-        }
-    }
-
     fn read_init_file(&mut self) -> Result<()> {
         match self.engine.execute_file(path::init_file()) {
             Ok(_) => Ok(()),
@@ -34,8 +27,8 @@ impl Repl {
             self.engine.assignments.insert(
                 "PS1".to_string(),
                 match is_root() {
-                    true => config::PS1_ROOT_PROMPT,
-                    false => config::PS1_USER_PROMPT,
+                    true => input::PS1_ROOT_PROMPT,
+                    false => input::PS1_USER_PROMPT,
                 }
                 .to_string(),
             );
@@ -43,7 +36,7 @@ impl Repl {
         if self.engine.get_value_of("PS2").is_none() {
             self.engine
                 .assignments
-                .insert("PS2".to_string(), config::PS2_PROMPT.to_string());
+                .insert("PS2".to_string(), input::PS2_PROMPT.to_string());
         }
 
         ctrlc::set_handler(|| {}).expect("psh: Error setting ^C handler");

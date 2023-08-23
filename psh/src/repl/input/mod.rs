@@ -14,11 +14,15 @@ use psh_core::ast::parse;
 use psh_core::engine::expand::expand_prompt;
 use psh_core::{Engine, Error, Result};
 
-use crate::config::{self, Colors};
+use crate::color;
 use crate::repl::input::syntax_highlighting::Highlighter;
 use crate::repl::RawMode;
 
 use self::syntax_highlighting::Context;
+
+pub const PS1_USER_PROMPT: &str = "$ ";
+pub const PS1_ROOT_PROMPT: &str = "# ";
+pub const PS2_PROMPT: &str = "> ";
 
 pub fn read_full_command(engine: &mut Engine) -> Result<String> {
     let _raw = RawMode::init()?;
@@ -35,7 +39,7 @@ pub fn read_full_command(engine: &mut Engine) -> Result<String> {
         match read_line(engine, false, start_pos, Some(&line)) {
             Ok(l) => line += &l,
             Err(Error::CancelledLine) => {
-                line = String::new();
+                line.truncate(0);
                 break 'outer;
             }
             Err(e) => return Err(e),
@@ -46,15 +50,9 @@ pub fn read_full_command(engine: &mut Engine) -> Result<String> {
 }
 
 fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
-    let prompt = if ps2 {
-        engine
-            .get_value_of("PS2")
-            .unwrap_or_else(|| config::PS2_PROMPT.to_string())
-    } else {
-        engine
-            .get_value_of("PS1")
-            .unwrap_or_else(|| config::PS1_USER_PROMPT.to_string())
-    };
+    let prompt = engine
+        .get_value_of(if ps2 { "PS2" } else { "PS1" })
+        .unwrap_or_default();
 
     use psh_core::parser::ast::Parser;
     use psh_core::parser::tok::Tokenizer;
@@ -69,7 +67,7 @@ fn prompt(engine: &mut Engine, ps2: bool) -> Result<()> {
     let word = expand_prompt(word, engine)?;
     let word = &word[1..word.len() - 1];
 
-    let color = Colors::prompt(engine);
+    let color = color::prompt(engine);
 
     queue!(
         stderr(),
@@ -382,7 +380,7 @@ fn write_highlighted_ast(
     let (start_x, start_y) = start_pos;
     let (x, y) = state.pos()?;
 
-    let color = Colors::normal(engine);
+    let color = color::normal(engine);
     queue!(
         stdout(),
         cursor::MoveTo(start_x, start_y),

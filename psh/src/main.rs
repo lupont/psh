@@ -1,5 +1,5 @@
 mod args;
-mod config;
+mod color;
 mod repl;
 
 use std::path::PathBuf;
@@ -27,7 +27,7 @@ fn main() {
             run_file(&target, args.lex, args.ast, json);
         }
     } else {
-        let mut repl = repl::Repl::new();
+        let mut repl = repl::Repl::default();
 
         if let Err(e) = repl.run(args.lex, args.ast, json) {
             eprintln!("psh: Unrecoverable error occurred: {e}");

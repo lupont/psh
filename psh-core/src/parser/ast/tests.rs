@@ -224,7 +224,7 @@ fn parse_simple_pipeline() {
                 ),
                 (
                     Pipe {
-                        whitespace: LeadingWhitespace::from(" "),
+                        whitespace: " ".into(),
                     },
                     Linebreak { newlines: None },
                     Command::Simple(SimpleCommand {
