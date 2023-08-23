@@ -183,7 +183,7 @@ impl Highlighter for CompoundCommand {
             CompoundCommand::For(_) => todo!(),
             CompoundCommand::Case(_) => todo!(),
             CompoundCommand::If(_) => todo!(),
-            CompoundCommand::While(_) => todo!(),
+            CompoundCommand::While(while_clause) => while_clause.write_highlighted(engine, context),
             CompoundCommand::Until(_) => todo!(),
         }
     }
@@ -256,6 +256,31 @@ impl Highlighter for BraceGroup {
             Print('}'),
             ResetColor
         )?;
+        Ok(())
+    }
+}
+
+impl Highlighter for WhileClause {
+    fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        let col = color::valid_cmd(engine);
+        queue!(
+            stdout(),
+            SetForegroundColor(col),
+            Print(&self.while_ws),
+            ResetColor,
+        )?;
+        self.predicate.write_highlighted(engine, context)?;
+        self.body.write_highlighted(engine, context)?;
+        Ok(())
+    }
+}
+
+impl Highlighter for DoGroup {
+    fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
+        queue!(stdout(), Print(&self.do_ws), Print("do"))?;
+        self.body.write_highlighted(engine, context)?;
+        queue!(stdout(), Print(&self.done_ws), Print("done"))?;
+
         Ok(())
     }
 }

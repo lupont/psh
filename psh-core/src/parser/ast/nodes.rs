@@ -393,6 +393,7 @@ pub struct ElsePart {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct WhileClause {
+    pub while_ws: LeadingWhitespace,
     pub predicate: CompoundList,
     pub body: DoGroup,
 }
@@ -448,10 +449,12 @@ pub struct BraceGroup {
 /// do_group : Do compound_list Done /* Apply rule 6 */
 ///          ;
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DoGroup {
+    pub do_ws: LeadingWhitespace,
     pub body: CompoundList,
+    pub done_ws: LeadingWhitespace,
 }
 
 /// ```[no_run]

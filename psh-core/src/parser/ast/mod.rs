@@ -392,8 +392,9 @@ where
     }
 
     fn parse_compound_command(&mut self) -> ParseResult<CompoundCommand> {
-        // TODO
-        Err(ParseError::None)
+        self.parse_while_clause()
+            .map(CompoundCommand::While)
+            .map_err(|e| e.cast_with(CompoundCommand::While))
     }
 
     fn parse_subshell(&mut self) -> ParseResult<Subshell> {
@@ -505,7 +506,45 @@ where
     }
 
     fn parse_while_clause(&mut self) -> ParseResult<WhileClause> {
-        Err(ParseError::Unimplemented("while clause".to_string()))
+        let initial = self.clone();
+
+        let while_ws = self.swallow_whitespace();
+
+        if self
+            .consume_single(Token::Reserved(ReservedWord::While))
+            .is_none()
+        {
+            *self = initial;
+            return Err(ParseError::None);
+        }
+
+        let predicate = match self.parse_compound_list() {
+            Ok(predicate) => predicate,
+            Err(e) => {
+                return Err(e.cast_with(|predicate| WhileClause {
+                    while_ws,
+                    predicate,
+                    body: Default::default(),
+                }))
+            }
+        };
+
+        let body = match self.parse_do_group() {
+            Ok(body) => body,
+            Err(e) => {
+                return Err(e.cast_with(|body| WhileClause {
+                    while_ws,
+                    predicate,
+                    body,
+                }))
+            }
+        };
+
+        Ok(WhileClause {
+            while_ws,
+            predicate,
+            body,
+        })
     }
 
     fn parse_until_clause(&mut self) -> ParseResult<UntilClause> {
@@ -610,20 +649,47 @@ where
     fn parse_do_group(&mut self) -> ParseResult<DoGroup> {
         let initial = self.clone();
 
-        // FIXME: whitespace
-        self.consume_single(Token::Reserved(ReservedWord::Do))
-            .ok_or_else(|| ParseError::Unimplemented("do group (do)".to_string()))
-            .and_then(|_| self.parse_compound_list())
-            .and_then(|list| {
-                self.consume_single(Token::Reserved(ReservedWord::Done))
-                    .map(|_| list)
-                    .ok_or_else(|| ParseError::Unimplemented("do group (done)".to_string()))
-            })
-            .map(|body| DoGroup { body })
-            .map_err(|_| {
-                *self = initial;
-                ParseError::None
-            })
+        let do_ws = self.swallow_whitespace();
+
+        if self
+            .consume_single(Token::Reserved(ReservedWord::Do))
+            .is_none()
+        {
+            *self = initial;
+            return Err(ParseError::Unfinished(None, DoGroup {
+                do_ws,
+                body: Default::default(),
+                done_ws: Default::default(),
+            }));
+        }
+
+        let body = match self.parse_compound_list() {
+            Ok(body) => body,
+            Err(e) => {
+                return Err(e.cast_with(|body| DoGroup {
+                    do_ws,
+                    body,
+                    done_ws: Default::default(),
+                }))
+            }
+        };
+
+        let done_ws = self.swallow_whitespace();
+
+        let do_group = DoGroup {
+            do_ws,
+            body,
+            done_ws,
+        };
+
+        if self
+            .consume_single(Token::Reserved(ReservedWord::Done))
+            .is_some()
+        {
+            Ok(do_group)
+        } else {
+            Err(ParseError::Unfinished(None, do_group))
+        }
     }
 
     fn parse_simple_command(&mut self) -> ParseResult<SimpleCommand> {
