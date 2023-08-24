@@ -159,6 +159,9 @@ pub trait Parser: Iterator<Item = Token> + Clone {
     fn parse_word(&mut self, allow_reserved_words: bool) -> ParseResult<Word>;
     fn parse_comment(&mut self) -> ParseResult<Comment>;
     fn parse_pipe(&mut self) -> ParseResult<Pipe>;
+    fn parse_while(&mut self) -> ParseResult<While>;
+    fn parse_do(&mut self) -> ParseResult<Do>;
+    fn parse_done(&mut self) -> ParseResult<Done>;
     fn parse_bang(&mut self) -> ParseResult<Bang>;
     fn parse_logical_op(&mut self) -> ParseResult<LogicalOp>;
 
@@ -453,18 +456,27 @@ where
             }
         };
 
-        let mut prev = self.clone();
         let mut tail = Vec::new();
-        while let Ok((sep, and_or)) = self.parse_separator().and_then(|sep| {
-            self.parse_and_or_list()
-                .map(|a| (sep, a))
-                .map_err(|e| e.force_cast())
-        }) {
-            tail.push((sep, and_or));
+        let mut prev = self.clone();
+
+        loop {
+            let Ok(separator) = self.parse_separator() else { *self = prev; break; };
+
+            let and_or_list = match self.parse_and_or_list() {
+                Ok(list) => list,
+                Err(ParseError::Unfinished(ws, list)) => {
+                    tail.push((separator, list));
+                    return Err(ParseError::Unfinished(ws, Term {
+                        head,
+                        tail,
+                    }));
+                },
+                Err(e) => return Err(e.force_cast()),
+            };
+
+            tail.push((separator, and_or_list));
             prev = self.clone();
         }
-
-        *self = prev;
 
         Ok(Term { head, tail })
     }
@@ -506,23 +518,23 @@ where
     }
 
     fn parse_while_clause(&mut self) -> ParseResult<WhileClause> {
-        let initial = self.clone();
+        let while_part = match self.parse_while() {
+            Ok(while_part) => while_part,
+            Err(e) => {
+                return Err(e.cast_with(|while_part| WhileClause {
+                    while_part,
+                    predicate: Default::default(),
+                    body: Default::default(),
+                }))
+            }
+        };
 
-        let while_ws = self.swallow_whitespace();
-
-        if self
-            .consume_single(Token::Reserved(ReservedWord::While))
-            .is_none()
-        {
-            *self = initial;
-            return Err(ParseError::None);
-        }
 
         let predicate = match self.parse_compound_list() {
             Ok(predicate) => predicate,
             Err(e) => {
                 return Err(e.cast_with(|predicate| WhileClause {
-                    while_ws,
+                    while_part,
                     predicate,
                     body: Default::default(),
                 }))
@@ -533,7 +545,7 @@ where
             Ok(body) => body,
             Err(e) => {
                 return Err(e.cast_with(|body| WhileClause {
-                    while_ws,
+                    while_part,
                     predicate,
                     body,
                 }))
@@ -541,7 +553,7 @@ where
         };
 
         Ok(WhileClause {
-            while_ws,
+            while_part,
             predicate,
             body,
         })
@@ -647,49 +659,40 @@ where
     }
 
     fn parse_do_group(&mut self) -> ParseResult<DoGroup> {
-        let initial = self.clone();
-
-        let do_ws = self.swallow_whitespace();
-
-        if self
-            .consume_single(Token::Reserved(ReservedWord::Do))
-            .is_none()
-        {
-            *self = initial;
-            return Err(ParseError::Unfinished(None, DoGroup {
-                do_ws,
+        let do_part = match self.parse_do() {
+            Ok(do_part) => do_part,
+            Err(e) => return Err(e.cast_with(|do_part| DoGroup {
+                do_part,
                 body: Default::default(),
-                done_ws: Default::default(),
-            }));
-        }
+                done_part: Default::default(),
+            })),
+        };
 
         let body = match self.parse_compound_list() {
             Ok(body) => body,
             Err(e) => {
                 return Err(e.cast_with(|body| DoGroup {
-                    do_ws,
+                    do_part,
                     body,
-                    done_ws: Default::default(),
+                    done_part: Default::default(),
                 }))
             }
         };
 
-        let done_ws = self.swallow_whitespace();
-
-        let do_group = DoGroup {
-            do_ws,
-            body,
-            done_ws,
+        let done_part = match self.parse_done() {
+            Ok(done_part) => done_part,
+            Err(e) => return Err(e.cast_with(|done_part| DoGroup {
+                do_part,
+                body,
+                done_part,
+            })),
         };
 
-        if self
-            .consume_single(Token::Reserved(ReservedWord::Done))
-            .is_some()
-        {
-            Ok(do_group)
-        } else {
-            Err(ParseError::Unfinished(None, do_group))
-        }
+        Ok(DoGroup {
+            do_part,
+            body,
+            done_part,
+        })
     }
 
     fn parse_simple_command(&mut self) -> ParseResult<SimpleCommand> {
@@ -1359,6 +1362,42 @@ where
 
         self.consume_single(Token::Pipe)
             .map(|_| Pipe { whitespace })
+            .ok_or_else(|| {
+                *self = initial;
+                ParseError::None
+            })
+    }
+
+    fn parse_while(&mut self) -> ParseResult<While> {
+        let initial = self.clone();
+        let whitespace = self.swallow_whitespace();
+
+        self.consume_single(Token::Reserved(ReservedWord::While))
+            .map(|_| While { whitespace })
+            .ok_or_else(|| {
+                *self = initial;
+                ParseError::None
+            })
+    }
+
+    fn parse_do(&mut self) -> ParseResult<Do> {
+        let initial = self.clone();
+        let whitespace = self.swallow_whitespace();
+
+        self.consume_single(Token::Reserved(ReservedWord::Do))
+            .map(|_| Do { whitespace })
+            .ok_or_else(|| {
+                *self = initial;
+                ParseError::None
+            })
+    }
+
+    fn parse_done(&mut self) -> ParseResult<Done> {
+        let initial = self.clone();
+        let whitespace = self.swallow_whitespace();
+
+        self.consume_single(Token::Reserved(ReservedWord::Done))
+            .map(|_| Done { whitespace })
             .ok_or_else(|| {
                 *self = initial;
                 ParseError::None

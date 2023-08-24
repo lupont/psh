@@ -393,7 +393,7 @@ pub struct ElsePart {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct WhileClause {
-    pub while_ws: LeadingWhitespace,
+    pub while_part: While,
     pub predicate: CompoundList,
     pub body: DoGroup,
 }
@@ -452,9 +452,9 @@ pub struct BraceGroup {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DoGroup {
-    pub do_ws: LeadingWhitespace,
+    pub do_part: Do,
     pub body: CompoundList,
-    pub done_ws: LeadingWhitespace,
+    pub done_part: Done,
 }
 
 /// ```[no_run]
@@ -961,6 +961,27 @@ pub struct Comment {
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pipe {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
+    pub whitespace: LeadingWhitespace,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct While {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
+    pub whitespace: LeadingWhitespace,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct Do {
+    #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
+    pub whitespace: LeadingWhitespace,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct Done {
     #[cfg_attr(feature = "serde", serde(rename = "leading_whitespace"))]
     pub whitespace: LeadingWhitespace,
 }

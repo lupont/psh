@@ -54,3 +54,7 @@ pub fn rhs(engine: &Engine) -> Color {
 pub fn prompt(engine: &Engine) -> Color {
     from_var("PSH_PROMPT_COL", engine)
 }
+
+pub fn keyword(engine: &Engine) -> Color {
+    from_var("PSH_KEYWORD", engine)
+}

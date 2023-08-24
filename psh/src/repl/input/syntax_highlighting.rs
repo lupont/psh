@@ -262,13 +262,7 @@ impl Highlighter for BraceGroup {
 
 impl Highlighter for WhileClause {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
-        let col = color::valid_cmd(engine);
-        queue!(
-            stdout(),
-            SetForegroundColor(col),
-            Print(&self.while_ws),
-            ResetColor,
-        )?;
+        self.while_part.write_highlighted(engine, context)?;
         self.predicate.write_highlighted(engine, context)?;
         self.body.write_highlighted(engine, context)?;
         Ok(())
@@ -277,10 +271,9 @@ impl Highlighter for WhileClause {
 
 impl Highlighter for DoGroup {
     fn write_highlighted(&self, engine: &mut Engine, context: Context) -> Result<()> {
-        queue!(stdout(), Print(&self.do_ws), Print("do"))?;
+        self.do_part.write_highlighted(engine, context)?;
         self.body.write_highlighted(engine, context)?;
-        queue!(stdout(), Print(&self.done_ws), Print("done"))?;
-
+        self.done_part.write_highlighted(engine, context)?;
         Ok(())
     }
 }
@@ -528,6 +521,48 @@ impl Highlighter for Comment {
             SetForegroundColor(color),
             Print(self.to_string()),
             ResetColor
+        )?;
+        Ok(())
+    }
+}
+
+impl Highlighter for While {
+    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let color = color::keyword(engine);
+        queue!(
+            stdout(),
+            SetForegroundColor(color),
+            Print(&self.whitespace),
+            Print("while"),
+            ResetColor,
+        )?;
+        Ok(())
+    }
+}
+
+impl Highlighter for Do {
+    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let color = color::keyword(engine);
+        queue!(
+            stdout(),
+            SetForegroundColor(color),
+            Print(&self.whitespace),
+            Print("do"),
+            ResetColor,
+        )?;
+        Ok(())
+    }
+}
+
+impl Highlighter for Done {
+    fn write_highlighted(&self, engine: &mut Engine, _: Context) -> Result<()> {
+        let color = color::keyword(engine);
+        queue!(
+            stdout(),
+            SetForegroundColor(color),
+            Print(&self.whitespace),
+            Print("done"),
+            ResetColor,
         )?;
         Ok(())
     }
