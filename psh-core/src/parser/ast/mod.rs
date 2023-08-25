@@ -213,7 +213,7 @@ where
                 comment: comment.ok(),
             })
         } else if let Ok(comment) = comment {
-            Ok(CompleteCommand::Comment { comment })
+            Ok(CompleteCommand::Comment(comment))
         } else if let Err(ParseError::Unfinished(ws, list)) = list_and_separator {
             Err(ParseError::Unfinished(
                 ws,

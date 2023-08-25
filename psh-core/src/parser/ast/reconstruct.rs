@@ -58,7 +58,7 @@ impl ToString for CompleteCommand {
                 s.push_str(&separator_op.to_string());
                 s.push_str(&comment.to_string());
             }
-            Self::Comment { comment } => s.push_str(&comment.to_string()),
+            Self::Comment(comment) => s.push_str(&comment.to_string()),
         }
 
         s

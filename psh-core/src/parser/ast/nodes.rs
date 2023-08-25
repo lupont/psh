@@ -69,9 +69,7 @@ pub enum CompleteCommand {
         comment: Option<Comment>,
     },
 
-    Comment {
-        comment: Comment,
-    },
+    Comment(Comment),
 }
 
 impl CompleteCommand {

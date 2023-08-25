@@ -78,7 +78,7 @@ impl Serialize for CompleteCommand {
                 state.serialize_field("separator_op", separator_op)?;
                 state.serialize_field("comment", comment)?;
             }
-            Self::Comment { comment } => {
+            Self::Comment(comment) => {
                 state.serialize_field("list", &None::<List>)?;
                 state.serialize_field("separator_op", &None::<SeparatorOp>)?;
                 state.serialize_field("comment", comment)?;

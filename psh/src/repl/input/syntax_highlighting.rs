@@ -99,7 +99,7 @@ impl Highlighter for CompleteCommand {
                 separator_op.write_highlighted(engine, context)?;
                 comment.write_highlighted(engine, context)?;
             }
-            Self::Comment { comment } => {
+            Self::Comment(comment) => {
                 comment.write_highlighted(engine, context)?;
             }
         }
