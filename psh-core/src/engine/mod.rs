@@ -231,7 +231,8 @@ impl Engine {
                         ty,
                         target,
                         ..
-                    } = redirection else {
+                    } = redirection
+                    else {
                         continue;
                     };
 

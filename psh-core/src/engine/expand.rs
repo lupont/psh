@@ -125,7 +125,13 @@ fn expand_parameters(
     let mut field_split_candidates = Vec::new();
 
     while let Some(index) = indices.pop() {
-        let Expansion::Parameter { range, name, finished: true, quoted } = expansions.remove(index) else {
+        let Expansion::Parameter {
+            range,
+            name,
+            finished: true,
+            quoted,
+        } = expansions.remove(index)
+        else {
             unreachable!()
         };
 

@@ -281,7 +281,9 @@ where
         let mut tail = Vec::new();
 
         loop {
-            let Ok(logical_op) = self.parse_logical_op() else { break; };
+            let Ok(logical_op) = self.parse_logical_op() else {
+                break;
+            };
             let linebreak = self.parse_linebreak();
             let pipeline = match self.parse_pipeline() {
                 Ok(pipeline) => pipeline,
@@ -335,7 +337,9 @@ where
         let mut tail = Vec::new();
 
         loop {
-            let Ok(pipe) = self.parse_pipe() else { break; };
+            let Ok(pipe) = self.parse_pipe() else {
+                break;
+            };
             let linebreak = self.parse_linebreak();
             let cmd = match self.parse_command() {
                 Ok(cmd) => cmd,

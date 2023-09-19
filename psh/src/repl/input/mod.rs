@@ -399,7 +399,9 @@ fn write_highlighted_ast(
         _ => start_x,
     };
 
-    let Ok(ast) = psh_core::ast::parse(line, true) else { return Ok(()); };
+    let Ok(ast) = psh_core::ast::parse(line, true) else {
+        return Ok(());
+    };
     ast.write_highlighted(
         engine,
         Context {
