@@ -20,7 +20,7 @@ cp -r test "$run_dir/"
 cd "$run_dir" || exit
 
 sed -i "s/user/$USER/g" test/004_expand_tilde
-sed -i "s/user/$USER/g" test/expected/stdout/004_expand_tilde
+sed -i "s|<homedir>|$HOME|g" test/expected/stdout/004_expand_tilde
 
 rc=0
 for file in $(find test/ -type f -not -path '*test/expected/*' -name '0*' | sort); do

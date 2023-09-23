@@ -1,11 +1,11 @@
-1 /home/user
+1 <homedir>
 2 ~~
 3 ~
 4 ~
 5 ~
-6 /home/user//
-7 /home/user/
+6 <homedir>//
+7 <homedir>/
 8 /~
 9 foo~
-10 /home/user
-11 /home/user/
+10 <homedir>
+11 <homedir>/
