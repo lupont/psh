@@ -1,10 +1,8 @@
 pub mod input;
 
-use std::env;
-use std::process;
-
 use crossterm::terminal;
 
+use psh_core::engine::util;
 use psh_core::{ast, path, tok, Engine, Error, Result};
 
 #[derive(Default)]
@@ -21,31 +19,21 @@ impl Repl {
         }
     }
 
-    fn update_shlvl(&self) {
-        if let Ok(var) = env::var("SHLVL") {
-            if let Ok(shlvl) = var.parse::<u8>() {
-                let shlvl = shlvl + 1;
-                env::set_var("SHLVL", shlvl.to_string());
-            }
-        } else {
-            env::set_var("SHLVL", "1");
-        }
-    }
-
     pub fn run(&mut self, lex: bool, ast: bool, _json: bool) -> Result<()> {
         self.read_init_file()?;
-        self.update_shlvl();
+        util::update_shlvl();
 
         if self.engine.get_value_of("PS1").is_none() {
             self.engine.assignments.insert(
                 "PS1".to_string(),
-                match is_root() {
+                match util::is_root() {
                     true => input::PS1_ROOT_PROMPT,
                     false => input::PS1_USER_PROMPT,
                 }
                 .to_string(),
             );
         }
+
         if self.engine.get_value_of("PS2").is_none() {
             self.engine
                 .assignments
@@ -89,11 +77,6 @@ impl Repl {
             }
         }
     }
-}
-
-fn is_root() -> bool {
-    let id = process::Command::new("id").arg("-u").output();
-    matches!(id, Ok(id) if id.stdout == b"0\n")
 }
 
 pub struct RawMode;

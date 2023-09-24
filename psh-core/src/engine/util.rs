@@ -1,3 +1,4 @@
+use std::env;
 use std::os::unix::prelude::PermissionsExt;
 
 use nix::unistd::{fork, ForkResult, Pid};
@@ -27,4 +28,19 @@ pub fn is_executable(path: &str) -> bool {
 
         Err(_) => false,
     }
+}
+
+pub fn update_shlvl() {
+    if let Ok(var) = env::var("SHLVL") {
+        if let Ok(shlvl) = var.parse::<u8>() {
+            let shlvl = shlvl + 1;
+            env::set_var("SHLVL", shlvl.to_string());
+        }
+    } else {
+        env::set_var("SHLVL", "1");
+    }
+}
+
+pub fn is_root() -> bool {
+    nix::unistd::getuid().is_root()
 }
