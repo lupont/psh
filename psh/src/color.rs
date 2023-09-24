@@ -25,3 +25,4 @@ color!(rhs, "PSH_RHS_COL");
 color!(separator, "PSH_SEPARATOR_COL");
 color!(unparsed, "PSH_UNPARSED_COL");
 color!(valid_cmd, "PSH_VALID_CMD_COL");
+color!(valid_cmd_start, "PSH_VALID_CMD_START_COL");

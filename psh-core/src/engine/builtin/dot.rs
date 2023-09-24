@@ -19,7 +19,7 @@ pub fn execute(engine: &mut Engine, args: &[&str]) -> Result<ExitStatus> {
             if file.contains('/') {
                 engine.execute_file(file.into())?;
                 Ok(ExitStatus::from_code(0))
-            } else if let Some(file) = engine.get_file_in_path(file) {
+            } else if let Some(file) = engine.get_file_in_path(file, false) {
                 engine.execute_file(file.into())?;
                 Ok(ExitStatus::from_code(0))
             } else {

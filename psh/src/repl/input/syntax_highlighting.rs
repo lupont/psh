@@ -270,12 +270,18 @@ impl Highlighter for SimpleCommand {
             let args = name.clone().expand(engine);
 
             let has_cmd = |cmd| {
-                engine.has_executable(cmd)
-                    || (engine.has_abbreviation(cmd) && context.abbreviations)
+                engine.has_executable(cmd, false)
+                    || (context.abbreviations && engine.has_abbreviation(cmd))
+            };
+
+            let has_cmd_starting_with = |cmd| {
+                engine.has_executable(cmd, true)
+                    || (context.abbreviations && engine.has_abbreviation(cmd))
             };
 
             let cmd_color = match args.first() {
                 Some(name) if has_cmd(name) => color::valid_cmd(engine),
+                Some(name) if has_cmd_starting_with(name) => color::valid_cmd_start(engine),
                 _ => color::invalid_cmd(engine),
             };
 

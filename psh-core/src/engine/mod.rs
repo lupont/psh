@@ -1,7 +1,7 @@
 pub mod builtin;
 pub mod expand;
 pub mod history;
-mod util;
+pub mod util;
 
 use std::collections::HashMap;
 use std::env;
@@ -73,14 +73,18 @@ impl Default for Engine {
 }
 
 impl Engine {
-    pub fn get_file_in_path(&self, file: &str) -> Option<String> {
+    pub fn get_file_in_path(&self, file: &str, only_check_if_starts_with: bool) -> Option<String> {
         if let Some(path) = self.get_value_of("PATH") {
             let paths = path.split(':');
 
             for path in paths {
                 if let Ok(dirs) = std::fs::read_dir(path) {
                     for entry in dirs.filter_map(|f| f.ok()) {
-                        if file == entry.file_name() {
+                        let file_name = entry.file_name();
+                        let file_name = file_name.to_str().unwrap();
+                        if file == file_name
+                            || (only_check_if_starts_with && file_name.starts_with(file))
+                        {
                             return Some(format!("{}", entry.path().display()));
                         }
                     }
@@ -99,14 +103,14 @@ impl Engine {
             .or_else(|| env::var(var).ok())
     }
 
-    pub fn has_executable(&self, cmd: &str) -> bool {
-        self.has_command(cmd) || self.has_alias(cmd) || builtin::has(cmd)
+    pub fn has_executable(&self, cmd: &str, only_check_if_starts_with: bool) -> bool {
+        self.has_command(cmd, only_check_if_starts_with) || self.has_alias(cmd) || builtin::has(cmd)
     }
 
-    pub fn has_command(&self, cmd: &str) -> bool {
+    pub fn has_command(&self, cmd: &str, only_check_if_starts_with: bool) -> bool {
         path::has_relative_command(cmd)
             || (self
-                .get_file_in_path(cmd)
+                .get_file_in_path(cmd, only_check_if_starts_with)
                 .map(|file| util::is_executable(&file))
                 .unwrap_or(false))
     }
@@ -282,7 +286,7 @@ impl Engine {
                     if !args.is_empty() {
                         let alias_args = self.expand_alias(&args[0]);
                         args.splice(0..1, alias_args);
-                        last_status = if !self.has_executable(&args[0]) {
+                        last_status = if !self.has_executable(&args[0], false) {
                             return Err(Error::UnknownCommand(args[0].to_string()));
                         } else if cmd.is_builtin() {
                             // TODO: assignments

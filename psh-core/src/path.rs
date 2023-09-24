@@ -1,7 +1,7 @@
 use std::env;
-use std::os::unix::prelude::PermissionsExt;
 use std::path::PathBuf;
 
+use crate::engine::util;
 use crate::Error;
 
 pub fn home_dir() -> String {
@@ -32,19 +32,7 @@ pub fn history_file() -> PathBuf {
 
 pub fn has_relative_command(cmd: impl AsRef<str>) -> bool {
     let cmd = cmd.as_ref();
-
-    if !cmd.starts_with('/') && !cmd.starts_with('.') && !cmd.contains('/') {
-        return false;
-    }
-
-    match std::fs::metadata(cmd) {
-        Ok(metadata) => {
-            let mode = metadata.permissions().mode();
-            !metadata.is_dir() && mode & 0o111 != 0
-        }
-
-        Err(_) => false,
-    }
+    cmd.contains('/') && util::is_executable(cmd)
 }
 
 pub fn compress_tilde(s: String) -> String {
