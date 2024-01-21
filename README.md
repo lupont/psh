@@ -35,12 +35,12 @@ The main goals of psh can be summarized in two big tasks:
 - Become (as close as possible) POSIX compliant
   - According to [the
     spec](https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html)
-  - Without having an explicit init.psh file, no major features that stray
+  - Without having an explicit `init.psh` file, no major features that stray
     from the spec. All off-spec features shall be opt-in via the `set` builtin
     (or possibly another one to stay as on-spec as possible)
 - Include quality of life features
   - Syntax highlighting, abbreviations, automatic suggestions
-  - readline compliance in some form
+  - GNU Readline compliance in some form
   - Tab completion in some form, possibly parsing man pages
   - Off-spec builtins, such as one to get the running time of the latest
     command
@@ -51,4 +51,4 @@ The main goals of psh can be summarized in two big tasks:
 `psh` is written in Rust, and uses `cargo` for building, linting, formatting,
 and testing. Contributing requires having the stable Rust toolchain installed
 (or made available via some sick `podman` aliases or something). The recommended
-way to install this is with [rustup](https://rustup.rs).
+way to install this is with [`rustup`](https://rustup.rs).

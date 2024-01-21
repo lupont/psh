@@ -1,0 +1,13 @@
+personal_ws-1.1 en 1000 utf-8
+AST
+CLI
+JSON
+POSIX
+README
+REPL
+Readline
+builtins
+globstar
+pre
+psh
+toolchain
